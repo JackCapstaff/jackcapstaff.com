@@ -1,6 +1,6 @@
-slider {
+.slider {
     position: relative;
-    width: 90%; /* Use percentage for responsiveness */
+    width: 100%; /* Full width of the viewport */
     max-width: 900px; /* Maximum width */
     height: auto; /* Let height adjust based on content */
     overflow: hidden;
@@ -27,8 +27,7 @@ slider {
 }
 
 .event-box img {
-    width: 15vw; /* Responsive image width */
-    max-width: 100px; /* Maintain aspect ratio */
+    max-width: 100%; /* Allow images to be responsive */
     height: auto; /* Automatic height to maintain proportion */
     margin-right: 20px; /* Space between image and text */
 }
@@ -49,13 +48,8 @@ slider {
 /* Media Queries for More Responsive Behavior */
 
 @media (max-width: 768px) {
-    .slider {
-        height: auto; /* Let height adjust based on content */
-    }
-
     .event-box img {
-        width: 25vw; /* Adjust image size for medium screens */
-        max-width: 80px; /* Limit maximum size */
+        max-width: 80%; /* Adjust images for medium screens */
     }
 
     .event-box {
@@ -65,8 +59,9 @@ slider {
 
 @media (max-width: 480px) {
     .event-box img {
-        width: 40vw; /* Adjust image size for mobile */
-        max-width: 60px; /* Limit maximum size */
+        max-width: 100%; /* Full width for mobile images */
+        height: auto; /* Maintain aspect ratio */
+        margin: 0 auto 10px auto; /* Center image and add margin */
     }
 
     .event-box {
