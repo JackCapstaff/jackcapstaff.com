@@ -2,7 +2,7 @@
     position: relative;
     width: 100%; /* Full width of the viewport */
     max-width: 900px; /* Maximum width */
-    height: auto; /* Let height adjust based on content */
+    height: 150px; /* Let height adjust based on content */
     overflow: hidden;
     margin: 20px auto;
     border: 2px solid #915a00; /* Border around the slider */
