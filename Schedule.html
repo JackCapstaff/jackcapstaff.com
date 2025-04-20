@@ -49,8 +49,8 @@
 								<table>
 									<thead>
 										<tr>
-											<th>Ensemble</th>
-											<th>Concert</th>
+											<th>Event</th>
+											
 											<th>Date</th>
 										</tr>
 									</thead>
@@ -89,30 +89,45 @@
 		<script src="assets/js/util.js"></script>
 		<script src="assets/js/main.js"></script>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+		<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+		
+
 		<script>
 			document.addEventListener('DOMContentLoaded', function () {
-				fetch('events.csv') // Make sure your CSV file is accessible
+				fetch('events.csv')
 					.then(response => response.text())
 					.then(csvText => {
 						Papa.parse(csvText, {
 							header: true,
 							complete: function(results) {
+								console.log('CSV parsed:', results);
 								const events = results.data.filter(event => {
-									return event['All day event'].toLowerCase() === 'false';
+									// Exclude events where 'Private' is TRUE (case-insensitive)
+									return !(event['Private'] && event['Private'].toUpperCase() === 'TRUE');
 								});
+								console.log('Filtered events:', events);
 
 								const tbody = document.querySelector('table tbody');
-								tbody.innerHTML = ''; // Clear existing rows
+								tbody.innerHTML = '';
 
 								events.forEach(event => {
-									const tr = document.createElement('tr');
-									tr.innerHTML = `
-										<td>${event['Meeting Organizer']}</td>
-										<td>${event['Subject']}</td>
-										<td>${new Date(event['Start Date']).toLocaleDateString()}</td>
-									`;
-									tbody.appendChild(tr);
+									try {
+										const dateParts = event['Start Date'].split('/');
+										const year = parseInt(dateParts[2]);
+										const month = parseInt(dateParts[0]) - 1;
+										const day = parseInt(dateParts[1]);
+										const eventDate = new Date(year, month, day);
+										const formattedDate = eventDate.toLocaleDateString();
+
+										const tr = document.createElement('tr');
+										tr.innerHTML = `
+											<td>${event['Subject']}</td>
+											<td>${formattedDate}</td>
+										`;
+										tbody.appendChild(tr);
+									} catch (dateError) {
+										console.error('Error formatting date:', event['Start Date'], dateError);
+									}
 								});
 							}
 						});
