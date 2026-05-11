@@ -119,6 +119,7 @@ def news_list():
 @editor_required
 def create_news():
     db, _, NewsItem, _, _, _ = _models()
+    upload_image = getattr(current_app, "upload_media_image", None)
 
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
@@ -133,6 +134,10 @@ def create_news():
             slug = f"{slug}-{int(datetime.utcnow().timestamp())}"
 
         published_at = _parse_dt_local(request.form.get("published_at")) or datetime.utcnow()
+        featured_image = None
+        image_file = request.files.get("featured_image")
+        if image_file and upload_image:
+            featured_image = upload_image(image_file, "news")
 
         item = NewsItem(
             title=title,
@@ -140,6 +145,7 @@ def create_news():
             subtitle=(request.form.get("subtitle") or "").strip() or None,
             excerpt=(request.form.get("excerpt") or "").strip() or None,
             content=content,
+            featured_image=featured_image,
             published=request.form.get("published") == "on",
             published_at=published_at,
             author_id=current_user.id,
@@ -163,6 +169,7 @@ def news_create():
 def edit_news(news_id):
     db, _, NewsItem, _, _, _ = _models()
     news = NewsItem.query.get_or_404(news_id)
+    upload_image = getattr(current_app, "upload_media_image", None)
 
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
@@ -176,6 +183,11 @@ def edit_news(news_id):
         news.subtitle = (request.form.get("subtitle") or "").strip() or None
         news.excerpt = (request.form.get("excerpt") or "").strip() or None
         news.content = content
+        image_file = request.files.get("featured_image")
+        if image_file and upload_image:
+            uploaded = upload_image(image_file, "news")
+            if uploaded:
+                news.featured_image = uploaded
         news.published = request.form.get("published") == "on"
         news.published_at = _parse_dt_local(request.form.get("published_at")) or news.published_at
 
@@ -228,6 +240,7 @@ def events_list():
 @editor_required
 def create_event():
     db, _, _, Event, _, _ = _models()
+    upload_image = getattr(current_app, "upload_media_image", None)
 
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
@@ -241,6 +254,11 @@ def create_event():
         if existing:
             slug = f"{slug}-{int(datetime.utcnow().timestamp())}"
 
+        featured_image = None
+        image_file = request.files.get("featured_image")
+        if image_file and upload_image:
+            featured_image = upload_image(image_file, "events")
+
         event = Event(
             title=title,
             slug=slug,
@@ -250,6 +268,7 @@ def create_event():
             tickets_url=(request.form.get("tickets_url") or "").strip() or None,
             livestream_url=(request.form.get("livestream_url") or "").strip() or None,
             youtube_embed_url=(request.form.get("youtube_embed_url") or "").strip() or None,
+            featured_image=featured_image,
             published=request.form.get("published") == "on",
             author_id=current_user.id,
         )
@@ -272,6 +291,7 @@ def events_create():
 def edit_event(event_id):
     db, _, _, Event, _, _ = _models()
     event = Event.query.get_or_404(event_id)
+    upload_image = getattr(current_app, "upload_media_image", None)
 
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
@@ -288,6 +308,11 @@ def edit_event(event_id):
         event.tickets_url = (request.form.get("tickets_url") or "").strip() or None
         event.livestream_url = (request.form.get("livestream_url") or "").strip() or None
         event.youtube_embed_url = (request.form.get("youtube_embed_url") or "").strip() or None
+        image_file = request.files.get("featured_image")
+        if image_file and upload_image:
+            uploaded = upload_image(image_file, "events")
+            if uploaded:
+                event.featured_image = uploaded
         event.published = request.form.get("published") == "on"
 
         db.session.commit()

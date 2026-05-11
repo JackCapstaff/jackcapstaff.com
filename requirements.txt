@@ -5,6 +5,7 @@ Werkzeug==2.3.7
 gunicorn==22.0.0
 psycopg2-binary==2.9.9
 requests>=2.31
+cloudinary>=1.41.0
 numpy>=1.26
 pandas>=2.1
 openpyxl>=3.1

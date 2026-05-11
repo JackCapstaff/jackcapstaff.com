@@ -6,12 +6,22 @@ import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 from urllib.parse import urljoin, urlparse
+import uuid
+
+import requests
 
 from flask import Flask, flash, redirect, render_template, request, url_for, abort, send_from_directory
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
+
+try:
+    import cloudinary
+    import cloudinary.uploader
+except Exception:
+    cloudinary = None
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -39,6 +49,9 @@ app.config['SMTP_PORT'] = int(os.environ.get('SMTP_PORT', '587'))
 app.config['SMTP_USERNAME'] = os.environ.get('SMTP_USERNAME', '').strip()
 app.config['SMTP_PASSWORD'] = os.environ.get('SMTP_PASSWORD', '').strip()
 app.config['SMTP_USE_TLS'] = os.environ.get('SMTP_USE_TLS', '1').strip() not in {'0', 'false', 'False'}
+app.config['BREVO_API_KEY'] = os.environ.get('BREVO_API_KEY', '').strip()
+app.config['BREVO_FROM_EMAIL'] = os.environ.get('BREVO_FROM_EMAIL', '').strip()
+app.config['BREVO_FROM_NAME'] = os.environ.get('BREVO_FROM_NAME', app.config['SITE_TITLE'] if 'SITE_TITLE' in app.config else 'Jack Capstaff').strip()
 app.config['CONTACT_TO_EMAIL'] = os.environ.get('CONTACT_TO_EMAIL', 'jack@jackcapstaff.com').strip()
 app.config['CONTACT_FROM_EMAIL'] = os.environ.get('CONTACT_FROM_EMAIL', app.config['SMTP_USERNAME'] or 'noreply@jackcapstaff.com').strip()
 app.config['SITE_TITLE'] = os.environ.get('SITE_TITLE', 'Jack Capstaff')
@@ -47,6 +60,9 @@ REHEARSAL_SCHEDULE_ROOT = os.path.join(BASE_DIR, 'Rehearsal Schedule', 'rehearsa
 REHEARSAL_SCHEDULE_DATA_DIR = os.path.join(REHEARSAL_SCHEDULE_ROOT, 'site', 'data', 'schedules')
 REHEARSAL_SCHEDULE_PREFIX = '/rehearsal-schedule'
 IMAGES_DIR = os.path.join(BASE_DIR, 'images')
+UPLOADS_DIR = os.path.join(BASE_DIR, 'assets', 'uploads')
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 
 def load_rehearsal_schedule_app():
@@ -132,6 +148,7 @@ app.NewsItem = NewsItem
 app.Event = Event
 app.PageContent = PageContent
 app.ContactMessage = ContactMessage
+app.upload_media_image = upload_media_image
 
 
 # Import and register admin blueprint
@@ -183,6 +200,39 @@ def normalize_media_url(value):
     return f'/images/{value.lstrip("/")}'
 
 
+def _allowed_image_file(filename):
+    return bool(filename) and '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
+def _is_cloudinary_configured():
+    return cloudinary is not None and bool(os.environ.get('CLOUDINARY_URL', '').strip())
+
+
+def upload_media_image(file_storage, prefix='content'):
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+
+    if not _allowed_image_file(file_storage.filename):
+        return None
+
+    if _is_cloudinary_configured():
+        try:
+            result = cloudinary.uploader.upload(
+                file_storage,
+                folder=f'jackcapstaff/{prefix}',
+                resource_type='image',
+            )
+            return result.get('secure_url')
+        except Exception:
+            app.logger.exception('Cloudinary upload failed; falling back to local uploads')
+
+    safe_name = secure_filename(file_storage.filename)
+    unique_name = f"{prefix}_{uuid.uuid4().hex}_{safe_name}"
+    out_path = os.path.join(UPLOADS_DIR, unique_name)
+    file_storage.save(out_path)
+    return f'/assets/uploads/{unique_name}'
+
+
 def _is_safe_redirect_target(target):
     if not target:
         return False
@@ -192,7 +242,66 @@ def _is_safe_redirect_target(target):
     return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
 
+def _send_contact_email_via_brevo(name, email, message, send_copy=False):
+    api_key = app.config.get('BREVO_API_KEY', '').strip()
+    to_email = app.config.get('CONTACT_TO_EMAIL', '').strip()
+    from_email = app.config.get('BREVO_FROM_EMAIL', '').strip() or app.config.get('CONTACT_FROM_EMAIL', '').strip()
+    from_name = app.config.get('BREVO_FROM_NAME', '').strip() or app.config.get('SITE_TITLE', 'Jack Capstaff')
+
+    if not api_key or not to_email or not from_email:
+        return False, 'Brevo settings are incomplete.'
+
+    subject = 'New message from jackcapstaff.com'
+    html_body = (
+        '<p><strong>You have received a new message from jackcapstaff.com</strong></p>'
+        f'<p><strong>Name:</strong> {name}</p>'
+        f'<p><strong>Email:</strong> {email}</p>'
+        f'<p><strong>Message:</strong><br>{message.replace(chr(10), "<br>")}</p>'
+    )
+    text_body = (
+        'You have received a new message from jackcapstaff.com\n\n'
+        f'Name: {name}\n'
+        f'Email: {email}\n\n'
+        f'Message:\n{message}\n'
+    )
+
+    payload = {
+        'sender': {'name': from_name, 'email': from_email},
+        'to': [{'email': to_email}],
+        'subject': subject,
+        'htmlContent': html_body,
+        'textContent': text_body,
+        'replyTo': {'email': email},
+    }
+    if send_copy and email:
+        payload['cc'] = [{'email': email}]
+
+    try:
+        response = requests.post(
+            'https://api.brevo.com/v3/smtp/email',
+            headers={
+                'accept': 'application/json',
+                'api-key': api_key,
+                'content-type': 'application/json',
+            },
+            json=payload,
+            timeout=20,
+        )
+        if response.status_code >= 400:
+            return False, f'Brevo API error: {response.status_code} {response.text[:250]}'
+    except Exception as exc:
+        app.logger.exception('Brevo send failed')
+        return False, str(exc)
+
+    return True, 'sent'
+
+
 def send_contact_email(name, email, message, send_copy=False):
+    if app.config.get('BREVO_API_KEY', '').strip():
+        sent, detail = _send_contact_email_via_brevo(name, email, message, send_copy=send_copy)
+        if sent:
+            return True, detail
+
     to_email = app.config['CONTACT_TO_EMAIL']
     from_email = app.config['CONTACT_FROM_EMAIL']
     smtp_host = app.config['SMTP_HOST']

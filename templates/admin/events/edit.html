@@ -49,11 +49,11 @@
                         <label for="featured_image" class="form-label">Featured Image</label>
                         {% if event.featured_image %}
                             <div class="mb-2">
-                                <img src="{{ event.featured_image }}" alt="Featured image" style="max-width: 200px; max-height: 200px; border-radius: 5px;">
+                                <img src="{{ media_url(event.featured_image) }}" alt="Featured image" style="max-width: 200px; max-height: 200px; border-radius: 5px;">
                             </div>
                         {% endif %}
                         <input type="file" class="form-control" id="featured_image" name="featured_image" accept="image/*">
-                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB)</small>
+                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB). Uses Cloudinary when configured, otherwise local storage.</small>
                     </div>
                     
                     <div class="mb-3">
