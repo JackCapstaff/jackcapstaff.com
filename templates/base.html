@@ -15,7 +15,7 @@
 		<script src="/assets/js/scrolling.js" defer></script>
 		{% block extra_head %}{% endblock %}
 	</head>
-	<body class="{% block body_class %}is-preload{% endblock %}">
+	<body class="{% block body_class %}is-preload{% endblock %}" id="page-body">
 
 		<!-- Page Wrapper -->
 		<div id="page-wrapper">
@@ -88,6 +88,25 @@
 		<script src="/assets/js/breakpoints.min.js"></script>
 		<script src="/assets/js/util.js"></script>
 		<script src="/assets/js/main.js"></script>
+		<!-- TinyMCE for rich text editing -->
+		<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/7/tinymce.min.js"></script>
+		<!-- Admin status checker and page editor -->
+		<script>
+			(async function() {
+				try {
+					const response = await fetch('/admin/api/admin-check', { credentials: 'include' });
+					if (response.ok) {
+						const data = await response.json();
+						if (data.is_admin) {
+							document.getElementById('page-body').classList.add('is-admin');
+						}
+					}
+				} catch(e) {
+					// User not logged in, silently fail
+				}
+			})();
+		</script>
+		<script src="/assets/js/page-editor.js"></script>
 		{% block extra_scripts %}{% endblock %}
 
 	</body>
