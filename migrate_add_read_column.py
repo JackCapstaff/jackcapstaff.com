@@ -146,6 +146,22 @@ def init_database():
             
             finally:
                 connection.close()
+
+            # Ensure at least one admin exists for CMS access.
+            User = app.User
+            admin_count = User.query.filter_by(role='admin').count()
+            if admin_count == 0:
+                bootstrap_email = app.config.get('CONTACT_TO_EMAIL', '').strip().lower()
+                if bootstrap_email:
+                    bootstrap_user = User.query.filter_by(email=bootstrap_email).first()
+                    if bootstrap_user:
+                        bootstrap_user.role = 'admin'
+                        db.session.commit()
+                        print(f"   ✓ Promoted {bootstrap_email} to admin (no admins existed)")
+                    else:
+                        print(f"   ⚠️  No user found for CONTACT_TO_EMAIL={bootstrap_email}; admin not auto-promoted")
+                else:
+                    print("   ⚠️  CONTACT_TO_EMAIL not set; could not auto-promote an admin user")
             
             print("\n" + "=" * 80)
             print("✅ DATABASE INITIALIZATION COMPLETE - SAFE TO START WEB SERVER")

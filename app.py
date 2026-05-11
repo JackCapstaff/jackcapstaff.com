@@ -5,8 +5,9 @@ import os
 import smtplib
 from datetime import datetime
 from email.message import EmailMessage
+from urllib.parse import urljoin, urlparse
 
-from flask import Flask, flash, redirect, render_template, request, url_for, abort
+from flask import Flask, flash, redirect, render_template, request, url_for, abort, send_from_directory
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -45,6 +46,7 @@ app.config['SITE_TITLE'] = os.environ.get('SITE_TITLE', 'Jack Capstaff')
 REHEARSAL_SCHEDULE_ROOT = os.path.join(BASE_DIR, 'Rehearsal Schedule', 'rehearsal_schedule')
 REHEARSAL_SCHEDULE_DATA_DIR = os.path.join(REHEARSAL_SCHEDULE_ROOT, 'site', 'data', 'schedules')
 REHEARSAL_SCHEDULE_PREFIX = '/rehearsal-schedule'
+IMAGES_DIR = os.path.join(BASE_DIR, 'images')
 
 
 def load_rehearsal_schedule_app():
@@ -157,7 +159,38 @@ def inject_globals():
     return {
         'site_title': app.config['SITE_TITLE'],
         'current_year': datetime.utcnow().year,
+        'media_url': normalize_media_url,
     }
+
+
+def normalize_media_url(value):
+    value = (value or '').strip()
+    if not value:
+        return value
+
+    lowered = value.lower()
+    if lowered.startswith(('http://', 'https://', '//', 'data:', '/assets/', '/images/')):
+        return value
+
+    if value.startswith('assets/'):
+        return f'/{value}'
+
+    if value.startswith('images/'):
+        return f'/{value}'
+
+    if value.startswith('/'):
+        return value
+
+    return f'/images/{value.lstrip("/")}'
+
+
+def _is_safe_redirect_target(target):
+    if not target:
+        return False
+
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
 
 def send_contact_email(name, email, message, send_copy=False):
@@ -344,14 +377,22 @@ def contact():
     return render_template('Contact.html')
 
 
+@app.route('/images/<path:filename>')
+def legacy_images(filename):
+    return send_from_directory(IMAGES_DIR, filename)
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
 
+    next_page = request.args.get('next', '').strip()
+
     if request.method == 'POST':
         identifier = request.form.get('identifier', '').strip()
         password = request.form.get('password', '')
+        next_page = request.form.get('next', '').strip() or next_page
 
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
@@ -359,11 +400,13 @@ def login():
         if user and user.check_password(password):
             login_user(user)
             flash('Logged in successfully.', 'success')
+            if _is_safe_redirect_target(next_page):
+                return redirect(next_page)
             return redirect(url_for('index'))
 
         flash('Invalid username, email, or password.', 'danger')
 
-    return render_template('login.html')
+    return render_template('login.html', next_page=next_page)
 
 
 @app.route('/register', methods=['GET', 'POST'])

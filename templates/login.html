@@ -13,6 +13,7 @@
 		<section class="wrapper style5">
 			<div class="inner" style="max-width: 520px; margin: 0 auto;">
 				<form method="POST" action="{{ url_for('login') }}">
+					<input type="hidden" name="next" value="{{ next_page or '' }}" />
 					<div class="fields">
 						<div class="field">
 							<label for="identifier">Email or Username</label>

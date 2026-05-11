@@ -18,7 +18,7 @@
 			<div class="inner">
 				{% if news_item.featured_image %}
 					<div style="margin-bottom: 2rem;">
-						<img src="{{ news_item.featured_image }}" alt="{{ news_item.title }}" style="max-width: 100%; border-radius: 4px;">
+						<img src="{{ media_url(news_item.featured_image) }}" alt="{{ news_item.title }}" style="max-width: 100%; border-radius: 4px;">
 					</div>
 				{% endif %}
 

@@ -14,39 +14,72 @@
 	</section>
 
 	<!-- Content Blocks -->
-	{% for block in home_content %}
-		{% if block.page == 'home' and block.published %}
-			{% if block.section == 'hero' %}
-				<!-- Hero Section -->
-				<section id="one" class="wrapper style2 special">
-					<div class="inner">
-						{% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
-						{% if block.image_url %}
-							<span class="image fit"><img src="{{ block.image_url }}" alt="{{ block.title }}"></span>
-						{% endif %}
-						{% if block.content %}
-							<p>{{ block.content|safe }}</p>
-						{% endif %}
-					</div>
-				</section>
-			{% elif block.section == 'featured' %}
-				<!-- Featured Section -->
-				<section id="two" class="wrapper alt style2">
-					<section class="spotlight">
-						<div class="content">
-							{% if block.title %}<h3>{{ block.title }}</h3>{% endif %}
-							{% if block.content %}<p>{{ block.content|safe }}</p>{% endif %}
+	{% if home_content %}
+		{% for block in home_content %}
+			{% if block.page == 'home' and block.published %}
+				{% if block.section == 'hero' %}
+					<!-- Hero Section -->
+					<section id="one" class="wrapper style2 special">
+						<div class="inner">
+							{% if block.title %}<h2>{{ block.title }}</h2>{% endif %}
+							{% if block.image_url %}
+								<span class="image fit"><img src="{{ media_url(block.image_url) }}" alt="{{ block.title }}"></span>
+							{% endif %}
+							{% if block.content %}
+								<p>{{ block.content|safe }}</p>
+							{% endif %}
 						</div>
-						{% if block.image_url %}
-							<div class="image">
-								<img src="{{ block.image_url }}" alt="{{ block.title }}" />
-							</div>
-						{% endif %}
 					</section>
-				</section>
+				{% elif block.section == 'featured' %}
+					<!-- Featured Section -->
+					<section id="two" class="wrapper alt style2">
+						<section class="spotlight">
+							<div class="content">
+								{% if block.title %}<h3>{{ block.title }}</h3>{% endif %}
+								{% if block.content %}<p>{{ block.content|safe }}</p>{% endif %}
+							</div>
+							{% if block.image_url %}
+								<div class="image">
+									<img src="{{ media_url(block.image_url) }}" alt="{{ block.title }}" />
+								</div>
+							{% endif %}
+						</section>
+					</section>
+				{% endif %}
 			{% endif %}
-		{% endif %}
-	{% endfor %}
+		{% endfor %}
+	{% else %}
+		<section id="two" class="wrapper alt style2">
+			<section class="spotlight">
+				<div class="image">
+					<img src="/images/Conducting-medium.jpg" alt="Jack Capstaff conducting" />
+				</div>
+				<div class="content">
+					<h2>Conductor</h2>
+					<p>Jack Capstaff believes that music can inspire people and enrich lives, both for musicians and audiences.</p>
+				</div>
+			</section>
+			<section class="spotlight">
+				<div class="image">
+					<img src="/images/Stage-medium.jpg" alt="Jack Capstaff on stage" />
+				</div>
+				<div class="content">
+					<h2>Composer</h2>
+					<p>A prolific composer and arranger, Jack develops new projects and concert formats for modern audiences.</p>
+				</div>
+			</section>
+			<section class="spotlight">
+				<div class="image">
+					<img src="/images/Communicator-medium.PNG" alt="Jack Capstaff speaking" />
+				</div>
+				<div class="content">
+					<h2>Communicator</h2>
+					<p>As a speaker and advocate for the arts, Jack regularly delivers talks, workshops, and outreach projects.</p>
+					<p>Read his full story <a href="{{ url_for('biography') }}">here</a>.</p>
+				</div>
+			</section>
+		</section>
+	{% endif %}
 
 	<!-- Upcoming Events -->
 	{% if upcoming_events %}
@@ -56,7 +89,7 @@
 			<div class="highlights">
 				{% for event in upcoming_events %}
 					<article>
-						{% if event.featured_image %}<span class="image"><img src="{{ event.featured_image }}" alt="{{ event.title }}" /></span>{% endif %}
+						{% if event.featured_image %}<span class="image"><img src="{{ media_url(event.featured_image) }}" alt="{{ event.title }}" /></span>{% endif %}
 						<h3>{{ event.title }}</h3>
 						<p><strong>{{ event.event_date.strftime('%B %d, %Y') }}</strong></p>
 						{% if event.location %}<p>📍 {{ event.location }}</p>{% endif %}
@@ -76,7 +109,7 @@
 			<div class="posts">
 				{% for post in recent_news[:3] %}
 					<article>
-						{% if post.featured_image %}<a href="{{ url_for('news_detail', slug=post.slug) }}" class="image"><img src="{{ post.featured_image }}" alt="{{ post.title }}" /></a>{% endif %}
+						{% if post.featured_image %}<a href="{{ url_for('news_detail', slug=post.slug) }}" class="image"><img src="{{ media_url(post.featured_image) }}" alt="{{ post.title }}" /></a>{% endif %}
 						<h3><a href="{{ url_for('news_detail', slug=post.slug) }}">{{ post.title }}</a></h3>
 						<p>{{ post.excerpt or post.content[:200]|safe }}</p>
 						<ul class="actions">

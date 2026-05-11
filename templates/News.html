@@ -18,7 +18,7 @@
 							<article>
 								{% if item.featured_image %}
 									<a href="{{ url_for('news_detail', slug=item.slug) }}" class="image">
-										<img src="{{ item.featured_image }}" alt="{{ item.title }}" />
+										<img src="{{ media_url(item.featured_image) }}" alt="{{ item.title }}" />
 									</a>
 								{% endif %}
 								<h3><a href="{{ url_for('news_detail', slug=item.slug) }}">{{ item.title }}</a></h3>

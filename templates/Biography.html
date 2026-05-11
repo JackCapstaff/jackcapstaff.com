@@ -19,7 +19,7 @@
 						{% if block.content %}{{ block.content|safe }}{% endif %}
 						{% if block.image_url %}
 							<div style="margin: 2rem 0;">
-								<img src="{{ block.image_url }}" alt="{{ block.title }}" style="max-width: 100%; border-radius: 4px;">
+								<img src="{{ media_url(block.image_url) }}" alt="{{ block.title }}" style="max-width: 100%; border-radius: 4px;">
 							</div>
 						{% endif %}
 					</div>
