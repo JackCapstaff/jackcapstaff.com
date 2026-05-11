@@ -3403,7 +3403,7 @@ input, select, textarea {
 					}
 
 		#menu .close {
-			background-image: url("images/close.svg");
+			background-image: url("https://res.cloudinary.com/darait3ge/image/upload/v1778508718/jackcapstaff/assets/css/images/close_bt9ry9.svg");
 			background-position: 4.85em 1em;
 			background-repeat: no-repeat;
 			border: 0;
@@ -3520,7 +3520,7 @@ input, select, textarea {
 						}
 
 							#header nav > ul > li > a.menuToggle:after {
-								background-image: url("images/bars.svg");
+								background-image: url("https://res.cloudinary.com/darait3ge/image/upload/v1778508716/jackcapstaff/assets/css/images/bars_n6hr3w.svg");
 								background-position: right center;
 								background-repeat: no-repeat;
 								content: '';
@@ -3671,7 +3671,7 @@ input, select, textarea {
 		}
 
 			#banner .more:after {
-				background-image: url("images/arrow.svg");
+				background-image: url("https://res.cloudinary.com/darait3ge/image/upload/v1778508714/jackcapstaff/assets/css/images/arrow_by1qxw.svg");
 				background-position: center;
 				background-repeat: no-repeat;
 				background-size: contain;
