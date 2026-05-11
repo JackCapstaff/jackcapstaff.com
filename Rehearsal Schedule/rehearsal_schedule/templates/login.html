@@ -3,33 +3,29 @@
 {% set subtitle = "Access your ensembles" %}
 
 {% block content %}
-  <div class="card scheduler-auth-card">
+  <div class="card" style="max-width:520px; margin: 0 auto;">
     {% if error %}
-      <div class="small scheduler-error">
+      <div class="small" style="color:#b00020; margin-bottom:10px;">
         {{ error }}
       </div>
     {% endif %}
 
     <form method="post" action="{{ url_for('login_post') }}">
-      <div class="scheduler-field">
+      <div style="margin-bottom:12px;">
         <label class="small">Email</label>
-        <input type="email" name="email" required>
+        <input type="email" name="email" required style="width:100%; padding:10px; margin-top:6px;">
       </div>
 
-      <div class="scheduler-field">
+      <div style="margin-bottom:12px;">
         <label class="small">Password</label>
-        <input type="password" name="password" required>
+        <input type="password" name="password" required style="width:100%; padding:10px; margin-top:6px;">
       </div>
 
-      <ul class="actions scheduler-actions">
-        <li>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:16px;">
         <button class="btn" type="submit">Login</button>
-        </li>
-        <li>
         <a class="btn secondary" href="{{ url_for('register_view') }}">Create account</a>
-        </li>
-      </ul>
-      <div class="scheduler-help-link">
+      </div>
+      <div style="margin-top:8px;">
         <a href="{{ url_for('forgot_password_view') }}">Forgot your password?</a>
       </div>
     </form>

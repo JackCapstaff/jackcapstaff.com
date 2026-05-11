@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block page_title %}Jack Capstaff - News{% endblock %}
+
+{% block main_content %}
+	<!-- Main -->
+	<article id="main">
+		<header>
+			<h2>NEWS</h2>
+			<p>&nbsp;</p>
+		</header>
+
+		<section class="wrapper style5">
+			<div class="inner">
+				{% if news_items %}
+					<div class="posts">
+						{% for item in news_items.items %}
+							<article>
+								{% if item.featured_image %}
+									<a href="{{ url_for('news_detail', slug=item.slug) }}" class="image">
+										<img src="{{ item.featured_image }}" alt="{{ item.title }}" />
+									</a>
+								{% endif %}
+								<h3><a href="{{ url_for('news_detail', slug=item.slug) }}">{{ item.title }}</a></h3>
+								{% if item.subtitle %}<p class="subtitle"><em>{{ item.subtitle }}</em></p>{% endif %}
+								<p>{{ item.excerpt or item.content[:300]|safe }}</p>
+								<ul class="actions">
+									<li><a href="{{ url_for('news_detail', slug=item.slug) }}" class="button">Read Full Article</a></li>
+								</ul>
+								<div style="font-size: 0.85em; color: #666; margin-top: 0.5rem;">
+									{{ item.published_at.strftime('%B %d, %Y') }}
+									{% if item.author %} by {{ item.author.name or item.author.username }}{% endif %}
+								</div>
+							</article>
+						{% endfor %}
+					</div>
+
+					<!-- Pagination -->
+					{% if news_items.pages > 1 %}
+					<nav class="pagination" style="margin-top: 2rem; text-align: center;">
+						{% if news_items.has_prev %}
+							<a href="{{ url_for('news', page=news_items.prev_num) }}" class="button small">Previous</a>
+						{% endif %}
+						
+						{% for page_num in news_items.iter_pages() %}
+							{% if page_num %}
+								{% if page_num == news_items.page %}
+									<span class="button small disabled">{{ page_num }}</span>
+								{% else %}
+									<a href="{{ url_for('news', page=page_num) }}" class="button small">{{ page_num }}</a>
+								{% endif %}
+							{% endif %}
+						{% endfor %}
+						
+						{% if news_items.has_next %}
+							<a href="{{ url_for('news', page=news_items.next_num) }}" class="button small">Next</a>
+						{% endif %}
+					</nav>
+					{% endif %}
+				{% else %}
+					<p style="text-align: center; color: #666;">No news articles yet.</p>
+				{% endif %}
+			</div>
+		</section>
+	</article>
+{% endblock %}

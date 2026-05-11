@@ -6,7 +6,7 @@ import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, flash, redirect, render_template, request, url_for, abort
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -29,7 +29,7 @@ def resolve_database_url():
     return 'sqlite:///' + os.path.join(BASE_DIR, 'jackcapstaff.db')
 
 
-app = Flask(__name__, template_folder='.', static_folder='.', static_url_path='')
+app = Flask(__name__, template_folder='templates', static_folder='assets', static_url_path='/assets')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-secret-key-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = resolve_database_url()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -115,34 +115,33 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# Initialize models with database instance
+from models import init_models
+models_dict = init_models(db)
+User = models_dict['User']
+NewsItem = models_dict['NewsItem']
+Event = models_dict['Event']
+PageContent = models_dict['PageContent']
+ContactMessage = models_dict['ContactMessage']
+# Expose models and db to app context for access in blueprints
+app.db = db
+app.User = User
+app.NewsItem = NewsItem
+app.Event = Event
+app.PageContent = PageContent
+app.ContactMessage = ContactMessage
+
+
+# Import and register admin blueprint
+from admin import admin_bp
+app.register_blueprint(admin_bp)
+
 rehearsal_schedule_app = load_rehearsal_schedule_app()
-if rehearsal_schedule_app is not None:
-    app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
-        REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app,
-    })
-
-
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-
-class ContactMessage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(255), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+# Temporarily disabled DispatcherMiddleware to debug routing issues
+# if rehearsal_schedule_app is not None:
+#     app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
+#         REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app,
+#     })
 
 
 @login_manager.user_loader
@@ -257,13 +256,22 @@ def load_schedule_events():
 @app.route('/')
 @app.route('/index.html')
 def index():
-    return render_template('index.html', upcoming_events=load_schedule_events()[:3])
+    home_content = PageContent.query.filter_by(page='home', published=True).order_by(PageContent.order).all()
+    upcoming_events = Event.query.filter_by(published=True).filter(
+        Event.event_date >= datetime.utcnow()
+    ).order_by(Event.event_date).limit(3).all()
+    recent_news = NewsItem.query.filter_by(published=True).order_by(NewsItem.published_at.desc()).limit(5).all()
+    return render_template('index.html', 
+                         home_content=home_content,
+                         upcoming_events=upcoming_events,
+                         recent_news=recent_news)
 
 
 @app.route('/Biography')
 @app.route('/Biography.html')
 def biography():
-    return render_template('Biography.html')
+    biography_content = PageContent.query.filter_by(page='biography', published=True).order_by(PageContent.order).all()
+    return render_template('Biography.html', biography_content=biography_content)
 
 
 @app.route('/schedule')
@@ -271,28 +279,42 @@ def biography():
 @app.route('/Schedule.html')
 def schedule():
     rehearsal_schedule_url = resolve_rehearsal_schedule_url()
+    upcoming_events = Event.query.filter_by(published=True).filter(
+        Event.event_date >= datetime.utcnow()
+    ).order_by(Event.event_date).all()
+    
     if rehearsal_schedule_url:
         return redirect(rehearsal_schedule_url)
 
-    # If the scheduler app is mounted but no published schedule JSON is found,
-    # still route users into the scheduler app instead of falling back here.
     if rehearsal_schedule_app is not None:
         return redirect(f'{REHEARSAL_SCHEDULE_PREFIX}/my')
 
-    flash('The rehearsal schedule app is not available yet.', 'warning')
-    return render_template('Schedule.html', upcoming_events=load_schedule_events())
+    return render_template('Schedule.html', 
+                         upcoming_events=upcoming_events,
+                         rehearsal_schedule_url=rehearsal_schedule_url)
 
 
 @app.route('/Media')
 @app.route('/Media.html')
 def media():
-    return render_template('Media.html')
+    media_content = PageContent.query.filter_by(page='media', published=True).order_by(PageContent.order).all()
+    return render_template('Media.html', media_content=media_content)
 
 
 @app.route('/News')
 @app.route('/News.html')
 def news():
-    return render_template('News.html')
+    page = request.args.get('page', 1, type=int)
+    news_items = NewsItem.query.filter_by(published=True).order_by(
+        NewsItem.published_at.desc()
+    ).paginate(page=page, per_page=10)
+    return render_template('News.html', news_items=news_items)
+
+
+@app.route('/news/<slug>')
+def news_detail(slug):
+    news_item = NewsItem.query.filter_by(slug=slug).first_or_404()
+    return render_template('news_detail.html', news_item=news_item)
 
 
 @app.route('/contact', methods=['GET', 'POST'])
@@ -352,14 +374,15 @@ def register():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
+        name = request.form.get('name', '').strip()
         password = request.form.get('password', '')
-        confirm_password = request.form.get('confirm_password', '')
+        password_confirm = request.form.get('password_confirm', '')
 
         if not username or not email or not password:
             flash('Please complete all registration fields.', 'warning')
             return render_template('register.html')
 
-        if password != confirm_password:
+        if password != password_confirm:
             flash('Passwords do not match.', 'warning')
             return render_template('register.html')
 
@@ -367,7 +390,7 @@ def register():
             flash('That username or email already exists.', 'warning')
             return render_template('register.html')
 
-        user = User(username=username, email=email)
+        user = User(username=username, email=email, name=name)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()

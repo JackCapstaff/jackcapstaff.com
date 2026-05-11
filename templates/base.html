@@ -1,0 +1,92 @@
+<!DOCTYPE HTML>
+<!--
+	Spectral by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>{% block page_title %}Jack Capstaff{% endblock %}</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="/assets/css/main.css" />
+		<noscript><link rel="stylesheet" href="/assets/css/noscript.css" /></noscript>
+		<link rel="stylesheet" href="/assets/css/scrolling.css">
+		<script src="/assets/js/scrolling.js" defer></script>
+		{% block extra_head %}{% endblock %}
+	</head>
+	<body class="{% block body_class %}is-preload{% endblock %}">
+
+		<!-- Page Wrapper -->
+		<div id="page-wrapper">
+
+			<!-- Header -->
+			<header id="header" class="{% block header_class %}{% endblock %}">
+				<h1><a href="{{ url_for('index') }}">JACK CAPSTAFF</a></h1>
+				<nav id="nav">
+					<ul>
+						<li class="special">
+							<a href="#menu" class="menuToggle"><span>Menu</span></a>
+							<div id="menu">
+								<ul>
+									<li><a href="{{ url_for('index') }}">Home</a></li>
+									<li><a href="{{ url_for('biography') }}">Biography</a></li>
+									<li><a href="{{ url_for('schedule') }}">Schedule</a></li>
+									<li><a href="{{ url_for('media') }}">Media</a></li>
+									<li><a href="{{ url_for('news') }}">News</a></li>
+									<li><a href="{{ url_for('contact') }}">Contact</a></li>
+									{% if current_user.is_authenticated %}
+										<li><a href="{{ url_for('admin.dashboard') }}">Admin</a></li>
+										<li><a href="{{ url_for('logout') }}">Logout</a></li>
+									{% else %}
+										<li><a href="{{ url_for('login') }}">Login</a></li>
+									{% endif %}
+								</ul>
+							</div>
+						</li>
+					</ul>
+				</nav>
+			</header>
+
+			<!-- Flash Messages -->
+			{% with messages = get_flashed_messages(with_categories=true) %}
+				{% if messages %}
+					<div class="inner" style="padding-top: 1rem;">
+						{% for category, message in messages %}
+							<div class="alert alert-{{ category }}" style="margin-bottom: 1rem; padding: 1rem; background: {% if category == 'success' %}#28a745{% elif category == 'danger' %}#dc3545{% else %}#ffc107{% endif %}; color: white; border-radius: 4px;">
+								{{ message }}
+							</div>
+						{% endfor %}
+					</div>
+				{% endif %}
+			{% endwith %}
+
+			<!-- Main Content -->
+			{% block main_content %}{% endblock %}
+
+			<!-- Footer -->
+			<footer id="footer">
+				<ul class="icons">
+					<li><a href="https://www.facebook.com/JackCapstaffMD" class="icon brands fa-facebook-f"><span class="label">Facebook</span></a></li>
+					<li><a href="https://www.instagram.com/jack_capstaff/" class="icon brands fa-instagram"><span class="label">Instagram</span></a></li>
+					<li><a href="mailto:jack@jackcapstaff.com" class="icon solid fa-envelope"><span class="label">Email</span></a></li>
+				</ul>
+				<ul class="copyright">
+					<li>&copy; JACK CAPSTAFF, {{ current_year }}</li>
+				</ul>
+			</footer>
+
+		</div>
+
+		<!-- Scripts -->
+		<script src="/assets/js/jquery.min.js"></script>
+		<script src="/assets/js/jquery.scrollex.min.js"></script>
+		<script src="/assets/js/jquery.scrolly.min.js"></script>
+		<script src="/assets/js/browser.min.js"></script>
+		<script src="/assets/js/breakpoints.min.js"></script>
+		<script src="/assets/js/util.js"></script>
+		<script src="/assets/js/main.js"></script>
+		{% block extra_scripts %}{% endblock %}
+
+	</body>
+</html>

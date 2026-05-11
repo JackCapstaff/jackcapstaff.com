@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block page_title %}Jack Capstaff - Media{% endblock %}
+
+{% block main_content %}
+	<!-- Main -->
+	<article id="main">
+		<header>
+			<h2>MEDIA</h2>
+			<p>&nbsp;</p>
+		</header>
+
+		<!-- Dynamic Content from Database -->
+		{% for block in media_content %}
+			{% if block.published %}
+				<section class="wrapper style5">
+					<div class="inner">
+						{% if block.title %}<h3>{{ block.title }}</h3>{% endif %}
+						{% if block.image_url %}
+							<div style="margin-bottom: 2rem;">
+								<img src="{{ block.image_url }}" alt="{{ block.title }}" style="max-width: 100%; border-radius: 4px;">
+							</div>
+						{% endif %}
+						{% if block.content %}
+							{{ block.content|safe }}
+						{% endif %}
+					</div>
+				</section>
+			{% endif %}
+		{% endfor %}
+
+		<!-- Fallback if no media content -->
+		{% if not media_content or not media_content|selectattr('published')|list %}
+			<section class="wrapper style5">
+				<div class="inner">
+					<p style="text-align: center; color: #666;">No media content available yet. Please check back soon!</p>
+				</div>
+			</section>
+		{% endif %}
+	</article>
+{% endblock %}

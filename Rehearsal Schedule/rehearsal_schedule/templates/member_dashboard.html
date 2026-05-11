@@ -5,7 +5,7 @@
 <div class="container mt-4">
     <!-- Concerts Section -->
     <!-- Debug: concerts count = {{ concerts|length }} -->
-    {% if concerts %}
+    {% if user and concerts %}
     <div class="card mb-4">
         <h3 style="margin-bottom: 16px;">
             <i class="bi bi-calendar-event" style="margin-right: 8px;"></i> Upcoming Events
@@ -146,9 +146,21 @@
     </div>
     {% endif %}
     
-    <h1>My Rehearsals</h1>
+    {% if not user %}
+    <div class="card mb-4" style="border-left: 4px solid #0d6efd;">
+        <h3 style="margin-bottom: 8px;">Public Rehearsal Calendar</h3>
+        <p style="margin-bottom: 12px;">You can view rehearsal dates here. Sign in or register to view full rehearsal details and member tools.</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <a href="{{ url_for('login_view') }}" class="btn btn-primary">Sign In</a>
+            <a href="{{ url_for('register_view') }}" class="btn btn-outline-primary">Register</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <h1>{% if user %}My Rehearsals{% else %}Public Rehearsal Calendar{% endif %}</h1>
     
     <!-- View Toggle and Download -->
+    {% if user %}
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div class="btn-group" role="group">
             <button type="button" class="btn btn-outline-primary" id="listViewBtn">
@@ -162,8 +174,10 @@
             <i class="bi bi-file-pdf"></i> Download My Schedule
         </a>
     </div>
+    {% endif %}
     
     <!-- List View -->
+    {% if user %}
     <div id="listView" class="d-none">
         <div class="accordion" id="rehearsalAccordion">
             <!-- Populated by JavaScript -->
@@ -177,6 +191,7 @@
             No upcoming rehearsals found.
         </div>
     </div>
+    {% endif %}
     
     <!-- Calendar View -->
     <div id="calendarView">
@@ -404,6 +419,23 @@
 <script>
 // Embed concerts data from server
 const concertsData = {{ concerts|tojson }};
+const memberRehearsalsApiUrl = {{ url_for('api_member_rehearsals')|tojson }};
+const scheduleUrlTemplate = {{ url_for('schedule_view', schedule_id='__SCHEDULE_ID__')|tojson }};
+const schedulePdfUrlTemplate = {{ url_for('download_schedule_pdf', schedule_id='__SCHEDULE_ID__')|tojson }};
+const isPublicView = {{ 'true' if not user else 'false' }};
+
+function getScheduleUrl(scheduleId, rehearsalNum) {
+    const base = scheduleUrlTemplate.replace('__SCHEDULE_ID__', encodeURIComponent(scheduleId));
+    if (rehearsalNum === undefined || rehearsalNum === null) {
+        return base;
+    }
+    const delimiter = base.includes('?') ? '&' : '?';
+    return `${base}${delimiter}reh=${encodeURIComponent(rehearsalNum)}`;
+}
+
+function getSchedulePdfUrl(scheduleId) {
+    return schedulePdfUrlTemplate.replace('__SCHEDULE_ID__', encodeURIComponent(scheduleId));
+}
 
 console.log('Member dashboard JavaScript loaded');
 console.log('Total concerts from server:', concertsData.length);
@@ -463,7 +495,7 @@ function showConcertDetails(concertId) {
     
     if (concert.schedule_id) {
         content += `<div class="mt-3" style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <a href="/s/${concert.schedule_id}" class="btn btn-sm btn-primary">View Rehearsal Schedule</a>`;
+            <a href="${getScheduleUrl(concert.schedule_id)}" class="btn btn-sm btn-primary">View Rehearsal Schedule</a>`;
         {% if user and user.is_admin %}
         content += `<button onclick="editConcertFromCalendar('${concert.id}', '${concert.ensemble_id}')" class="btn btn-sm btn-success"><i class="bi bi-pencil"></i> Edit Concert</button>`;
         {% endif %}
@@ -481,19 +513,33 @@ function showConcertDetails(concertId) {
 async function loadRehearsals() {
     console.log('loadRehearsals() called');
     try {
-        console.log('Fetching /api/member/rehearsals...');
-        const response = await fetch('/api/member/rehearsals');
+        console.log('Fetching member rehearsals from:', memberRehearsalsApiUrl);
+        const response = await fetch(memberRehearsalsApiUrl, { credentials: 'same-origin' });
+        if (!response.ok) {
+            throw new Error(`Failed to load rehearsals (${response.status})`);
+        }
         rehearsalsData = await response.json();
         console.log('Loaded rehearsals data:', rehearsalsData);
-        renderListView();
+        if (!isPublicView) {
+            renderListView();
+        }
         renderCalendarView();
     } catch (error) {
         console.error('Error loading rehearsals:', error);
+        // Still render calendar shell so concerts remain visible if API fails.
+        rehearsalsData = { rehearsals: [], concerts: concertsData };
+        if (!isPublicView) {
+            renderListView();
+        }
+        renderCalendarView();
     }
 }
 
 // Render List View
 function renderListView() {
+    if (isPublicView) {
+        return;
+    }
     const accordion = document.getElementById('rehearsalAccordion');
     const loading = document.getElementById('listViewLoading');
     const empty = document.getElementById('listViewEmpty');
@@ -587,10 +633,10 @@ function renderListView() {
                     <div class="accordion-body p-0">
                         ${eventType === 'Concert' ? itemsHtmlContent : `<div class="rehearsal-card">${itemsHtml}</div>`}
                         <div class="p-3">
-                            <a href="/s/${reh.schedule_id}?reh=${reh.rehearsal_num}" class="btn btn-sm btn-primary">
+                            <a href="${getScheduleUrl(reh.schedule_id, reh.rehearsal_num)}" class="btn btn-sm btn-primary">
                                 <i class="bi bi-eye"></i> View Full Schedule
                             </a>
-                            <a href="/s/${reh.schedule_id}/pdf" class="btn btn-sm btn-secondary">
+                            <a href="${getSchedulePdfUrl(reh.schedule_id)}" class="btn btn-sm btn-secondary">
                                 <i class="bi bi-file-pdf"></i> Download PDF
                             </a>
                         </div>
@@ -674,22 +720,28 @@ function renderMonth(date) {
                 return;
             }
             const truncatedName = reh.ensemble_name.length > 15 ? reh.ensemble_name.substring(0, 15) + '...' : reh.ensemble_name;
-            
-            // Determine display label based on event type
-            let rehearsalLabel = `R${reh.rehearsal_num}`;
-            if (reh.event_type === 'Sectional' && reh.section && reh.section !== 'Full Ensemble') {
-                rehearsalLabel = reh.section;
+
+            if (isPublicView) {
+                html += `<span class="calendar-rehearsal" title="Rehearsal date" style="cursor: default;">
+                    ${truncatedName} - Rehearsal
+                </span>`;
+            } else {
+                // Determine display label based on event type
+                let rehearsalLabel = `R${reh.rehearsal_num}`;
+                if (reh.event_type === 'Sectional' && reh.section && reh.section !== 'Full Ensemble') {
+                    rehearsalLabel = reh.section;
+                }
+
+                // Show section badge for sectionals
+                let sectionLabel = '';
+                if (reh.event_type === 'Sectional') {
+                    sectionLabel = ` <span style="background-color: #fff3cd; color: #856404; font-size: 0.7rem; padding: 1px 4px; border-radius: 2px;">🎻 ${reh.section}</span>`;
+                }
+
+                html += `<a href="${getScheduleUrl(reh.schedule_id, reh.rehearsal_num)}" class="calendar-rehearsal" title="${reh.section || 'Full Ensemble'}">
+                    ${truncatedName} - ${rehearsalLabel}${sectionLabel}
+                </a>`;
             }
-            
-            // Show section badge for sectionals
-            let sectionLabel = '';
-            if (reh.event_type === 'Sectional') {
-                sectionLabel = ` <span style="background-color: #fff3cd; color: #856404; font-size: 0.7rem; padding: 1px 4px; border-radius: 2px;">🎻 ${reh.section}</span>`;
-            }
-            
-            html += `<a href="/s/${reh.schedule_id}?reh=${reh.rehearsal_num}" class="calendar-rehearsal" title="${reh.section || 'Full Ensemble'}">
-                ${truncatedName} - ${rehearsalLabel}${sectionLabel}
-            </a>`;
         });
         
         html += `</div></div>`;
@@ -700,19 +752,24 @@ function renderMonth(date) {
 }
 
 // View toggle handlers
-document.getElementById('listViewBtn').addEventListener('click', () => {
-    document.getElementById('listView').classList.remove('d-none');
-    document.getElementById('calendarView').classList.add('d-none');
-    document.getElementById('listViewBtn').classList.add('active');
-    document.getElementById('calendarViewBtn').classList.remove('active');
-});
+const listViewBtn = document.getElementById('listViewBtn');
+const calendarViewBtn = document.getElementById('calendarViewBtn');
 
-document.getElementById('calendarViewBtn').addEventListener('click', () => {
-    document.getElementById('listView').classList.add('d-none');
-    document.getElementById('calendarView').classList.remove('d-none');
-    document.getElementById('listViewBtn').classList.remove('active');
-    document.getElementById('calendarViewBtn').classList.add('active');
-});
+if (listViewBtn && calendarViewBtn) {
+    listViewBtn.addEventListener('click', () => {
+        document.getElementById('listView').classList.remove('d-none');
+        document.getElementById('calendarView').classList.add('d-none');
+        listViewBtn.classList.add('active');
+        calendarViewBtn.classList.remove('active');
+    });
+
+    calendarViewBtn.addEventListener('click', () => {
+        document.getElementById('listView').classList.add('d-none');
+        document.getElementById('calendarView').classList.remove('d-none');
+        listViewBtn.classList.remove('active');
+        calendarViewBtn.classList.add('active');
+    });
+}
 
 // Calendar navigation
 document.getElementById('prevMonth').addEventListener('click', () => {

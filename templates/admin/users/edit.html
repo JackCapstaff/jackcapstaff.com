@@ -1,0 +1,81 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<h2 class="page-title">Edit User: {{ user.name or user.username }}</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" disabled value="{{ user.username }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" disabled value="{{ user.email }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ user.name or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Role</label>
+                        <select class="form-select" id="role" name="role">
+                            <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer (read-only)</option>
+                            <option value="editor" {% if user.role == 'editor' %}selected{% endif %}>Editor (manage own content)</option>
+                            <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin (full access)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if user.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">
+                                Active
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Save Changes
+                        </button>
+                        <a href="{{ url_for('admin.manage_users') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">User Info</h5>
+            </div>
+            <div class="card-body small">
+                <p>
+                    <strong>Joined:</strong><br>
+                    {{ user.created_at.strftime('%b %d, %Y at %H:%M') }}
+                </p>
+                <p>
+                    <strong>Last Updated:</strong><br>
+                    {{ user.updated_at.strftime('%b %d, %Y at %H:%M') }}
+                </p>
+                <p>
+                    <strong>Status:</strong><br>
+                    <span class="badge {% if user.is_active %}bg-success{% else %}bg-danger{% endif %}">
+                        {% if user.is_active %}Active{% else %}Inactive{% endif %}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<h2 class="page-title">Create News Article</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title *</label>
+                        <input type="text" class="form-control" id="title" name="title" placeholder="Article title" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="subtitle" class="form-label">Subtitle</label>
+                        <input type="text" class="form-control" id="subtitle" name="subtitle" placeholder="Optional subtitle">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="excerpt" class="form-label">Excerpt</label>
+                        <textarea class="form-control" id="excerpt" name="excerpt" rows="2" placeholder="Short summary for listings"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Content *</label>
+                        <textarea class="form-control" id="content" name="content" placeholder="Article content (HTML allowed)" required></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="featured_image" class="form-label">Featured Image</label>
+                        <input type="file" class="form-control" id="featured_image" name="featured_image" accept="image/*">
+                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="published_at" class="form-label">Publish Date</label>
+                        <input type="datetime-local" class="form-control" id="published_at" name="published_at">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="published" name="published">
+                            <label class="form-check-label" for="published">
+                                Publish immediately
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Create Article
+                        </button>
+                        <a href="{{ url_for('admin.manage_news') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Help</h5>
+            </div>
+            <div class="card-body text-muted small">
+                <p><strong>Title:</strong> The main headline for your article.</p>
+                <p><strong>Subtitle:</strong> Optional secondary heading.</p>
+                <p><strong>Excerpt:</strong> Brief summary shown in news listings.</p>
+                <p><strong>Content:</strong> The full article text. HTML is allowed for formatting.</p>
+                <p><strong>Featured Image:</strong> Main image for the article.</p>
+                <p><strong>Publish Date:</strong> When this article should appear. Defaults to now.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

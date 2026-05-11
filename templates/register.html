@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block page_title %}Jack Capstaff - Register{% endblock %}
+
+{% block main_content %}
+	<!-- Main -->
+	<article id="main">
+		<header>
+			<h2>REGISTER</h2>
+			<p>Create a new account</p>
+		</header>
+
+		<section class="wrapper style5">
+			<div class="inner" style="max-width: 520px; margin: 0 auto;">
+				<form method="POST" action="{{ url_for('register') }}">
+					<div class="fields">
+						<div class="field">
+							<label for="username">Username</label>
+							<input type="text" name="username" id="username" placeholder="Choose a username" required />
+						</div>
+						<div class="field">
+							<label for="email">Email</label>
+							<input type="email" name="email" id="email" placeholder="Your email" required />
+						</div>
+						<div class="field">
+							<label for="name">Full Name</label>
+							<input type="text" name="name" id="name" placeholder="Your full name" />
+						</div>
+						<div class="field">
+							<label for="password">Password</label>
+							<input type="password" name="password" id="password" placeholder="Create a password" required />
+						</div>
+						<div class="field">
+							<label for="password_confirm">Confirm Password</label>
+							<input type="password" name="password_confirm" id="password_confirm" placeholder="Confirm your password" required />
+						</div>
+					</div>
+					<ul class="actions">
+						<li><input type="submit" value="Create Account" class="primary" /></li>
+					</ul>
+				</form>
+
+				<hr />
+
+				<p style="text-align: center; margin-top: 2rem;">
+					Already have an account? <a href="{{ url_for('login') }}">Login here</a>
+				</p>
+			</div>
+		</section>
+	</article>
+{% endblock %}

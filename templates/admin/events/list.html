@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="page-title">Events</h2>
+    <a href="{{ url_for('admin.create_event') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> New Event
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Title</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Published</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if events.items %}
+                    {% for event in events.items %}
+                        <tr>
+                            <td><strong>{{ event.title }}</strong></td>
+                            <td>
+                                <small>{{ event.event_date.strftime('%b %d, %Y') }}</small><br>
+                                <small class="text-muted">{{ event.event_date.strftime('%H:%M') }}</small>
+                            </td>
+                            <td><small>{{ event.location or 'TBA' }}</small></td>
+                            <td>
+                                <span class="badge {% if event.published %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {% if event.published %}Published{% else %}Draft{% endif %}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('admin.edit_event', event_id=event.id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('admin.delete_event', event_id=event.id) }}" style="display: inline;" onsubmit="return confirm('Delete this event?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5">
+                            No events yet. <a href="{{ url_for('admin.create_event') }}">Create one</a>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if events.pages > 1 %}
+<nav aria-label="Page navigation" class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if events.has_prev %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('admin.manage_events', page=events.prev_num) }}">Previous</a></li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+        {% endif %}
+        
+        {% for page_num in events.iter_pages() %}
+            {% if page_num %}
+                {% if page_num == events.page %}
+                    <li class="page-item active"><span class="page-link">{{ page_num }}</span></li>
+                {% else %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.manage_events', page=page_num) }}">{{ page_num }}</a></li>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if events.has_next %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('admin.manage_events', page=events.next_num) }}">Next</a></li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

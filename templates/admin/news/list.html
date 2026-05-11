@@ -1,0 +1,94 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="page-title">News Items</h2>
+    <a href="{{ url_for('admin.create_news') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> New Article
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Published</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if news.items %}
+                    {% for item in news.items %}
+                        <tr>
+                            <td>
+                                <strong>{{ item.title }}</strong>
+                                {% if item.subtitle %}
+                                    <br><small class="text-muted">{{ item.subtitle }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ item.author.name or item.author.username }}</td>
+                            <td>
+                                <span class="badge {% if item.published %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {% if item.published %}Published{% else %}Draft{% endif %}
+                                </span>
+                            </td>
+                            <td><small>{{ item.published_at.strftime('%b %d, %Y') }}</small></td>
+                            <td>
+                                <a href="{{ url_for('admin.edit_news', news_id=item.id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('admin.delete_news', news_id=item.id) }}" style="display: inline;" onsubmit="return confirm('Delete this news item?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5">
+                            No news items yet. <a href="{{ url_for('admin.create_news') }}">Create one</a>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if news.pages > 1 %}
+<nav aria-label="Page navigation" class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if news.has_prev %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('admin.manage_news', page=news.prev_num) }}">Previous</a></li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+        {% endif %}
+        
+        {% for page_num in news.iter_pages() %}
+            {% if page_num %}
+                {% if page_num == news.page %}
+                    <li class="page-item active"><span class="page-link">{{ page_num }}</span></li>
+                {% else %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('admin.manage_news', page=page_num) }}">{{ page_num }}</a></li>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if news.has_next %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('admin.manage_news', page=news.next_num) }}">Next</a></li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

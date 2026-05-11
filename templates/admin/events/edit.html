@@ -1,0 +1,102 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<h2 class="page-title">Edit Event: {{ event.title }}</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Event Title *</label>
+                        <input type="text" class="form-control" id="title" name="title" value="{{ event.title }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="event_date" class="form-label">Date & Time *</label>
+                        <input type="datetime-local" class="form-control" id="event_date" name="event_date" value="{{ event.event_date.isoformat() }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="location" class="form-label">Location</label>
+                        <input type="text" class="form-control" id="location" name="location" value="{{ event.location or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description">{{ event.description or '' }}</textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="tickets_url" class="form-label">Tickets URL</label>
+                        <input type="url" class="form-control" id="tickets_url" name="tickets_url" value="{{ event.tickets_url or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="livestream_url" class="form-label">Livestream URL</label>
+                        <input type="url" class="form-control" id="livestream_url" name="livestream_url" value="{{ event.livestream_url or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="youtube_embed_url" class="form-label">YouTube Embed URL</label>
+                        <input type="url" class="form-control" id="youtube_embed_url" name="youtube_embed_url" value="{{ event.youtube_embed_url or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="featured_image" class="form-label">Featured Image</label>
+                        {% if event.featured_image %}
+                            <div class="mb-2">
+                                <img src="{{ event.featured_image }}" alt="Featured image" style="max-width: 200px; max-height: 200px; border-radius: 5px;">
+                            </div>
+                        {% endif %}
+                        <input type="file" class="form-control" id="featured_image" name="featured_image" accept="image/*">
+                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="published" name="published" {% if event.published %}checked{% endif %}>
+                            <label class="form-check-label" for="published">
+                                Published
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Save Changes
+                        </button>
+                        <a href="{{ url_for('admin.manage_events') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Event Info</h5>
+            </div>
+            <div class="card-body small">
+                <p>
+                    <strong>Created:</strong><br>
+                    {{ event.created_at.strftime('%b %d, %Y at %H:%M') }}<br>
+                    <small class="text-muted">by {{ event.author.name or event.author.username }}</small>
+                </p>
+                <p>
+                    <strong>Last Updated:</strong><br>
+                    {{ event.updated_at.strftime('%b %d, %Y at %H:%M') }}
+                </p>
+                <p>
+                    <strong>Slug:</strong><br>
+                    <code>{{ event.slug }}</code>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

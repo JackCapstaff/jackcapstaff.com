@@ -1,0 +1,86 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<h2 class="page-title">Create Page Content Block</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="page" class="form-label">Page *</label>
+                        <select class="form-select" id="page" name="page" required>
+                            <option value="">-- Select page --</option>
+                            <option value="home">Home</option>
+                            <option value="biography">Biography</option>
+                            <option value="schedule">Schedule</option>
+                            <option value="media">Media</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="section" class="form-label">Section *</label>
+                        <input type="text" class="form-control" id="section" name="section" placeholder="e.g., hero, about, featured" required>
+                        <small class="text-muted">Unique identifier for this content block</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="title" name="title" placeholder="Optional section title">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Content</label>
+                        <textarea class="form-control" id="content" name="content" placeholder="Content for this section (HTML allowed)"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="image_url" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="image_url" name="image_url" accept="image/*">
+                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="order" class="form-label">Display Order</label>
+                        <input type="number" class="form-control" id="order" name="order" value="0" min="0">
+                        <small class="text-muted">Lower numbers appear first</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="published" name="published" checked>
+                            <label class="form-check-label" for="published">
+                                Published
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Create Content Block
+                        </button>
+                        <a href="{{ url_for('admin.manage_pages') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Help</h5>
+            </div>
+            <div class="card-body text-muted small">
+                <p><strong>Page:</strong> Which page this content appears on.</p>
+                <p><strong>Section:</strong> Unique name for this block (e.g., 'hero', 'featured-works').</p>
+                <p><strong>Title & Content:</strong> What users see on the page.</p>
+                <p><strong>Order:</strong> 0 displays first, 1 second, etc.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

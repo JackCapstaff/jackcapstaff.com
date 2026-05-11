@@ -2797,6 +2797,7 @@ def require_login_for_everything():
     allowed = {
         "login_view", "login_post",
         "register_view", "register_post",
+        "home", "my_view", "api_member_rehearsals",
     }
     # allow password reset endpoints
     allowed.update({
@@ -5382,9 +5383,6 @@ def reset_password_post():
 
 @app.get("/my")
 def my_view():
-    redir = login_required_or_redirect()
-    if redir:
-        return redir
     u = current_user()
     
     print(f"\n=== my_view called ===")
@@ -5397,22 +5395,26 @@ def my_view():
     if u and u.get("is_admin"):
         user_ensembles = ensembles
         print(f"User is admin, showing all {len(ensembles)} ensembles")
-    else:
+    elif u:
         my_ids = {m.get("ensemble_id") for m in memberships if m.get("user_id") == (u or {}).get("id") and m.get("status", "active") == "active"}
         user_ensembles = [e for e in ensembles if e.get("id") in my_ids]
         print(f"User is member of {len(user_ensembles)} ensembles: {[e['id'] for e in user_ensembles]}")
+    else:
+        user_ensembles = []
+        print("Public viewer: calendar-only mode")
     
-    # Get all concerts for user's ensembles
+    # Get all concerts for user's ensembles (hidden in public mode)
     all_concerts = []
-    for ensemble in user_ensembles:
-        concerts = get_ensemble_concerts(ensemble.get("id"))
-        print(f"Ensemble '{ensemble.get('name')}' has {len(concerts)} concerts (normalized)")
-        for concert in concerts:
-            concert_with_ensemble = concert.copy()
-            concert_with_ensemble["ensemble_id"] = ensemble.get("id")
-            concert_with_ensemble["ensemble_name"] = ensemble.get("name")
-            all_concerts.append(concert_with_ensemble)
-            print(f"  Added concert: {concert.get('date')} at {concert.get('venue')}")
+    if u:
+        for ensemble in user_ensembles:
+            concerts = get_ensemble_concerts(ensemble.get("id"))
+            print(f"Ensemble '{ensemble.get('name')}' has {len(concerts)} concerts (normalized)")
+            for concert in concerts:
+                concert_with_ensemble = concert.copy()
+                concert_with_ensemble["ensemble_id"] = ensemble.get("id")
+                concert_with_ensemble["ensemble_name"] = ensemble.get("name")
+                all_concerts.append(concert_with_ensemble)
+                print(f"  Added concert: {concert.get('date')} at {concert.get('venue')}")
     
     # Sort by date (soonest first for upcoming strip)
     all_concerts.sort(key=lambda x: x.get("date", ""))
@@ -5420,7 +5422,7 @@ def my_view():
     print(f"Total concerts to display: {len(all_concerts)}")
     print(f"=== my_view complete ===\n")
     
-    return render_template("member_dashboard.html", user=u, concerts=all_concerts)
+    return render_template("member_dashboard.html", user=u, concerts=all_concerts, public_mode=(u is None))
 
 
 @app.get("/api/ensembles/<ensemble_id>/concerts")
@@ -5504,11 +5506,8 @@ def api_cleanup_duplicate_concerts():
 
 @app.get("/api/member/rehearsals")
 def api_member_rehearsals():
-    redir = login_required_or_redirect()
-    if redir:
-        return jsonify({"error": "Not logged in"}), 401
-    
     u = current_user()
+    public_mode = u is None
     print(f"\n=== api_member_rehearsals called ===")
     print(f"Current user: {u.get('email') if u else 'None'}")
     print(f"Is admin: {u.get('is_admin') if u else False}")
@@ -5519,10 +5518,13 @@ def api_member_rehearsals():
     if u and u.get("is_admin"):
         my_ensembles = ensembles
         print(f"User is admin, showing all {len(ensembles)} ensembles")
-    else:
+    elif u:
         my_ids = {m.get("ensemble_id") for m in memberships if m.get("user_id") == (u or {}).get("id") and m.get("status", "active") == "active"}
         my_ensembles = [e for e in ensembles if e.get("id") in my_ids]
         print(f"User is member of {len(my_ensembles)} ensembles: {[e['id'] for e in my_ensembles]}")
+    else:
+        my_ensembles = []
+        print("Public viewer: include published schedules only")
 
     # Get published schedules for user's ensembles
     schedule_summaries = []
@@ -5543,7 +5545,7 @@ def api_member_rehearsals():
         if u and u.get("is_admin"):
             schedule_summaries.append(s)
             print(f"  Admin: including schedule {sid} ({s.get('name')})")
-        else:
+        elif u:
             if s.get("status") != "published":
                 print(f"  Schedule {sid} not published (status: {s.get('status')}), skipping for member")
                 continue
@@ -5552,6 +5554,10 @@ def api_member_rehearsals():
                 print(f"  Member: including published schedule {sid} for ensemble {s.get('ensemble_id')}")
             else:
                 print(f"  Schedule {sid} is for ensemble {s.get('ensemble_id')}, not in user's ensembles")
+        else:
+            if s.get("status") == "published":
+                schedule_summaries.append(s)
+                print(f"  Public: including published schedule {sid}")
 
     print(f"Found {len(schedule_summaries)} schedules to process")
 
@@ -5668,13 +5674,13 @@ def api_member_rehearsals():
                         })
                 
                 rehearsals_list.append({
-                    "schedule_id": schedule_id,
+                    "schedule_id": None if public_mode else schedule_id,
                     "ensemble_name": ensemble_name,
                     "rehearsal_num": reh_num_int,
                     "date": date_str,
-                    "event_type": event_type,
-                    "section": section,
-                    "items": items
+                    "event_type": "Rehearsal" if public_mode else event_type,
+                    "section": "Full Ensemble" if public_mode else section,
+                    "items": [] if public_mode else items
                 })
                 print(f"    Rehearsal {reh_num_int}: {date_str}, Event Type: {event_type}, Section: {section}, {len(items)} items")
                 
@@ -5689,44 +5695,47 @@ def api_member_rehearsals():
     
     # Build concerts list (for standalone display, separate from rehearsals)
     concerts_list = []
+    if public_mode:
+        print("Public viewer: omitting concert details from API")
     
-    for ensemble in ensembles:
-        ens_id = ensemble["id"]
-        ens_name = ensemble["name"]
-        
-        # Check if user has access to this ensemble
-        if not (u and u.get("is_admin")) and not any(e["id"] == ens_id for e in my_ensembles):
-            continue
-        
-        # Get scheduled concerts for this ensemble
-        for concert in ensemble.get("concerts", []):
-            if concert.get("status") == "scheduled":
-                try:
-                    # Parse concert date for sorting
-                    concert_date = concert.get("date", "")
-                    if isinstance(concert_date, str):
-                        concert_date_obj = pd.to_datetime(concert_date).date()
-                    else:
-                        concert_date_obj = pd.to_datetime(concert_date).date()
-                    concert_date_str = concert_date_obj.isoformat()
-                except:
-                    concert_date_str = concert.get("date", "")
-                
-                concerts_list.append({
-                    "type": "concert",
-                    "id": concert.get("id"),  # Add 'id' for JavaScript compatibility
-                    "concert_id": concert.get("id"),
-                    "ensemble_id": ens_id,  # Add ensemble_id
-                    "ensemble_name": ens_name,
-                    "title": concert.get("title", "Concert"),
-                    "date": concert_date_str,
-                    "time": concert.get("time"),
-                    "venue": concert.get("venue"),
-                    "uniform": concert.get("uniform"),
-                    "programme": concert.get("programme", ""),
-                    "other_info": concert.get("other_info", ""),
-                    "schedule_id": concert.get("schedule_id")
-                })
+    if not public_mode:
+        for ensemble in ensembles:
+            ens_id = ensemble["id"]
+            ens_name = ensemble["name"]
+            
+            # Check if user has access to this ensemble
+            if not (u and u.get("is_admin")) and not any(e["id"] == ens_id for e in my_ensembles):
+                continue
+            
+            # Get scheduled concerts for this ensemble
+            for concert in ensemble.get("concerts", []):
+                if concert.get("status") == "scheduled":
+                    try:
+                        # Parse concert date for sorting
+                        concert_date = concert.get("date", "")
+                        if isinstance(concert_date, str):
+                            concert_date_obj = pd.to_datetime(concert_date).date()
+                        else:
+                            concert_date_obj = pd.to_datetime(concert_date).date()
+                        concert_date_str = concert_date_obj.isoformat()
+                    except:
+                        concert_date_str = concert.get("date", "")
+                    
+                    concerts_list.append({
+                        "type": "concert",
+                        "id": concert.get("id"),  # Add 'id' for JavaScript compatibility
+                        "concert_id": concert.get("id"),
+                        "ensemble_id": ens_id,  # Add ensemble_id
+                        "ensemble_name": ens_name,
+                        "title": concert.get("title", "Concert"),
+                        "date": concert_date_str,
+                        "time": concert.get("time"),
+                        "venue": concert.get("venue"),
+                        "uniform": concert.get("uniform"),
+                        "programme": concert.get("programme", ""),
+                        "other_info": concert.get("other_info", ""),
+                        "schedule_id": concert.get("schedule_id")
+                    })
     
     # Combine concerts and rehearsals, sort by date
     all_events = []
@@ -5749,7 +5758,7 @@ def api_member_rehearsals():
     
     print(f"\n=== Total events to return: {len(all_events)} ({len(rehearsals_list)} rehearsals + {len(concerts_list)} concerts) ===\n")
     
-    return jsonify({"events": all_events, "rehearsals": rehearsals_list, "concerts": concerts_list})
+    return jsonify({"events": all_events, "rehearsals": rehearsals_list, "concerts": concerts_list, "public_mode": public_mode})
 
 
 @app.get("/")

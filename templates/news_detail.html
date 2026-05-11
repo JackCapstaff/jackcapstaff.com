@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ news_item.title }} - Jack Capstaff{% endblock %}
+
+{% block main_content %}
+	<!-- Main -->
+	<article id="main">
+		<header>
+			<h2>{{ news_item.title }}</h2>
+			{% if news_item.subtitle %}<p>{{ news_item.subtitle }}</p>{% endif %}
+			<div style="font-size: 0.9em; color: #666; margin-top: 1rem;">
+				{{ news_item.published_at.strftime('%B %d, %Y') }}
+				{% if news_item.author %} by {{ news_item.author.name or news_item.author.username }}{% endif %}
+			</div>
+		</header>
+
+		<section class="wrapper style5">
+			<div class="inner">
+				{% if news_item.featured_image %}
+					<div style="margin-bottom: 2rem;">
+						<img src="{{ news_item.featured_image }}" alt="{{ news_item.title }}" style="max-width: 100%; border-radius: 4px;">
+					</div>
+				{% endif %}
+
+				<div style="font-size: 1.05em; line-height: 1.6;">
+					{{ news_item.content|safe }}
+				</div>
+
+				<hr style="margin: 3rem 0;">
+
+				<!-- Back to News Link -->
+				<div style="text-align: center; margin-top: 2rem;">
+					<a href="{{ url_for('news') }}" class="button">Back to News</a>
+				</div>
+			</div>
+		</section>
+	</article>
+{% endblock %}

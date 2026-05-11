@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block page_title %}Jack Capstaff - Schedule{% endblock %}
+
+{% block main_content %}
+	<!-- Main -->
+	<article id="main">
+		<header>
+			<h2>SCHEDULE</h2>
+			<p>&nbsp;</p>
+		</header>
+
+		<section class="wrapper style5">
+			<div class="inner">
+				{% if upcoming_events %}
+					<h3>Upcoming Events</h3>
+					<table style="width: 100%; margin-bottom: 2rem;">
+						<thead style="border-bottom: 2px solid #ccc;">
+							<tr>
+								<th style="padding: 0.5rem; text-align: left;">Event</th>
+								<th style="padding: 0.5rem; text-align: left;">Date</th>
+								<th style="padding: 0.5rem; text-align: left;">Location</th>
+								<th style="padding: 0.5rem; text-align: left;">Action</th>
+							</tr>
+						</thead>
+						<tbody>
+							{% for event in upcoming_events %}
+								<tr style="border-bottom: 1px solid #eee;">
+									<td style="padding: 0.75rem; font-weight: 500;">{{ event.title }}</td>
+									<td style="padding: 0.75rem; white-space: nowrap;">
+										{{ event.event_date.strftime('%B %d, %Y') }}
+										{% if event.event_date.hour > 0 %}
+											<br><small>{{ event.event_date.strftime('%H:%M') }}</small>
+										{% endif %}
+									</td>
+									<td style="padding: 0.75rem;">{{ event.location or 'TBA' }}</td>
+									<td style="padding: 0.75rem;">
+										{% if event.tickets_url %}
+											<a href="{{ event.tickets_url }}" target="_blank" class="button small">Tickets</a>
+										{% endif %}
+									</td>
+								</tr>
+							{% endfor %}
+						</tbody>
+					</table>
+				{% endif %}
+
+				<!-- Rehearsal Schedule Link -->
+				{% if rehearsal_schedule_url %}
+					<div style="text-align: center; margin: 3rem 0; padding: 2rem; background: #f9f9f9; border-radius: 4px;">
+						<h3>Rehearsal Schedule</h3>
+						<p>View detailed rehearsal schedules and timetables:</p>
+						<a href="{{ rehearsal_schedule_url }}" class="button">Access Rehearsal Schedule</a>
+					</div>
+				{% endif %}
+
+				{% if not upcoming_events and not rehearsal_schedule_url %}
+					<p style="text-align: center; color: #666;">No scheduled events at this time.</p>
+				{% endif %}
+			</div>
+		</section>
+	</article>
+{% endblock %}

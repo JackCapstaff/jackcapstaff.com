@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<h2 class="page-title">Edit Page Content: {{ content.page }}/{{ content.section }}</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label class="form-label">Page</label>
+                        <input type="text" class="form-control" disabled value="{{ content.page }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Section</label>
+                        <input type="text" class="form-control" disabled value="{{ content.section }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="title" name="title" value="{{ content.title or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Content</label>
+                        <textarea class="form-control" id="content" name="content">{{ content.content or '' }}</textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="image_url" class="form-label">Image</label>
+                        {% if content.image_url %}
+                            <div class="mb-2">
+                                <img src="{{ content.image_url }}" alt="Image" style="max-width: 200px; max-height: 200px; border-radius: 5px;">
+                            </div>
+                        {% endif %}
+                        <input type="file" class="form-control" id="image_url" name="image_url" accept="image/*">
+                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB)</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="order" class="form-label">Display Order</label>
+                        <input type="number" class="form-control" id="order" name="order" value="{{ content.order }}" min="0">
+                        <small class="text-muted">Lower numbers appear first</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="published" name="published" {% if content.published %}checked{% endif %}>
+                            <label class="form-check-label" for="published">
+                                Published
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Save Changes
+                        </button>
+                        <a href="{{ url_for('admin.manage_pages') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Block Info</h5>
+            </div>
+            <div class="card-body small">
+                <p>
+                    <strong>Created:</strong><br>
+                    {{ content.created_at.strftime('%b %d, %Y at %H:%M') }}
+                </p>
+                <p>
+                    <strong>Last Updated:</strong><br>
+                    {{ content.updated_at.strftime('%b %d, %Y at %H:%M') }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
