@@ -1,0 +1,37 @@
+[
+  {
+    "user_id": "872bf6d3b5bd45a1824cfb04c105c1ad",
+    "ensemble_id": "dco",
+    "status": "active"
+  },
+  {
+    "user_id": "872bf6d3b5bd45a1824cfb04c105c1ad",
+    "ensemble_id": "derwent-brass",
+    "role": "admin",
+    "status": "active"
+  },
+  {
+    "user_id": "4a729632800e4901849ad39452dde329",
+    "ensemble_id": "rotherham-symphony-orchestra",
+    "role": "admin",
+    "status": "active"
+  },
+  {
+    "user_id": "4a729632800e4901849ad39452dde329",
+    "ensemble_id": "dco",
+    "role": "member",
+    "status": "active"
+  },
+  {
+    "user_id": "9fa5f65b93314f8bbc9b7bc684890092",
+    "ensemble_id": "derwent-brass",
+    "role": "member",
+    "status": "active"
+  },
+  {
+    "user_id": "9fa5f65b93314f8bbc9b7bc684890092",
+    "ensemble_id": "dco",
+    "role": "member",
+    "status": "active"
+  }
+]

@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Conducting - {{ schedule_name }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      overflow: hidden;
+      background: #0f172a;
+      color: white;
+      touch-action: manipulation;
+    }
+    
+    /* Full-screen container */
+    #conductor-app {
+      height: 100vh;
+      height: 100dvh; /* Dynamic viewport height for mobile */
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    
+    /* Top bar with clock and controls */
+    .top-bar {
+      background: #1e293b;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #334155;
+      flex-shrink: 0;
+    }
+    
+    .live-clock {
+      font-size: 24px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #60a5fa;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .btn {
+      background: #334155;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    .btn:active {
+      transform: scale(0.95);
+    }
+    
+    .btn.primary {
+      background: #3b82f6;
+    }
+    
+    .btn.success {
+      background: #10b981;
+    }
+    
+    .btn.danger {
+      background: #ef4444;
+    }
+    
+    .btn.warning {
+      background: #f59e0b;
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Main content area */
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px;
+      gap: 16px;
+    }
+    
+    /* Current work display */
+    .current-work {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      border: 3px solid #334155;
+      transition: all 0.3s;
+    }
+    
+    .current-work.normal {
+      border-color: #3b82f6;
+    }
+    
+    .current-work.warning {
+      border-color: #f59e0b;
+      background: #451a03;
+    }
+    
+    .current-work.danger {
+      border-color: #ef4444;
+      background: #450a0a;
+      animation: pulse 1s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+    
+    .current-work-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+    
+    .current-work-meta {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+    }
+    
+    .countdown {
+      font-size: 48px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      padding: 20px;
+      border-radius: 12px;
+      background: #0f172a;
+      margin: 16px 0;
+    }
+    
+    .countdown.normal {
+      color: #60a5fa;
+    }
+    
+    .countdown.warning {
+      color: #fbbf24;
+    }
+    
+    .countdown.danger {
+      color: #f87171;
+    }
+    
+    .countdown.overdue {
+      color: #dc2626;
+      animation: flash 0.5s infinite;
+    }
+    
+    @keyframes flash {
+      0%, 50%, 100% { opacity: 1; }
+      25%, 75% { opacity: 0.4; }
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #0f172a;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      transition: width 0.5s linear;
+      border-radius: 4px;
+    }
+    
+    .progress-fill.warning {
+      background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    }
+    
+    .progress-fill.danger {
+      background: linear-gradient(90deg, #ef4444, #f87171);
+    }
+    
+    /* Next work preview */
+    .next-work {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      border: 2px solid #334155;
+    }
+    
+    .next-work-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    
+    .next-work-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    
+    .next-work-meta {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+    
+    /* Action buttons */
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 16px;
+      background: #1e293b;
+      border-radius: 12px;
+    }
+    
+    .action-buttons .btn {
+      flex: 1;
+      min-width: 140px;
+      justify-content: center;
+      padding: 16px;
+      font-size: 16px;
+    }
+    
+    /* Modal overlay */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .modal.active {
+      display: flex;
+    }
+    
+    .modal-content {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    
+    .modal-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    
+    .work-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 16px 0;
+    }
+    
+    .work-item {
+      background: #0f172a;
+      padding: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    
+    .work-item:hover {
+      border-color: #3b82f6;
+    }
+    
+    .work-item.active {
+      border-color: #10b981;
+      background: #064e3b;
+    }
+    
+    .work-item.break {
+      background: #451a03;
+      border-color: #78350f;
+    }
+    
+    .work-item-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .work-item-meta {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    
+    /* Loading / Pre-start states */
+    .pre-start {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    
+    .pre-start h2 {
+      font-size: 32px;
+      margin-bottom: 16px;
+    }
+    
+    .pre-start p {
+      font-size: 18px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+    }
+    
+    .settings-panel {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      max-width: 400px;
+      width: 100%;
+    }
+    
+    .settings-panel label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    
+    .settings-panel input,
+    .settings-panel select {
+      width: 100%;
+      padding: 12px;
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 8px;
+      color: white;
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .live-clock {
+        font-size: 20px;
+      }
+      
+      .current-work-title {
+        font-size: 24px;
+      }
+      
+      .countdown {
+        font-size: 36px;
+        padding: 16px;
+      }
+      
+      .action-buttons .btn {
+        min-width: unset;
+        padding: 14px;
+        font-size: 14px;
+      }
+      
+      .controls {
+        gap: 6px;
+      }
+      
+      .btn {
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .top-bar {
+        padding: 10px 12px;
+      }
+      
+      .content {
+        padding: 12px;
+        gap: 12px;
+      }
+      
+      .current-work {
+        padding: 16px;
+      }
+      
+      .current-work-title {
+        font-size: 20px;
+      }
+      
+      .countdown {
+        font-size: 32px;
+        padding: 12px;
+      }
+    }
+    
+    /* Alert notification */
+    .alert {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      padding: 16px 24px;
+      border-radius: 12px;
+      border: 2px solid #3b82f6;
+      font-size: 16px;
+      font-weight: 600;
+      z-index: 999;
+      animation: slideDown 0.3s ease-out;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+    
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+    
+    .alert.warning {
+      border-color: #f59e0b;
+      background: #78350f;
+    }
+    
+    .alert.danger {
+      border-color: #ef4444;
+      background: #7f1d1d;
+    }
+  </style>
+</head>
+<body>
+  <div id="conductor-app">
+    <!-- Top bar -->
+    <div class="top-bar">
+      <div class="live-clock" id="liveClock">00:00:00</div>
+      <div class="controls">
+        <button class="btn" id="settingsBtn" title="Settings">
+          <i class="bi bi-gear"></i>
+        </button>
+        <button class="btn danger" id="exitBtn" title="Exit">
+          <i class="bi bi-x-lg"></i> Exit
+        </button>
+      </div>
+    </div>
+    
+    <!-- Main content -->
+    <div class="content" id="mainContent">
+      <!-- Pre-start screen will be shown initially -->
+      <div class="pre-start" id="preStartScreen">
+        <h2>Ready to Conduct</h2>
+        <p>{{ schedule_name }} - Rehearsal {{ rehearsal_num }}</p>
+        
+        <div class="settings-panel">
+          <label>Start on Work:</label>
+          <select id="startWorkSelect">
+            <option value="0">First work</option>
+          </select>
+          
+          <label>Time Offset (minutes):</label>
+          <input type="number" id="timeOffset" value="0" step="1" placeholder="0" />
+          
+          <label>Warning Times (minutes):</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="number" id="warning1" value="5" step="1" style="width: 33%;" />
+            <input type="number" id="warning2" value="2" step="1" style="width: 33%;" />
+            <input type="number" id="warning3" value="1" step="1" style="width: 33%;" />
+          </div>
+        </div>
+        
+        <button class="btn primary" id="startBtn" style="font-size: 20px; padding: 16px 32px;">
+          <i class="bi bi-play-fill"></i> Start Rehearsal
+        </button>
+        
+        <p style="margin-top: 20px; font-size: 14px;">
+          Scheduled start: <span id="scheduledStart"></span>
+        </p>
+      </div>
+      
+      <!-- Conducting screen (hidden initially) -->
+      <div id="conductingScreen" style="display: none;">
+        <!-- Current work -->
+        <div class="current-work normal" id="currentWork">
+          <div class="current-work-title" id="currentTitle">-</div>
+          <div class="current-work-meta">
+            <span id="currentMeta">-</span>
+          </div>
+          
+          <div class="countdown normal" id="countdown">--:--</div>
+          
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+          </div>
+        </div>
+        
+        <!-- Next work preview -->
+        <div class="next-work" id="nextWork">
+          <div class="next-work-label">Up Next</div>
+          <div class="next-work-title" id="nextTitle">-</div>
+          <div class="next-work-meta" id="nextMeta">-</div>
+        </div>
+        
+        <!-- Action buttons -->
+        <div class="action-buttons">
+          <button class="btn" id="prevBtn">
+            <i class="bi bi-skip-start-fill"></i> Previous
+          </button>
+          <button class="btn warning" id="pauseBtn">
+            <i class="bi bi-pause-fill"></i> Pause
+          </button>
+          <button class="btn success" id="nextBtn">
+            <i class="bi bi-skip-end-fill"></i> Next
+          </button>
+          <button class="btn primary" id="reorderBtn">
+            <i class="bi bi-list-ol"></i> Reorder
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Modals -->
+  <div class="modal" id="reorderModal">
+    <div class="modal-content">
+      <div class="modal-title">Choose Next Work</div>
+      <div class="work-list" id="reorderList"></div>
+      <button class="btn" onclick="closeReorderModal()" style="width: 100%; margin-top: 16px;">
+        Cancel
+      </button>
+    </div>
+  </div>
+  
+  <div class="modal" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-title">Settings</div>
+      <label>Warning Times (minutes):</label>
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <input type="number" id="settingsWarning1" value="5" step="1" style="width: 33%;" />
+        <input type="number" id="settingsWarning2" value="2" step="1" style="width: 33%;" />
+        <input type="number" id="settingsWarning3" value="1" step="1" style="width: 33%;" />
+      </div>
+      <button class="btn primary" onclick="saveSettings()" style="width: 100%; margin-bottom: 8px;">
+        Save
+      </button>
+      <button class="btn" onclick="closeSettingsModal()" style="width: 100%;">
+        Cancel
+      </button>
+    </div>
+  </div>
+  
+  <script>
+    window.SCHEDULE_ID = "{{ schedule_id }}";
+    window.REHEARSAL_NUM = {{ rehearsal_num }};
+  </script>
+  <script src="{{ url_for('static', filename='conductor.js') }}"></script>
+</body>
+</html>

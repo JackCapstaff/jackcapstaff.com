@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% set title = "Concerts - " + ensemble.name %}
+{% set subtitle = "Manage concerts for " + ensemble.name %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
+      <div>
+        <strong>{{ ensemble.name }}</strong>
+      </div>
+      <div>
+        <a class="btn secondary" href="{{ url_for('admin_home') }}">Back to Admin</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <strong>Concerts</strong>
+      <a class="btn" href="{{ url_for('admin_add_concert_form', ensemble_id=ensemble.id) }}">+ Add Concert</a>
+    </div>
+
+    {% if concerts %}
+      <div style="margin-top:12px;">
+        {% for concert in concerts %}
+          <div style="border:1px solid #ddd; border-radius:4px; padding:12px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:start; gap:12px;">
+              <div style="flex:1;">
+                <div style="font-weight:bold; margin-bottom:4px;">
+                  {{ concert.date | default('No date', true) }}
+                  {% if concert.time %}
+                    at {{ concert.time }}
+                  {% endif %}
+                </div>
+                <div><strong>Venue:</strong> {{ concert.venue | default('—', true) }}</div>
+                <div><strong>Uniform:</strong> {{ concert.uniform | default('—', true) }}</div>
+                {% if concert.programme %}
+                  <div><strong>Programme:</strong> {{ concert.programme }}</div>
+                {% endif %}
+                {% if concert.other_info %}
+                  <div><strong>Other Info:</strong> {{ concert.other_info }}</div>
+                {% endif %}
+                {% if concert.schedule_id %}
+                  <div><strong>Linked Schedule:</strong> 
+                    <span class="small">{{ concert.schedule_id }}</span>
+                  </div>
+                {% endif %}
+                <div style="margin-top:8px;">
+                  <span class="small" style="padding:4px 8px; border-radius:3px; background-color:#f0f0f0;">
+                    {{ concert.status }}
+                  </span>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:8px; flex-direction:column; white-space:nowrap;">
+                <a class="btn secondary" href="{{ url_for('admin_edit_concert_form', ensemble_id=ensemble.id, concert_id=concert.id) }}">Edit</a>
+                <form method="post" action="{{ url_for('admin_delete_concert', ensemble_id=ensemble.id, concert_id=concert.id) }}"
+                      onsubmit="return confirm('Delete concert on {{ concert.date }}?');"
+                      style="margin:0;">
+                  <button class="btn secondary" type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="small" style="color:#999; margin-top:12px;">No concerts added yet.</p>
+    {% endif %}
+  </div>
+
+{% endblock %}

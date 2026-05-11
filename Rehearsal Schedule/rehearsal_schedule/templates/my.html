@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% set title = "My Ensembles" %}
+{% set subtitle = "Schedules available to you" %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
+      <div>
+        <div class="small">Logged in as</div>
+        <strong>{{ user.email }}</strong>
+        {% if user.is_admin %}
+          <div class="small" style="margin-top:4px;">Admin access enabled</div>
+        {% endif %}
+      </div>
+      <div style="display:flex; gap:8px;">
+        {% if user.is_admin %}
+          <a class="btn" href="{{ url_for('admin_home') }}">Admin</a>
+        {% endif %}
+        <a class="btn secondary" href="{{ url_for('logout_view') }}">Logout</a>
+      </div>
+    </div>
+  </div>
+
+  {% if user.is_admin %}
+    <div class="card">
+      <strong>Admin shortcuts</strong>
+      <div class="small" style="margin-top:6px;">Manage ensembles, users, and schedules.</div>
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn" href="{{ url_for('admin_home') }}">Open Admin Dashboard</a>
+        <a class="btn secondary" href="{{ url_for('admin_home') }}#schedules">Schedules</a>
+        <a class="btn secondary" href="{{ url_for('admin_home') }}#ensembles">Ensembles</a>
+        <a class="btn secondary" href="{{ url_for('admin_home') }}#users">Users</a>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <strong>Ensembles</strong>
+    {% if ensembles %}
+      <ul style="margin-top:10px;">
+        {% for e in ensembles %}
+          <li style="margin:6px 0;">{{ e.name }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="small" style="margin-top:10px;">No ensemble memberships found.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <strong>Schedules</strong>
+    {% if schedules and schedules|length %}
+      <ul style="margin-top:10px;">
+        {% for s in schedules %}
+          <li style="margin:6px 0;">
+            <strong>{{ s.name }}</strong>
+            <span class="small">({{ s.ensemble_id }}, {{ s.status }})</span>
+            · <a href="{{ url_for('schedule_view', schedule_id=s.id) }}">View</a>
+            · <a href="{{ url_for('download_schedule_pdf', schedule_id=s.id) }}">Download PDF</a>
+            {% if user.is_admin %}
+              · <a href="{{ url_for('admin_edit_schedule', schedule_id=s.id) }}">Edit</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="small" style="margin-top:10px;">
+        No schedules yet.
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

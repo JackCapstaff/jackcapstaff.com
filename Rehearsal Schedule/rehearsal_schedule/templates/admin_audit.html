@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% set title = "Audit Log" %}
+{% set subtitle = schedule.name %}
+
+{% block content %}
+  <div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div>
+      <div class="small">Ensemble</div>
+      <strong>{{ (ensemble and ensemble.name) or schedule.ensemble_id }}</strong>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <a class="btn secondary" href="{{ url_for('admin_edit_schedule', schedule_id=schedule.id) }}">Back to Edit</a>
+      <a class="btn secondary" href="{{ url_for('admin_home') }}">Admin Home</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>Audit entries</strong>
+    {% if not audit_log %}
+      <div class="small" style="margin-top:8px; color:#666;">No audit entries yet.</div>
+    {% else %}
+      <div style="margin-top:12px; overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr style="text-align:left; border-bottom:1px solid #e5e7eb;">
+              <th style="padding:8px;">When</th>
+              <th style="padding:8px;">Action</th>
+              <th style="padding:8px;">Description</th>
+              <th style="padding:8px;">Actor</th>
+              <th style="padding:8px;">Meta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in audit_log %}
+              <tr style="border-bottom:1px solid #f3f4f6;">
+                <td style="padding:8px; white-space:nowrap;">{{ entry.ts | timestamp_to_date }}</td>
+                <td style="padding:8px;">{{ entry.action }}</td>
+                <td style="padding:8px;">{{ entry.description }}</td>
+                <td style="padding:8px;">{{ entry.actor_name or entry.actor_email or '-' }}</td>
+                <td style="padding:8px; font-family:monospace; font-size:0.95rem; color:#374151;">{{ entry | render_audit }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

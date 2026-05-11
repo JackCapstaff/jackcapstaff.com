@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% set title = "Conducting Report" %}
+{% set subtitle = schedule_name + " - Rehearsal " + rehearsal_num|string %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <div>
+      <h2 style="margin:0;">Conducting Report</h2>
+      <div class="small">{{ schedule_name }} - Rehearsal {{ rehearsal_num }}</div>
+      {% if rehearsal and rehearsal.Date %}
+        <div class="small">{{ rehearsal.Date|uk_date_format }}</div>
+      {% endif %}
+    </div>
+    <div style="display:flex; gap:8px;">
+      <a class="btn" href="{{ url_for('schedule_view', schedule_id=schedule_id) }}">
+        <i class="bi bi-arrow-left"></i> Back to Schedule
+      </a>
+    </div>
+  </div>
+</div>
+
+{% if log %}
+  <!-- Summary Card -->
+  <div class="card">
+    <h3 style="margin-top:0;">Summary</h3>
+    <div class="grid">
+      <div class="col-6">
+        <strong>Conducted by:</strong> {{ conductor.email if conductor else 'Unknown' }}
+      </div>
+      <div class="col-6">
+        <strong>Started:</strong> {{ log.started_at[:19]|replace('T', ' ') if log.started_at else '-' }}
+      </div>
+      <div class="col-6">
+        <strong>Ended:</strong> {{ log.ended_at[:19]|replace('T', ' ') if log.ended_at else 'In progress' }}
+      </div>
+      <div class="col-6">
+        <strong>Total Duration:</strong> 
+        {% if log.started_at and log.ended_at %}
+          {# Calculate total from actual_duration_seconds, falling back to actual_duration in minutes #}
+          {% set total_seconds = 0 %}
+          {% for item in log['items'] %}
+            {% if item.actual_duration_seconds %}
+              {% set total_seconds = total_seconds + item.actual_duration_seconds %}
+            {% elif item.actual_duration %}
+              {% set total_seconds = total_seconds + (item.actual_duration * 60) %}
+            {% endif %}
+          {% endfor %}
+          {% if total_seconds > 0 %}
+            {{ total_seconds|format_duration }}
+          {% else %}
+            See individual items
+          {% endif %}
+        {% else %}
+          -
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Performance Statistics -->
+  {% set total_works = log['items']|length %}
+  {% set completed_works = log['items']|selectattr('status', 'equalto', 'completed')|list|length %}
+  {% set skipped_works = log['items']|selectattr('status', 'equalto', 'skipped')|list|length %}
+  {% set on_time_count = 0 %}
+  {% set total_time_variance = 0 %}
+  
+  {% for item in log['items'] %}
+    {% if item.status == 'completed' and item.actual_duration and item.scheduled_duration %}
+      {% set variance = ((item.actual_duration - item.scheduled_duration) / item.scheduled_duration * 100) | round(1) %}
+      {% if variance >= -10 and variance <= 10 %}
+        {% set on_time_count = on_time_count + 1 %}
+      {% endif %}
+      {% set total_time_variance = total_time_variance + (item.actual_duration - item.scheduled_duration) %}
+    {% endif %}
+  {% endfor %}
+  
+  <div class="card">
+    <h3 style="margin-top:0;">Performance Metrics</h3>
+    <div class="row">
+      <div class="card" style="text-align:center;">
+        <div style="font-size:48px; font-weight:700; color:#3b82f6;">{{ completed_works }}</div>
+        <div class="small">Works Completed</div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div style="font-size:48px; font-weight:700; color:#f59e0b;">{{ skipped_works }}</div>
+        <div class="small">Works Skipped</div>
+      </div>
+      <div class="card" style="text-align:center;">
+        {% set on_time_pct = (on_time_count / completed_works * 100) | round(1) if completed_works > 0 else 0 %}
+        <div style="font-size:48px; font-weight:700; color:#10b981;">{{ on_time_pct }}%</div>
+        <div class="small">On Time (±10%)</div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div style="font-size:48px; font-weight:700; color:{{ '#ef4444' if total_time_variance > 0 else '#10b981' }};">
+          {{ '+' if total_time_variance > 0 else '' }}{{ total_time_variance | round(0) | int }}
+        </div>
+        <div class="small">Total Time Variance (min)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detailed Work Log -->
+  <div class="card">
+    <h3 style="margin-top:0;">Detailed Work Log</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Work</th>
+          <th style="text-align:center;">Scheduled</th>
+          <th style="text-align:center;">Actual</th>
+          <th style="text-align:center;">Variance</th>
+          <th style="text-align:center;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in log['items'] %}
+          <tr>
+            <td>
+              <strong>{{ item.title }}</strong>
+              {% if item.scheduled_start %}
+                <div class="small">Scheduled: {{ item.scheduled_start[:5] }}</div>
+              {% endif %}
+            </td>
+            <td style="text-align:center;">
+              {{ item.scheduled_duration }} min
+            </td>
+            <td style="text-align:center;">
+              {% if item.actual_duration_seconds %}
+                {{ item.actual_duration_seconds|format_duration }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td style="text-align:center;">
+              {% if item.status == 'completed' and item.actual_duration_seconds and item.scheduled_duration_seconds %}
+                {% set variance_secs = item.actual_duration_seconds - item.scheduled_duration_seconds %}
+                {% set variance_pct = (variance_secs / item.scheduled_duration_seconds * 100) | round(1) %}
+                <span style="color: {{ '#ef4444' if variance_secs > 0 else '#10b981' if variance_secs < 0 else '#6b7280' }}; font-weight:600;">
+                  {{ '+' if variance_secs > 0 else '' }}{{ variance_secs|abs|format_duration }}
+                  ({{ '+' if variance_pct > 0 else '' }}{{ variance_pct }}%)
+                </span>
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td style="text-align:center;">
+              {% if item.status == 'completed' %}
+                <span class="pill" style="background:#d1fae5; color:#065f46;">✓ Completed</span>
+              {% elif item.status == 'skipped' %}
+                <span class="pill" style="background:#fee2e2; color:#991b1b;">⊘ Skipped</span>
+              {% elif item.status == 'in_progress' %}
+                <span class="pill" style="background:#dbeafe; color:#1e40af;">⟳ In Progress</span>
+              {% else %}
+                <span class="pill">{{ item.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Timeline Visualization -->
+  <div class="card">
+    <h3 style="margin-top:0;">Timeline</h3>
+    <div style="position:relative; padding:20px 0;">
+      {% for item in log['items'] %}
+        {% if item.status == 'completed' and item.actual_start and item.actual_duration_seconds %}
+          {% set start_time = item.actual_start %}
+          {% set duration_secs = item.actual_duration_seconds %}
+          {% set scheduled_secs = item.scheduled_duration_seconds or (item.scheduled_duration * 60) %}
+          
+          {% set is_on_time = ((duration_secs - scheduled_secs) / scheduled_secs * 100) | abs <= 10 %}
+          {% set is_over = duration_secs > scheduled_secs %}
+          
+          <div style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <strong>{{ item.title }}</strong>
+              <span class="small">{{ start_time[11:16] }} • {{ duration_secs|format_duration }}</span>
+            </div>
+            <div style="background:#e5e7eb; border-radius:8px; height:32px; position:relative; overflow:hidden;">
+              <!-- Scheduled duration (gray background) -->
+              <div style="position:absolute; left:0; top:0; bottom:0; width:{{ (scheduled_secs / 3600 * 100) | round(2) }}%; background:#cbd5e1;"></div>
+              <!-- Actual duration (colored bar) -->
+              <div style="position:absolute; left:0; top:0; bottom:0; width:{{ (duration_secs / 3600 * 100) | round(2) }}%; 
+                          background:{{ '#10b981' if is_on_time else '#ef4444' if is_over else '#3b82f6' }}; 
+                          opacity:0.8;
+                          display:flex; align-items:center; padding:0 8px; color:white; font-weight:600; font-size:13px;">
+                {{ duration_secs|format_duration }}
+              </div>
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Adjustments Log -->
+  {% if log.adjustments and log.adjustments|length > 0 %}
+    <div class="card">
+      <h3 style="margin-top:0;">Adjustments</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for adj in log.adjustments %}
+            <tr>
+              <td class="small">{{ adj.time[11:19] if adj.time else '-' }}</td>
+              <td>
+                {% if adj.action == 'paused' %}
+                  <span class="pill" style="background:#fef3c7; color:#92400e;">⏸ Paused</span>
+                {% elif adj.action == 'resumed' %}
+                  <span class="pill" style="background:#dcfce7; color:#166534;">▶ Resumed</span>
+                {% elif adj.action == 'reordered' %}
+                  <span class="pill" style="background:#e0e7ff; color:#3730a3;">↕ Reordered</span>
+                {% elif adj.action == 'went_back' %}
+                  <span class="pill" style="background:#fee2e2; color:#991b1b;">← Went Back</span>
+                {% else %}
+                  <span class="pill">{{ adj.action }}</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if adj.action == 'reordered' and adj.skipped_works %}
+                  Skipped: {{ adj.skipped_works|join(', ') }}
+                {% elif adj.action == 'went_back' %}
+                  From work {{ adj.from_index + 1 }} to {{ adj.to_index + 1 }}
+                {% else %}
+                  {{ adj.details if adj.details else '-' }}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+{% else %}
+  <div class="card">
+    <p>No conducting log found for this rehearsal.</p>
+  </div>
+{% endif %}
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  @media (max-width: 768px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}

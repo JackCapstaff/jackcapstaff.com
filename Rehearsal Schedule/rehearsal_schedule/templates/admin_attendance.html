@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% set title = "Attendance Register" %}
+
+{% block content %}
+<body>
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div class="small">Attendance</div>
+        <strong>Attendance Register</strong>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <a class="btn" href="{{ url_for('admin_edit_schedule', schedule_id=schedule_id) }}">Back</a>
+        <button class="btn" id="downloadCsv">Download CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="attendanceContainer">Loading...</div>
+  </div>
+
+  <script>
+    const scheduleId = "{{ schedule_id }}";
+    async function loadAttendance() {
+      const res = await fetch(`/api/s/${scheduleId}/attendance/summary`, { credentials: 'same-origin' });
+      const data = await res.json();
+      if (!data.ok) { document.getElementById('attendanceContainer').textContent = data.error || 'Failed'; return; }
+      // Build table
+      const cols = ['Instrument','Name','Email', ...data.dates];
+      const table = document.createElement('table');
+      table.style.width = '100%';
+      table.style.borderCollapse = 'collapse';
+      const thead = document.createElement('thead');
+      const thr = document.createElement('tr');
+      cols.forEach(c => { const th = document.createElement('th'); th.textContent = c; th.style.border='1px solid #eee'; th.style.padding='6px'; thr.appendChild(th); });
+      thead.appendChild(thr); table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      data.rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const cells = [r.instrument || '', r.name || '', r.email || ''];
+        data.dates.forEach(d => cells.push(r.responses[d]||''));
+        cells.forEach(cell => { const td = document.createElement('td'); td.textContent = cell; td.style.border='1px solid #f0f0f0'; td.style.padding='6px'; tr.appendChild(td); });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      const container = document.getElementById('attendanceContainer'); container.innerHTML=''; container.appendChild(table);
+    }
+
+    document.getElementById('downloadCsv').addEventListener('click', () => {
+      window.location = `/api/s/${scheduleId}/attendance/export`;
+    });
+
+    loadAttendance();
+  </script>
+</body>
+{% endblock %}

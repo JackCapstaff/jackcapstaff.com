@@ -1,0 +1,739 @@
+{% extends "base.html" %}
+{% set title = "Schedule" %}
+{% set subtitle = "Public view" %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h2 style="margin:0;">{{ ensemble_name }}</h2>
+        {% if generated_at %}
+          <div class="small">Last generated: {{ generated_at }}</div>
+        {% endif %}
+      </div>
+      <div style="display:flex; gap:8px;">
+        <a class="btn" href="{{ url_for('my_view') }}">
+          <i class="bi bi-arrow-left"></i> Back to Calendar
+        </a>
+        <a class="btn secondary" href="{{ url_for('download_schedule_pdf', schedule_id=schedule_id) }}">
+          <i class="bi bi-file-pdf"></i> Download PDF
+        </a>
+        {% if user and user.is_admin %}
+          <a class="btn" href="{{ url_for('admin_edit_schedule', schedule_id=schedule_id) }}">
+            <i class="bi bi-pencil"></i> Edit Schedule
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if not has_schedule %}
+    <div class="card">
+      <strong>No schedule published yet.</strong>
+      <div class="small">The editor needs to run allocation + generate schedule.</div>
+    </div>
+  {% else %}
+    <style>
+      .reh-past > h2 .accordion-button {
+        background: #f6f6f6;
+        color: #7a7a7a;
+      }
+      .reh-past {
+        border-color: #e5e5e5;
+        opacity: 0.92;
+      }
+    </style>
+    
+    <!-- Combined Timeline View (Concerts + Rehearsals) -->
+    {% set timeline_items = [] %}
+    
+    <!-- Add concerts to timeline -->
+    {% for concert in concerts %}
+      {% if timeline_items.append({"type": "concert", "date": concert.date, "time": concert.time, "data": concert}) %}{% endif %}
+    {% endfor %}
+    
+    <!-- Add rehearsals to timeline -->
+    {% set by_reh = {} %}
+    {% for row in timed %}
+      {% set r = row["Rehearsal"] %}
+      {% if r not in by_reh %}
+        {% set _ = by_reh.update({r: []}) %}
+      {% endif %}
+      {% set _ = by_reh[r].append(row) %}
+    {% endfor %}
+    
+    {% for r in reh_order %}
+      {% set reh_num = r[0] %}
+      {% set rows = r[1] %}
+      {% set row = rows[0] %}
+      {% if timeline_items.append({"type": "rehearsal", "date": row.get("Date", ""), "rehearsal_num": reh_num, "data": rows}) %}{% endif %}
+    {% endfor %}
+
+    <div class="accordion" id="rehearsalAccordion">
+    
+    <!-- Debug: Total concerts = {{ concerts|length }} -->
+    <!-- Rehearsals and Concerts Section (chronologically) -->
+    {% for r in reh_order %}
+      {% set reh_num = r[0] %}
+      {% set rows = r[1] %}
+      
+      <!-- Check if this is a Concert or Contest -->
+      {% if rows and rows[0].get('Event Type') in ['Concert', 'Contest'] %}
+        {% set event_type_label = rows[0].get('Event Type', 'Concert') %}
+        <!-- Debug: Found {{ event_type_label }} event type for rehearsal {{ reh_num }}, Date: {{ rows[0].get('Date') }} -->
+        <!-- Find the concert object for this rehearsal -->
+        {% set concert_for_reh = namespace(obj=None) %}
+        {% set reh_date = rows[0].get('Date', '')|string %}
+        {% for concert in concerts %}
+          <!-- Debug: Checking concert {{ concert.title }}, date: {{ concert.date }} vs timed date: {{ reh_date }} -->
+          {% set concert_date = concert.date|string %}
+          {# Normalize dates to YYYY-MM-DD for comparison (strip time component) #}
+          {% if concert_date[:10] == reh_date[:10] %}
+            {% set concert_for_reh.obj = concert %}
+          {% endif %}
+        {% endfor %}
+        
+        <!-- Debug: Concert found for reh {{ reh_num }}? {{ 'YES' if concert_for_reh.obj else 'NO' }} -->
+        {% if concert_for_reh.obj %}
+        <!-- Concert/Contest Display -->
+        <div class="accordion-item" id="concert-{{ reh_num }}" style="border: 2px solid #198754;">
+          <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                    data-bs-target="#collapse-{{ reh_num }}" aria-expanded="false" 
+                    aria-controls="collapse-{{ reh_num }}" id="btn-concert-{{ reh_num }}"
+                    style="background-color: #f0f9f6;">
+              <strong style="color: #198754;">🎵 {{ concert_for_reh.obj.title }}{% if concert_for_reh.obj.date %} — {{ concert_for_reh.obj.date|uk_date_format }}{% if concert_for_reh.obj.time %} at {{ concert_for_reh.obj.time }}{% endif %}{% endif %}</strong>
+            </button>
+          </h2>
+          <div id="collapse-{{ reh_num }}" class="accordion-collapse collapse" 
+               data-bs-parent="#rehearsalAccordion">
+            <div class="accordion-body p-0">
+              <div data-concert-id="{{ concert_for_reh.obj.id }}" style="padding: 16px;">
+                {% if concert_for_reh.obj.get('is_auto_generated') and user and user.is_admin %}
+                  <div style="background: #fbbf24; color: #78350f; padding: 4px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-bottom: 8px;">AUTO-GENERATED</div>
+                {% endif %}
+                <div style="color: #666; font-size: 0.95rem; margin-bottom: 8px;">
+                  📅 {{ concert_for_reh.obj.date|uk_date_format }}{% if concert_for_reh.obj.time %} at {{ concert_for_reh.obj.time }}{% endif %}
+                </div>
+                {% if concert_for_reh.obj.venue %}
+                  <div style="color: #666; font-size: 0.95rem; margin-bottom: 8px;">
+                    📍 <strong>Venue:</strong> {{ concert_for_reh.obj.venue }}
+                  </div>
+                {% endif %}
+                {% if concert_for_reh.obj.uniform %}
+                  <div style="color: #666; font-size: 0.95rem; margin-bottom: 8px;">
+                    👔 <strong>Uniform:</strong> {{ concert_for_reh.obj.uniform }}
+                  </div>
+                {% endif %}
+                {% if concert_for_reh.obj.programme %}
+                  <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                    <div style="font-weight: bold; font-size: 0.95rem; margin-bottom: 6px;">Programme:</div>
+                    {{ concert_for_reh.obj.programme | format_programme | safe }}
+                  </div>
+                {% endif %}
+                {% if concert_for_reh.obj.other_info %}
+                  <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                    <div style="font-size: 0.9rem; color: #666;">💡 {{ concert_for_reh.obj.other_info }}</div>
+                  </div>
+                {% endif %}
+                {% if user and user.is_admin %}
+                  <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                    <button onclick="editConcertFromSchedule('{{ concert_for_reh.obj.id }}')" class="btn btn-sm" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">✎ Edit Concert</button>
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        
+      {% else %}
+      <!-- Regular Rehearsal Display -->
+      <div class="accordion-item" id="rehearsal-{{ reh_num }}" data-reh-date="{{ rows[0].get('Date', '') }}" data-reh-type="rehearsal">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                  data-bs-target="#collapse-{{ reh_num }}" aria-expanded="false" 
+                  aria-controls="collapse-{{ reh_num }}" id="btn-rehearsal-{{ reh_num }}"
+                  {% if rows and rows[0].get("Event Type") == "Sectional" and rows[0].get("Section") and rows[0]["Section"] != "Full Ensemble" %}
+                  style="background-color: #fff3cd; border-left: 4px solid #ffc107;"
+                  {% endif %}>
+            <strong>Rehearsal {{ reh_num }}{% if rows and rows[0]["Date"] %} - {{ rows[0]["Date"]|uk_date_format }}{% endif %}</strong>
+            {% if rows and rows[0].get("Event Type") == "Sectional" and rows[0].get("Section") and rows[0]["Section"] != "Full Ensemble" %}
+              <span style="margin-left: 10px; font-weight: bold; color: #ff6b6b; background: #ffe0e0; padding: 2px 8px; border-radius: 4px; font-size: 0.9rem;">
+                🎻 {{ rows[0]["Section"] }}
+                {% if rows and rows[0].get("work") %}
+                  - {{ rows[0]["work"] }}
+                {% elif rows and rows|length > 0 %}
+                  {% set work_titles = [] %}
+                  {% for row in rows %}
+                    {% if row.get("Title") and row["Title"] not in work_titles %}
+                      {% set _ = work_titles.append(row["Title"]) %}
+                    {% endif %}
+                  {% endfor %}
+                  {% if work_titles|length > 0 %}
+                    - {{ work_titles|join(", ") }}
+                  {% endif %}
+                {% endif %}
+              </span>
+            {% endif %}
+          </button>
+        </h2>
+        <div id="collapse-{{ reh_num }}" class="accordion-collapse collapse" 
+             data-bs-parent="#rehearsalAccordion">
+          <div class="accordion-body p-0">
+            <!-- Section & Event Type Editor for Admins -->
+            {% if user and user.is_admin %}
+              <div style="padding: 10px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; display: flex; gap: 12px; align-items: flex-end;">
+                <div>
+                  <label for="event-type-{{ reh_num }}" style="font-weight: bold; display: block; margin-bottom: 4px;">Event Type:</label>
+                  <select id="event-type-{{ reh_num }}" class="event-type-input" data-rehearsal="{{ reh_num }}"
+                          style="padding: 5px 8px; border: 1px solid #999; border-radius: 4px;">
+                    <option value="Rehearsal" {% if rows and rows[0].get('Event Type') == 'Rehearsal' %}selected{% endif %}>Rehearsal</option>
+                    <option value="Sectional" {% if rows and rows[0].get('Event Type') == 'Sectional' %}selected{% endif %}>Sectional</option>
+                    <option value="Concert" {% if rows and rows[0].get('Event Type') == 'Concert' %}selected{% endif %}>Concert</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="section-{{ reh_num }}" style="font-weight: bold; display: block; margin-bottom: 4px;">Section:</label>
+                  <input type="text" id="section-{{ reh_num }}" class="section-input" 
+                         value="{{ rows[0].get('Section', 'Full Ensemble') if rows else 'Full Ensemble' }}" 
+                         data-rehearsal="{{ reh_num }}"
+                         placeholder="e.g., Cornets"
+                         style="padding: 5px; border: 1px solid #999; border-radius: 4px;">
+                </div>
+                <button onclick="updateEventTypeAndSection({{ reh_num }})" class="btn btn-sm" style="margin-left: 5px;">Save</button>
+              </div>
+            {% endif %}
+
+              <!-- Attendance Prompt for Members -->
+              {% if user and not user.is_admin and not rows[0].is_past %}
+                <div style="padding: 10px; background: #e7f5ff; border-bottom: 1px solid #b6e0fe; margin-bottom: 10px;">
+                  <form id="attendance-form-{{ reh_num }}" onsubmit="return submitAttendance({{ reh_num }});" style="display:flex; gap:12px; align-items:center;">
+                    <label style="font-weight:bold;">Attendance:</label>
+                    <label><input type="radio" name="attendance-{{ reh_num }}" value="yes"> Yes</label>
+                    <label><input type="radio" name="attendance-{{ reh_num }}" value="no"> No</label>
+                    <label><input type="radio" name="attendance-{{ reh_num }}" value="maybe" onchange="toggleMaybeNote({{ reh_num }})"> Maybe</label>
+                    <input type="text" name="maybe-note-{{ reh_num }}" id="maybe-note-{{ reh_num }}" placeholder="Required for Maybe" style="display:none; width:180px;" />
+                    <button type="submit" class="btn btn-sm">Submit</button>
+                    <span id="attendance-status-{{ reh_num }}" style="margin-left:10px; font-size:0.95em; color:#198754;"></span>
+                  </form>
+                </div>
+                <script>
+                  function toggleMaybeNote(rehNum) {
+                    var maybeRadio = document.querySelector('input[name="attendance-' + rehNum + '"][value="maybe"]');
+                    var noteInput = document.getElementById('maybe-note-' + rehNum);
+                    if (maybeRadio && maybeRadio.checked) {
+                      noteInput.style.display = 'inline-block';
+                    } else {
+                      noteInput.style.display = 'none';
+                    }
+                  }
+                  function submitAttendance(rehNum) {
+                    var status = document.querySelector('input[name="attendance-' + rehNum + '"]:checked');
+                    var note = document.getElementById('maybe-note-' + rehNum).value;
+                    if (!status) { alert('Please select Yes, No, or Maybe.'); return false; }
+                    if (status.value === 'maybe' && !note) { alert('Note required for Maybe.'); return false; }
+                    fetch('/api/s/{{ schedule_id }}/attendance/respond', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ event_id: rehNum, status: status.value, note: note })
+                    }).then(r => r.json()).then(data => {
+                      var msg = data.ok ? 'Saved!' : (data.error || 'Error');
+                      document.getElementById('attendance-status-' + rehNum).textContent = msg;
+                    });
+                    return false;
+                  }
+                </script>
+              {% endif %}
+
+              <!-- Attendance Register for Admins -->
+              {% if user and user.is_admin %}
+                <div style="padding: 10px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                  <div style="display: flex; gap: 8px;">
+                    <a href="#" onclick="showAttendanceRegister({{ reh_num }}); return false;" class="btn btn-sm">View Attendance Register</a>
+                    {% if conducting_logs and conducting_logs.get(reh_num) %}
+                      <a href="/conduct/{{ schedule_id }}/{{ reh_num }}/report" class="btn btn-sm" style="background: #3b82f6; color: white;">
+                        <i class="bi bi-file-text"></i> View Report
+                      </a>
+                    {% endif %}
+                  </div>
+                  <div>
+                    <a href="/conduct/{{ schedule_id }}/{{ reh_num }}" class="btn btn-sm" style="background: #10b981; color: white;">
+                      <i class="bi bi-play-circle-fill"></i> Start Conducting
+                    </a>
+                  </div>
+                </div>
+                  <div id="attendance-register-{{ reh_num }}" style="display:none; margin:10px; padding:10px; background:#f9fafb; border-radius:6px;"></div>
+                  <script>
+                    function showAttendanceRegister(rehNum) {
+                      var regDiv = document.getElementById('attendance-register-' + rehNum);
+                      if (regDiv.style.display === 'none') {
+                        fetch('/api/s/{{ schedule_id }}/attendance/event/' + rehNum)
+                          .then(r => r.json()).then(data => {
+                            if (data.ok) {
+                              var html = '<table style="width:100%;"><tr><th>Name</th><th>Instrument</th><th>Status</th><th>Note</th></tr>';
+                              data.responses.forEach(function(row) {
+                                html += '<tr><td>' + (row.name || row.email) + '</td><td>' + (row.instrument || '') + '</td><td>' + (row.status || '-') + '</td><td>' + (row.note || '') + '</td></tr>';
+                              });
+                              html += '</table>';
+                              regDiv.innerHTML = html;
+                            } else {
+                              regDiv.innerHTML = '<div style="color:red;">Error loading register</div>';
+                            }
+                            regDiv.style.display = 'block';
+                          });
+                      } else {
+                        regDiv.style.display = 'none';
+                      }
+                    }
+                  </script>
+              {% elif user %}
+                <!-- Non-admin conductors can also start conducting -->
+                <div style="padding: 10px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  {% if conducting_logs and conducting_logs.get(reh_num) %}
+                    <a href="/conduct/{{ schedule_id }}/{{ reh_num }}/report" class="btn btn-sm" style="background: #3b82f6; color: white;">
+                      <i class="bi bi-file-text"></i> View Report
+                    </a>
+                  {% else %}
+                    <div></div>
+                  {% endif %}
+                  <a href="/conduct/{{ schedule_id }}/{{ reh_num }}" class="btn btn-sm" style="background: #10b981; color: white;">
+                    <i class="bi bi-play-circle-fill"></i> Start Conducting
+                  </a>
+                </div>
+              {% endif %}
+            <table style="margin:0; width:100%;">
+              <thead>
+                <tr>
+                  <th style="width:120px;">Time</th>
+                  <th>Item</th>
+                  <th style="width:220px;">Break</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rows|sort(attribute="Time in Rehearsal") %}
+                  <tr>
+                    <td><strong>{{ row["Time in Rehearsal"] }}</strong></td>
+                    <td>
+                      {% if row["Title"] == "Break" %}
+                        <span class="pill">Break</span>
+                      {% else %}
+                        {{ row["Title"] }}
+                      {% endif %}
+                    </td>
+                    <td class="small">
+                      {% if row["Break Start (HH:MM)"] %}
+                        {{ row["Break Start (HH:MM)"] }} – {{ row["Break End (HH:MM)"] }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    {% endfor %}
+    </div>
+  {% endif %}
+  
+  <script>
+    // Embed concerts data for modal editing
+    const concertsData = {{ concerts|tojson }};
+    
+    // Highlight past rehearsals and pick the next upcoming date
+    const urlParams = new URLSearchParams(window.location.search);
+    const rehNum = urlParams.get('reh');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const normalizeDate = (dateStr) => {
+      if (!dateStr) return null;
+      const parsed = new Date(dateStr);
+      if (isNaN(parsed.getTime())) return null;
+      return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    };
+
+    const accordionItems = document.querySelectorAll('.accordion-item[data-reh-date]');
+    let nextUpcomingItem = null;
+
+    accordionItems.forEach((item) => {
+      const dateStr = item.dataset.rehDate;
+      const rehType = item.dataset.rehType || '';
+      const parsed = normalizeDate(dateStr);
+      if (!parsed) return;
+
+      if (parsed < today) {
+        item.classList.add('reh-past');
+      } else if (rehType === 'rehearsal') {
+        if (!nextUpcomingItem || parsed < nextUpcomingItem.date) {
+          nextUpcomingItem = { item, date: parsed };
+        }
+      }
+    });
+
+    // Scroll to and expand specific rehearsal if ?reh= parameter is present
+    if (rehNum) {
+      setTimeout(() => {
+        const targetButton = document.getElementById('btn-rehearsal-' + rehNum);
+        const targetCollapse = document.getElementById('collapse-' + rehNum);
+        const targetAccordionItem = document.getElementById('rehearsal-' + rehNum);
+        
+        if (targetButton && targetCollapse && targetAccordionItem) {
+          const bsCollapse = new bootstrap.Collapse(targetCollapse, { toggle: true });
+          targetButton.classList.remove('collapsed');
+          targetButton.setAttribute('aria-expanded', 'true');
+          targetAccordionItem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          targetAccordionItem.style.boxShadow = '0 4px 20px rgba(13, 110, 253, 0.3)';
+          targetAccordionItem.style.border = '2px solid #0d6efd';
+          targetAccordionItem.style.borderRadius = '0.25rem';
+        }
+      }, 300);
+    } else if (nextUpcomingItem && nextUpcomingItem.item) {
+      // Auto-expand the next upcoming rehearsal when no explicit target is provided
+      const targetCollapse = nextUpcomingItem.item.querySelector('.accordion-collapse');
+      const targetButton = nextUpcomingItem.item.querySelector('.accordion-button');
+      if (targetCollapse && targetButton) {
+        setTimeout(() => {
+          const bsCollapse = new bootstrap.Collapse(targetCollapse, { toggle: true });
+          targetButton.classList.remove('collapsed');
+          targetButton.setAttribute('aria-expanded', 'true');
+          nextUpcomingItem.item.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+      }
+    }
+    
+    // Update event type and section for a rehearsal
+    async function updateEventTypeAndSection(rehearsalNum) {
+      const eventTypeSelect = document.getElementById('event-type-' + rehearsalNum);
+      const sectionInput = document.getElementById('section-' + rehearsalNum);
+      
+      if (!eventTypeSelect || !sectionInput) return;
+      
+      const eventType = eventTypeSelect.value.trim();
+      const section = sectionInput.value.trim() || 'Full Ensemble';
+      
+      try {
+        const response = await fetch(`/api/s/{{ schedule_id }}/rehearsal-event-type/${rehearsalNum}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 'Event Type': eventType, 'Section': section })
+        });
+        
+        if (response.ok) {
+          // Update the header to show the new event type and section
+          const headerButton = document.getElementById('btn-rehearsal-' + rehearsalNum);
+          const existingBadge = headerButton.querySelector('span');
+          if (existingBadge) {
+            existingBadge.remove();
+          }
+          
+          // Add new badge based on event type
+          if (eventType === 'Sectional') {
+            headerButton.innerHTML += `<span style="margin-left: 10px; font-weight: bold; color: #ff6b6b; background: #ffe0e0; padding: 2px 8px; border-radius: 4px; font-size: 0.9rem;">🎻 ${section}</span>`;
+          } else if (eventType === 'Concert') {
+            headerButton.innerHTML += `<span style="margin-left: 10px; font-weight: bold; color: #198754; background: #e7f5ed; padding: 2px 8px; border-radius: 4px; font-size: 0.9rem;">🎵 Concert</span>`;
+          }
+          
+          alert('Event type and section updated!');
+        } else {
+          alert('Error updating event type and section');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to update event type and section');
+      }
+    }
+    
+    // Legacy function for backwards compatibility
+    async function updateSection(rehearsalNum) {
+      const input = document.getElementById('section-' + rehearsalNum);
+      if (!input) return;
+      const section = input.value.trim() || 'Full Ensemble';
+      updateEventTypeAndSection(rehearsalNum);
+    }
+    
+    // Edit concert from schedule view
+    function editConcertFromSchedule(concertId) {
+      // Open a modal to edit concert details
+      openConcertEditModal(concertId);
+    }
+    
+    // Open concert edit modal (for schedule view)
+    function openConcertEditModal(concertId) {
+      // Find the concert from concertsData array passed from server
+      const concert = concertsData.find(c => c.id === concertId);
+      
+      if (!concert) {
+        alert('Concert not found');
+        return;
+      }
+      
+      // Extract concert data - use the concert object directly
+      const title = concert.title || '';
+      const date = concert.date || '';  // Already in YYYY-MM-DD format
+      const time = concert.time || '';
+      const venue = concert.venue || '';
+      const uniform = concert.uniform || '';
+      const programme = concert.programme || '';
+      const otherInfo = concert.other_info || '';
+      
+      // Create modal overlay
+      const overlay = document.createElement("div");
+      overlay.id = "concertEditModalOverlay";
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      `;
+      
+      // Create modal content
+      const modal = document.createElement("div");
+      modal.style.cssText = `
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+      `;
+      
+      modal.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+          <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: #111827;">Edit Concert</h3>
+          <button onclick="document.getElementById('concertEditModalOverlay')?.remove()" style="background: none; border: none; font-size: 24px; color: #6b7280; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Concert Title</label>
+          <input type="text" id="viewConcertTitle" value="${title}" placeholder="e.g., Spring Concert 2026" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Date</label>
+          <input type="date" id="viewConcertDate" value="${date}" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Time (HH:MM)</label>
+          <input type="text" id="viewConcertTime" value="${time}" placeholder="e.g., 19:30" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Venue</label>
+          <input type="text" id="viewConcertVenue" value="${venue}" placeholder="e.g., Town Hall" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Uniform</label>
+          <input type="text" id="viewConcertUniform" value="${uniform}" placeholder="e.g., Black tie, Concert dress" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Programme</label>
+          <div id="viewProgrammeSetsContainer" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Sets will be added here dynamically -->
+          </div>
+          <button type="button" onclick="addViewProgrammeSet()" class="btn secondary" style="padding: 6px 12px; margin-top: 8px; font-size: 13px; background: #e5e7eb; color: #111827; border: none; border-radius: 6px; cursor: pointer;">+ Add Set</button>
+          <small style="color: #6b7280; display: block; margin-top: 4px;">Add sets for the concert programme. Line breaks will be preserved.</small>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Other Info</label>
+          <textarea id="viewConcertOtherInfo" placeholder="Additional information..." style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box; min-height: 80px;">${otherInfo}</textarea>
+        </div>
+        
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <button onclick="document.getElementById('concertEditModalOverlay')?.remove()" class="btn secondary" style="padding: 8px 16px; background: #e5e7eb; color: #111827; border: none; border-radius: 6px; cursor: pointer;">Cancel</button>
+          <button onclick="saveViewConcertEdit('${concertId}')" class="btn" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer;">Save Changes</button>
+        </div>
+      `;
+      
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      
+      // Initialize programme sets
+      initializeViewProgrammeSets(programme);
+      
+      // Focus the title input
+      setTimeout(() => document.getElementById('viewConcertTitle').focus(), 100);
+    }
+    
+    // Save concert edits from schedule view
+    async function saveViewConcertEdit(concertId) {
+      const title = document.getElementById('viewConcertTitle').value.trim() || 'Concert';
+      const date = document.getElementById('viewConcertDate').value;
+      const time = document.getElementById('viewConcertTime').value.trim() || '';
+      const venue = document.getElementById('viewConcertVenue').value.trim() || '';
+      const uniform = document.getElementById('viewConcertUniform').value.trim() || '';
+      const programme = collectViewProgrammeSets();
+      const otherInfo = document.getElementById('viewConcertOtherInfo').value.trim() || '';
+      
+      try {
+        const response = await fetch(`/api/s/{{ schedule_id }}/concert/${concertId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: title,
+            date: date,
+            time: time,
+            venue: venue,
+            uniform: uniform,
+            programme: programme,
+            other_info: otherInfo
+          })
+        });
+        
+        if (response.ok) {
+          alert('Concert updated successfully!');
+          document.getElementById('concertEditModalOverlay').remove();
+          // Reload the page to show updated concert data
+          location.reload();
+        } else {
+          const error = await response.text();
+          alert('Error saving concert: ' + error);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to save concert: ' + error.message);
+      }
+    }
+    
+    // Programme set management for view modal
+    function parseProgrammeSetsView(programmeText) {
+      const normalized = (programmeText || '').replace(/\r\n/g, '\n');
+      const lines = normalized.split('\n');
+      const setRegex = /^Set\s+(\d+):?/i;
+      const sets = [];
+      let currentNum = null;
+      let currentLines = [];
+      lines.forEach(line => {
+        const m = line.match(setRegex);
+        if (m) {
+          if (currentNum !== null) {
+            sets.push({ num: currentNum, content: currentLines.join('\n') });
+          }
+          currentNum = m[1];
+          currentLines = [];
+        } else {
+          if (currentNum === null) currentNum = 1;
+          currentLines.push(line);
+        }
+      });
+      if (currentNum !== null) {
+        sets.push({ num: currentNum, content: currentLines.join('\n') });
+      }
+      if (sets.length === 0) {
+        return [{ num: 1, content: normalized }];
+      }
+      return sets;
+    }
+
+    function initializeViewProgrammeSets(programmeText) {
+      const container = document.getElementById('viewProgrammeSetsContainer');
+      if (!container) return;
+      const parsed = parseProgrammeSetsView(programmeText);
+      parsed.forEach((set, idx) => addViewProgrammeSet(set.num || idx + 1, set.content));
+    }
+    
+    function addViewProgrammeSet(setNumber, content = '') {
+      const container = document.getElementById('viewProgrammeSetsContainer');
+      if (!container) return;
+      
+      if (!setNumber) {
+        const existingSets = container.querySelectorAll('.view-programme-set');
+        setNumber = existingSets.length + 1;
+      }
+      
+      const setDiv = document.createElement('div');
+      setDiv.className = 'view-programme-set';
+      setDiv.style.cssText = 'border: 1px solid #d1d5db; border-radius: 6px; padding: 12px; background: #f9fafb;';
+      
+      setDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label style="font-weight: 500; color: #374151; font-size: 13px;">Set ${setNumber}</label>
+          <button type="button" onclick="removeViewProgrammeSet(this)" class="btn secondary" style="padding: 4px 8px; font-size: 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Remove</button>
+        </div>
+        <textarea class="view-programme-set-content" placeholder="Enter pieces for this set, one per line..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; box-sizing: border-box; min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
+      `;
+      
+      // Set textarea content after creating element to preserve special characters
+      const textarea = setDiv.querySelector('.view-programme-set-content');
+      if (textarea) {
+        textarea.value = content;
+      }
+      
+      container.appendChild(setDiv);
+      renumberViewProgrammeSets();
+    }
+    
+    function removeViewProgrammeSet(button) {
+      const container = document.getElementById('viewProgrammeSetsContainer');
+      if (!container) return;
+      
+      const setDiv = button.closest('.view-programme-set');
+      if (setDiv) {
+        setDiv.remove();
+        renumberViewProgrammeSets();
+        
+        const remainingSets = container.querySelectorAll('.view-programme-set');
+        if (remainingSets.length === 0) {
+          addViewProgrammeSet(1, '');
+        }
+      }
+    }
+    
+    function renumberViewProgrammeSets() {
+      const container = document.getElementById('viewProgrammeSetsContainer');
+      if (!container) return;
+      
+      const sets = container.querySelectorAll('.view-programme-set');
+      sets.forEach((set, idx) => {
+        const label = set.querySelector('label');
+        if (label) {
+          label.textContent = `Set ${idx + 1}`;
+        }
+      });
+    }
+    
+    function collectViewProgrammeSets() {
+      const container = document.getElementById('viewProgrammeSetsContainer');
+      if (!container) return '';
+      
+      const sets = container.querySelectorAll('.view-programme-set');
+      const parts = [];
+      
+      sets.forEach((set, idx) => {
+        const textarea = set.querySelector('.view-programme-set-content');
+        // Do not trim; preserve all lines
+        const content = textarea?.value || '';
+        if (content) {
+          parts.push(`Set ${idx + 1}:\n${content}`);
+        }
+      });
+      
+      return parts.join('\n\n');
+    }
+    
+    // Edit auto-generated concert details
+    function editAutoGeneratedConcert(rehearsalNum) {
+      // Navigate to the edit page for this rehearsal
+      const sid = '{{ schedule_id }}';
+      const editUrl = `/admin/s/${sid}/edit?reh=${rehearsalNum}`;
+      window.location.href = editUrl;
+    }</script>
+{% endblock %}

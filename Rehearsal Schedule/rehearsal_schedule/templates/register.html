@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% set title = "Register" %}
+{% set subtitle = "Create your account" %}
+
+{% block content %}
+  <div class="card" style="max-width:520px; margin: 0 auto;">
+    {% if error %}
+      <div class="small" style="color:#b00020; margin-bottom:10px;">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    {% if invite_code and invite %}
+      <div style="background:#e0f2fe; border:1px solid #0369a1; padding:12px; border-radius:4px; margin-bottom:16px;">
+        <strong style="color:#0369a1;">✓ Valid Invitation Code</strong>
+        <div class="small" style="margin-top:4px; color:#075985;">
+          You'll be automatically added to the ensemble when you register.
+        </div>
+      </div>
+    {% elif invite_code %}
+      <div style="background:#fee2e2; border:1px solid #dc2626; padding:12px; border-radius:4px; margin-bottom:16px;">
+        <strong style="color:#dc2626;">⚠ Invalid Invitation Code</strong>
+        <div class="small" style="margin-top:4px; color:#991b1b;">
+          This invitation may be expired, fully used, or disabled. Please select an ensemble manually.
+        </div>
+      </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('register_post') }}">
+      <input type="hidden" name="invite_code" value="{{ invite_code or '' }}">
+      
+      <div style="margin-bottom:12px;">
+        <label class="small">Email</label>
+        <input type="email" name="email" required style="width:100%; padding:10px; margin-top:6px;">
+      </div>
+
+      <div style="margin-bottom:12px; display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label class="small">First name</label>
+          <input type="text" name="first_name" required style="width:100%; padding:10px; margin-top:6px;" placeholder="First name">
+        </div>
+        <div style="flex:1;">
+          <label class="small">Last name</label>
+          <input type="text" name="last_name" required style="width:100%; padding:10px; margin-top:6px;" placeholder="Last name">
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label class="small">Instrument (optional)</label>
+        <select name="instrument" style="width:100%; padding:10px; margin-top:6px;">
+          <option value="">-- select --</option>
+          {% for inst in instrument_options %}
+            <option value="{{ inst }}">{{ inst }}</option>
+          {% endfor %}
+        </select>
+        <div class="small" style="color:#6b7280; margin-top:4px;">Includes orchestral and brass band instruments; choose "Other / Not listed" if needed.</div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label class="small">Password</label>
+        <input type="password" name="password" required style="width:100%; padding:10px; margin-top:6px;">
+      </div>
+
+      {% if not (invite_code and invite) %}
+        <div style="margin-bottom:12px;">
+          <label class="small">Ensemble</label>
+          <select name="ensemble_id" required style="width:100%; padding:10px; margin-top:6px;">
+            <option value="">-- select --</option>
+            {% for e in ensembles %}
+              <option value="{{ e.id }}">{{ e.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% else %}
+        <div style="margin-bottom:12px; background:#f3f4f6; padding:12px; border-radius:4px;">
+          <div class="small" style="color:#6b7280;">Ensemble (from invitation)</div>
+          <strong>{{ invite.ensemble_name or invite.ensemble_id }}</strong>
+        </div>
+      {% endif %}
+
+      <div style="display:flex; gap:10px; align-items:center; margin-top:16px;">
+        <button class="btn" type="submit">Create account</button>
+        <a class="btn secondary" href="{{ url_for('login_view') }}">Back to login</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

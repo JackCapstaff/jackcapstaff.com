@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Flask (run app)",
+      "type": "python",
+      "request": "launch",
+      "module": "flask",
+      "env": {
+        "FLASK_APP": "app.py",
+        "FLASK_ENV": "development",
+        "FLASK_DEBUG": "0",
+        "DATA_DIR": "site/data"
+      },
+      "args": [
+        "run",
+        "--no-reload",
+        "--no-debugger"
+      ],
+      "jinja": true,
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Python: app.py (direct)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/app.py",
+      "console": "integratedTerminal",
+      "args": [],
+      "env": {
+        "FLASK_ENV": "development",
+        "DATA_DIR": "site/data"
+      },
+      "jinja": true
+    },
+    {
+      "name": "Python: Attach",
+      "type": "python",
+      "request": "attach",
+      "connect": { "host": "localhost", "port": 5678 },
+      "pathMappings": [
+        { "localRoot": "${workspaceFolder}", "remoteRoot": "${workspaceFolder}" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,710 @@
+{% extends "base.html" %}
+{% set title = "Admin" %}
+{% set subtitle = "Manage ensembles and users" %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
+      <div>
+        <div class="small">Logged in as</div>
+        <strong>{{ user.email }}</strong>
+      </div>
+      <div>
+        <a class="btn secondary" href="{{ url_for('my_view') }}">Back to My</a>
+        <a class="btn secondary" href="{{ url_for('logout_view') }}">Logout</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notify modal (admin) -->
+  <div id="adminNotifyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:10000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:16px; border-radius:6px; min-width:340px; max-width:560px; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="font-weight:600;">Send schedule update</div>
+        <button class="btn secondary" type="button" onclick="closeAdminNotifyModal()">Close</button>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+        <div class="small">Recipients</div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn secondary" type="button" onclick="toggleAdminRecipients()" id="adminToggleRecipientsBtn">Edit recipients</button>
+          <button class="btn secondary" type="button" onclick="selectAllAdminRecipients(true)">Select all</button>
+          <button class="btn secondary" type="button" onclick="selectAllAdminRecipients(false)">Clear all</button>
+        </div>
+      </div>
+      <div id="adminNotifyRecipientList" style="max-height:320px; overflow-y:auto; margin-bottom:12px; border:1px solid #e5e7eb; padding:8px; border-radius:4px;"></div>
+      <div style="margin-bottom:12px; display:flex; flex-direction:column; gap:6px;">
+        <label class="small">Add custom recipient</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="email" id="adminNotifyCustomEmail" placeholder="name@example.com" style="flex:1; padding:8px; border:1px solid #d1d5db; border-radius:4px;">
+          <button class="btn secondary" type="button" onclick="addAdminCustomRecipient()">Add</button>
+        </div>
+        <div id="adminCustomRecipientChips" class="small" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+        <div>
+          <div class="small" style="margin-bottom:4px;">Subject</div>
+          <input type="text" id="adminNotifySubject" placeholder="Subject" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px;">
+        </div>
+        <div>
+          <div class="small" style="margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span>Email message</span>
+            <span style="display:flex; gap:6px; align-items:center;">
+              <button class="btn secondary" type="button" onclick="formatAdminSelection('b')" title="Bold"><strong>B</strong></button>
+              <button class="btn secondary" type="button" onclick="formatAdminSelection('i')" title="Italic"><em>I</em></button>
+              <button class="btn secondary" type="button" onclick="formatAdminSelection('u')" title="Underline"><u>U</u></button>
+              <button class="btn secondary" type="button" onclick="insertAdminBulletList()" title="Bulleted list">• List</button>
+            </span>
+          </div>
+          <textarea id="adminNotifyBody" rows="10" placeholder="There have been some updates..." style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:4px; font-family: 'Segoe UI', sans-serif; line-height:1.4;"></textarea>
+          <div class="small" style="color:#6b7280; margin-top:4px;">Basic formatting allowed: bold, italic, underline, bullet lists. Updates list and schedule link are added automatically.</div>
+        </div>
+        <div id="adminNotifyLinkPreview" class="small" style="color:#374151;"></div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn secondary" type="button" onclick="closeAdminNotifyModal()">Cancel</button>
+        <button class="btn" type="button" id="adminNotifyModalSend">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>Ensembles</strong>
+
+    <form method="post" action="{{ url_for('admin_create_ensemble') }}" style="margin-top:10px; display:flex; gap:10px;">
+      <input name="name" placeholder="New ensemble name" required style="flex:1; padding:10px;">
+      <button class="btn" type="submit">Create</button>
+    </form>
+
+    <div style="margin-top:12px;">
+      {% for e in ensembles %}
+        <div style="display:flex; gap:10px; align-items:center; margin:8px 0;">
+          <div style="flex:1;">
+            <strong>{{ e.name }}</strong>
+            <span class="small">({{ e.id }})</span>
+          </div>
+
+          <a class="btn secondary" href="{{ url_for('admin_view_invitations', ensemble_id=e.id) }}">Invitations</a>
+          <a class="btn secondary" href="{{ url_for('admin_view_concerts', ensemble_id=e.id) }}">Concerts</a>
+
+          <form method="post" action="{{ url_for('admin_rename_ensemble', ensemble_id=e.id) }}" style="display:flex; gap:8px;">
+            <input name="name" value="{{ e.name }}" required style="padding:8px;">
+            <button class="btn secondary" type="submit">Rename</button>
+          </form>
+
+          <form method="post" action="{{ url_for('admin_delete_ensemble', ensemble_id=e.id) }}"
+                onsubmit="return confirm('Delete ensemble {{ e.name }}? This also removes memberships.');">
+            <button class="btn secondary" type="submit">Delete</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+    <div class="card">
+    <strong>Schedules</strong>
+
+    <form method="post" action="{{ url_for('admin_create_schedule') }}"
+          style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+      <input name="name" placeholder="New schedule name (e.g. Spring 2026)" required style="flex:1; min-width:240px; padding:10px;">
+      <select name="ensemble_id" required style="padding:10px;">
+        <option value="">Select ensemble…</option>
+        {% for e in ensembles %}
+          <option value="{{ e.id }}">{{ e.name }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn" type="submit">Create schedule</button>
+    </form>
+
+    {% if schedules %}
+      <div style="margin-top:14px;">
+        {% for s in schedules %}
+          {% if s.id %}
+          <div style="border-top:1px solid #eee; padding-top:10px; margin-top:10px; display:flex; justify-content:space-between; gap:12px; align-items:baseline;">
+            <div>
+              <strong>{{ s.name }}</strong>
+              <div class="small">
+                Ensemble: {{ ens_by_id.get(s.ensemble_id, {"name": s.ensemble_id}).name }}
+                · Status: <strong>{{ s.status }}</strong>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <a class="btn secondary" href="{{ url_for('admin_edit_schedule', schedule_id=s.id) }}">Edit</a>
+              <a class="btn secondary" href="{{ url_for('schedule_view', schedule_id=s.id) }}">View</a>
+              <a class="btn secondary" href="{{ url_for('admin_schedule_attendance', schedule_id=s.id) }}">Attendance</a>
+              <a class="btn secondary" href="{{ url_for('admin_schedule_audit', schedule_id=s.id) }}">Audit</a>
+
+              <button class="btn secondary" onclick="document.getElementById('upload-complete-schedule-{{ s.id }}').click();">Upload Complete Schedule</button>
+              <form id="upload-complete-schedule-form-{{ s.id }}" style="display:none;">
+                <input type="file" id="upload-complete-schedule-{{ s.id }}" accept=".xlsx" onchange="handleCompleteScheduleUpload('{{ s.id }}', this.files[0])">
+              </form>
+
+              <button class="btn secondary" type="button" onclick="openAdminNotifyModal('{{ s.id }}')">Send updates</button>
+
+              {% if s.status == "draft" %}
+                <form method="post" action="{{ url_for('admin_set_schedule_status', schedule_id=s.id) }}">
+                  <input type="hidden" name="status" value="published">
+                  <label class="small" style="display:inline-flex; align-items:center; gap:6px; margin-right:8px;">
+                    <input type="checkbox" name="notify_publish" checked>
+                    Email members about publish
+                  </label>
+                  <button class="btn" type="submit">Publish</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('admin_set_schedule_status', schedule_id=s.id) }}">
+                  <input type="hidden" name="status" value="draft">
+                  <button class="btn secondary" type="submit">Unpublish</button>
+                </form>
+              {% endif %}
+
+              <form method="post" action="{{ url_for('admin_delete_schedule', schedule_id=s.id) }}"
+                    onsubmit="return confirm('Delete schedule {{ s.name }}?');">
+                <button class="btn secondary" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+          {% else %}
+          <div style="border-top:1px solid #eee; padding-top:10px; margin-top:10px;">
+            <strong style="color: #dc2626;">⚠️ Corrupted Schedule (No ID)</strong>
+            <div class="small">This schedule is corrupted and cannot be loaded. Contact admin to fix.</div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="small" style="margin-top:12px;">No schedules yet.</div>
+    {% endif %}
+  </div>
+
+
+  <div class="card">
+    <strong>Users</strong>
+
+    <div class="small" style="margin-top:6px;">
+      Promote yourself automatically by setting <code>ADMIN_EMAIL</code> in Azure App Settings.
+    </div>
+    <div style="margin-top:12px; display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="small">{{ users|length }} users</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button class="btn" type="button" onclick="openUserEditor()">Manage users</button>
+      </div>
+    </div>
+
+    <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+      {% for u in users %}
+        <div style="border-top:1px solid #eee; padding-top:8px; display:flex; justify-content:space-between; gap:12px; align-items:center;">
+          <div>
+            <strong>{{ u.email }}</strong>
+            {% if u.is_admin %}
+              <span class="small" style="margin-left:8px;">(admin)</span>
+            {% endif %}
+            {% if u.first_name or u.last_name %}
+              <span class="small" style="margin-left:8px;">{{ u.first_name }} {{ u.last_name }}</span>
+            {% endif %}
+            <div class="small" style="color:#666;">{{ (mem_by_user.get(u.id) or [])|length }} membership(s)</div>
+          </div>
+          <button class="btn secondary" type="button" onclick="openUserEditor('{{ u.id }}')">Edit</button>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>System Maintenance</strong>
+    <div style="margin-top: 16px;">
+      <button onclick="cleanupDuplicateConcerts()" class="btn secondary" style="background: #f59e0b; color: white;">
+        🧹 Clean Up Duplicate Concerts
+      </button>
+      <div class="small" style="margin-top: 8px; color: #666;">
+        Removes old auto-generated duplicate concerts (auto_concert_*) from before the deduplication fix.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function handleCompleteScheduleUpload(scheduleId, file) {
+      if (!file) return;
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const response = await fetch(`/api/s/${scheduleId}/import_complete_schedule`, {
+          method: 'POST',
+          body: formData,
+          credentials: 'same-origin'
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          alert(`Success! Uploaded ${result.rehearsals_rows} rehearsals and ${result.timed_rows} scheduled works.`);
+          location.reload();
+        } else {
+          const error = await response.json();
+          alert('Error: ' + (error.error || 'Failed to upload'));
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to upload: ' + error.message);
+      }
+      
+      // Reset file input
+      document.getElementById(`upload-complete-schedule-form-${scheduleId}`).reset();
+    }
+
+    async function cleanupDuplicateConcerts() {
+      if (!confirm('This will remove all duplicate auto-generated concerts. Continue?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/admin/cleanup-duplicate-concerts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin'
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          alert(`Success! ${result.message}`);
+          location.reload();
+        } else {
+          alert('Error cleaning up concerts');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to cleanup concerts: ' + error.message);
+      }
+    }
+
+    async function readJsonOrThrow(res) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) return res.json();
+      const text = await res.text();
+      throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 200)}`);
+    }
+
+    
+    
+      let adminNotifyScheduleId = null;
+      let adminLastDefaultSubject = '';
+      let adminLastDefaultBody = '';
+      let adminScheduleLink = '';
+      let adminCustomRecipients = [];
+    
+      function closeAdminNotifyModal() {
+        const modal = document.getElementById('adminNotifyModal');
+        if (modal) modal.style.display = 'none';
+      }
+    
+      async function openAdminNotifyModal(scheduleId) {
+        adminNotifyScheduleId = scheduleId;
+        adminCustomRecipients = [];
+        renderAdminCustomRecipientChips();
+        const modal = document.getElementById('adminNotifyModal');
+        const list = document.getElementById('adminNotifyRecipientList');
+        const subjectInput = document.getElementById('adminNotifySubject');
+        const bodyInput = document.getElementById('adminNotifyBody');
+        const linkPreview = document.getElementById('adminNotifyLinkPreview');
+        const sendBtn = document.getElementById('adminNotifyModalSend');
+        if (!modal || !list || !subjectInput || !bodyInput || !sendBtn) return;
+      
+        list.innerHTML = '<div class="small">Loading recipients…</div>';
+        modal.style.display = 'flex';
+      
+        try {
+          const recRes = await fetch(`/api/s/${scheduleId}/notify_update`, { method: 'GET', credentials: 'same-origin' });
+          const recData = await readJsonOrThrow(recRes);
+          if (!recRes.ok || !recData.ok) {
+            throw new Error(recData.error || `Unable to load recipients (status ${recRes.status})`);
+          }
+        
+          if (!recData.recipients || recData.recipients.length === 0) {
+            list.innerHTML = '<div class="small">No recipients for this ensemble.</div>';
+            return;
+          }
+        
+          adminLastDefaultSubject = recData.default_subject || '';
+          adminLastDefaultBody = recData.default_body || '';
+          adminScheduleLink = recData.schedule_link || '';
+        
+          subjectInput.value = adminLastDefaultSubject;
+          bodyInput.value = adminLastDefaultBody;
+        
+          if (linkPreview) {
+            if (adminScheduleLink) {
+              linkPreview.innerHTML = `Schedule link: <a href="${adminScheduleLink}" target="_blank" rel="noopener">${adminScheduleLink}</a>`;
+            } else {
+              linkPreview.textContent = '';
+            }
+          }
+        
+          list.innerHTML = recData.recipients.map(r => `
+            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f0f0f0;">
+              <input type="checkbox" class="admin-notify-recipient" value="${r.email}" checked>
+              <span>
+                <div><strong>${r.email}</strong></div>
+                <div class="small" style="color:#666;">${r.status || ''}</div>
+              </span>
+            </label>
+          `).join('');
+        
+          sendBtn.onclick = () => sendAdminNotifications();
+        } catch (err) {
+          console.error('Load recipients failed:', err);
+          list.innerHTML = `<div class="small" style="color:#dc2626;">${err.message}</div>`;
+        }
+      }
+    
+      function toggleAdminRecipients() {
+        const list = document.getElementById('adminNotifyRecipientList');
+        const btn = document.getElementById('adminToggleRecipientsBtn');
+        if (!list || !btn) return;
+        const isHidden = list.style.display === 'none';
+        list.style.display = isHidden ? 'block' : 'none';
+        btn.textContent = isHidden ? 'Hide recipients' : 'Edit recipients';
+      }
+    
+      function selectAllAdminRecipients(selectAll) {
+        document.querySelectorAll('.admin-notify-recipient').forEach(cb => {
+          cb.checked = !!selectAll;
+        });
+      }
+
+      function renderAdminCustomRecipientChips() {
+        const chips = document.getElementById('adminCustomRecipientChips');
+        if (!chips) return;
+        if (!adminCustomRecipients.length) {
+          chips.innerHTML = '<span style="color:#6b7280;">No custom recipients added.</span>';
+          return;
+        }
+        chips.innerHTML = adminCustomRecipients.map(email => `
+          <span style="display:inline-flex; align-items:center; gap:6px; background:#e5e7eb; padding:4px 8px; border-radius:12px;">
+            <span>${email}</span>
+            <button type="button" style="border:none; background:none; cursor:pointer; color:#ef4444;" aria-label="Remove ${email}" onclick="removeAdminCustomRecipient('${email}')">×</button>
+          </span>
+        `).join('');
+      }
+
+      function addAdminCustomRecipient() {
+        const input = document.getElementById('adminNotifyCustomEmail');
+        if (!input) return;
+        const email = (input.value || '').trim();
+        if (!email) return;
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+          alert('Please enter a valid email address');
+          return;
+        }
+        if (!adminCustomRecipients.includes(email)) {
+          adminCustomRecipients.push(email);
+          renderAdminCustomRecipientChips();
+        }
+        input.value = '';
+      }
+
+      function removeAdminCustomRecipient(email) {
+        adminCustomRecipients = adminCustomRecipients.filter(e => e !== email);
+        renderAdminCustomRecipientChips();
+      }
+    
+      function formatAdminSelection(tag) {
+        const ta = document.getElementById('adminNotifyBody');
+        if (!ta) return;
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const before = ta.value.substring(0, start);
+        const selected = ta.value.substring(start, end) || 'text';
+        const after = ta.value.substring(end);
+        const openTag = `<${tag}>`;
+        const closeTag = `</${tag}>`;
+        ta.value = before + openTag + selected + closeTag + after;
+        const cursorPos = before.length + openTag.length + selected.length + closeTag.length;
+        ta.focus();
+        ta.setSelectionRange(cursorPos, cursorPos);
+      }
+    
+      function insertAdminBulletList() {
+        const ta = document.getElementById('adminNotifyBody');
+        if (!ta) return;
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const before = ta.value.substring(0, start);
+        const selected = ta.value.substring(start, end) || 'Item 1\nItem 2';
+        const after = ta.value.substring(end);
+        const listHtml = `<ul>\n<li>${selected.replace(/\n/g, '</li>\n<li>')}</li>\n</ul>`;
+        ta.value = before + listHtml + after;
+        const cursorPos = before.length + listHtml.length;
+        ta.focus();
+        ta.setSelectionRange(cursorPos, cursorPos);
+      }
+    
+      async function sendAdminNotifications() {
+        if (!adminNotifyScheduleId) {
+          alert('No schedule selected.');
+          return;
+        }
+        const checked = Array.from(document.querySelectorAll('.admin-notify-recipient:checked')).map(cb => cb.value);
+        const recipients = [...checked, ...adminCustomRecipients].filter(Boolean);
+        if (!recipients.length) {
+          alert('Select at least one recipient.');
+          return;
+        }
+        const subjectInput = document.getElementById('adminNotifySubject');
+        const bodyInput = document.getElementById('adminNotifyBody');
+        const subject = (subjectInput && subjectInput.value.trim()) || adminLastDefaultSubject || 'Schedule updates';
+        const body = (bodyInput && bodyInput.value.trim()) || adminLastDefaultBody || 'There have been some updates.';
+      
+        try {
+          const res = await fetch(`/api/s/${adminNotifyScheduleId}/notify_update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ subject, body, recipients })
+          });
+          const result = await readJsonOrThrow(res);
+          if (!res.ok || !result.ok) {
+            throw new Error(result.error || `Notification failed (status ${res.status})`);
+          }
+          if (result.notified) {
+            alert(`Emails sent to ${result.recipient_count} recipient(s).`);
+            closeAdminNotifyModal();
+          } else {
+            alert(result.error || 'No recipients or email disabled.');
+          }
+        } catch (err) {
+          console.error('Notify failed:', err);
+          alert('Failed to send updates: ' + err.message);
+        }
+      }
+    
+    const userEditorData = {{ {"users": users, "ensembles": ensembles, "mem_by_user": mem_by_user}|tojson }};
+    let selectedUserId = null;
+
+    function openUserEditor(userId) {
+      const modal = document.getElementById('user-editor-modal');
+      if (!userEditorData.users.length) {
+        alert('No users found');
+        return;
+      }
+      selectedUserId = userId || userEditorData.users[0].id;
+      renderUserTable();
+      renderUserForm();
+      modal.style.display = 'flex';
+    }
+
+    function closeUserEditor() {
+      const modal = document.getElementById('user-editor-modal');
+      modal.style.display = 'none';
+    }
+
+    function renderUserTable() {
+      const tbody = document.getElementById('user-table-body');
+      if (!tbody) return;
+      const memByUser = userEditorData.mem_by_user || {};
+      tbody.innerHTML = '';
+      userEditorData.users.forEach(u => {
+        const tr = document.createElement('tr');
+        const mems = memByUser[u.id] || [];
+        tr.dataset.userId = u.id;
+        tr.style.cursor = 'pointer';
+        tr.onclick = () => selectUser(u.id);
+        tr.innerHTML = `
+          <td>${u.email}</td>
+          <td>${u.first_name || ''}</td>
+          <td>${u.last_name || ''}</td>
+          <td>${u.instrument || ''}</td>
+          <td>${u.is_admin ? 'Yes' : 'No'}</td>
+          <td>${mems.length}</td>
+          <td><button class="btn secondary" type="button" onclick="selectUser('${u.id}'); event.stopPropagation();">Edit</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      updateSelectedRowHighlight();
+    }
+
+    function selectUser(userId) {
+      selectedUserId = userId;
+      renderUserForm();
+      updateSelectedRowHighlight();
+    }
+
+    function updateSelectedRowHighlight() {
+      const rows = document.querySelectorAll('#user-table-body tr');
+      rows.forEach(row => {
+        if (row.dataset.userId === selectedUserId) {
+          row.style.background = '#f5f5f5';
+        } else {
+          row.style.background = 'transparent';
+        }
+      });
+    }
+
+    function renderUserForm() {
+      const memByUser = userEditorData.mem_by_user || {};
+      const u = userEditorData.users.find(x => x.id === selectedUserId);
+      if (!u) return;
+
+      document.getElementById('user-email').value = u.email || '';
+      document.getElementById('user-first-name').value = u.first_name || '';
+      document.getElementById('user-last-name').value = u.last_name || '';
+      document.getElementById('user-instrument').value = u.instrument || '';
+      document.getElementById('user-is-admin').checked = !!u.is_admin;
+
+      const memList = document.getElementById('user-memberships');
+      memList.innerHTML = '';
+      const mems = memByUser[u.id] || [];
+      const ensById = Object.fromEntries((userEditorData.ensembles || []).map(e => [e.id, e]));
+      if (!mems.length) {
+        const li = document.createElement('li');
+        li.className = 'small';
+        li.textContent = 'No memberships';
+        memList.appendChild(li);
+      } else {
+        mems.forEach(m => {
+          const li = document.createElement('li');
+          li.style.margin = '4px 0';
+          const name = (ensById[m.ensemble_id] && ensById[m.ensemble_id].name) || m.ensemble_id;
+          li.innerHTML = `${name} <span class="small">(${m.role || 'member'}, ${m.status || 'active'})</span>`;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn secondary';
+          btn.style.padding = '4px 8px';
+          btn.textContent = 'Remove';
+          btn.onclick = () => removeMembership(m.ensemble_id);
+          li.appendChild(btn);
+          memList.appendChild(li);
+        });
+      }
+
+      document.getElementById('membership-user-id').value = u.id;
+    }
+
+    async function saveUserProfile(event) {
+      event.preventDefault();
+      const u = userEditorData.users.find(x => x.id === selectedUserId);
+      if (!u) return;
+      const form = document.getElementById('user-editor-form');
+      const formData = new FormData(form);
+      const res = await fetch(`/admin/users/${u.id}/update_profile`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+      });
+      if (res.ok) {
+        location.reload();
+      } else {
+        alert('Failed to save user');
+      }
+    }
+
+    async function addMembership(event) {
+      event.preventDefault();
+      const u = userEditorData.users.find(x => x.id === selectedUserId);
+      if (!u) return;
+      const form = document.getElementById('membership-form');
+      const formData = new FormData(form);
+      formData.set('user_id', u.id);
+      const res = await fetch('/admin/memberships/upsert', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+      });
+      if (res.ok) {
+        location.reload();
+      } else {
+        alert('Failed to add membership');
+      }
+    }
+
+    async function removeMembership(ensembleId) {
+      const u = userEditorData.users.find(x => x.id === selectedUserId);
+      if (!u) return;
+      const formData = new FormData();
+      formData.set('user_id', u.id);
+      formData.set('ensemble_id', ensembleId);
+      const res = await fetch('/admin/memberships/remove', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+      });
+      if (res.ok) {
+        location.reload();
+      } else {
+        alert('Failed to remove membership');
+      }
+    }
+  </script>
+
+  <div id="user-editor-modal" style="position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; padding:20px; z-index:1000;">
+    <div style="background:#fff; border-radius:8px; max-width:1100px; width:100%; max-height:90vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 12px 30px rgba(0,0,0,0.2);">
+      <div style="padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee;">
+        <div>
+          <strong>User editor</strong>
+          <div class="small">Edit profile fields, admin flag, and memberships.</div>
+        </div>
+        <button class="btn secondary" type="button" onclick="closeUserEditor()">Close</button>
+      </div>
+      <div style="display:grid; grid-template-columns:1.1fr 0.9fr; gap:0; height:100%;">
+        <div style="overflow:auto; border-right:1px solid #eee; padding:12px 16px;">
+          <table style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr class="small" style="text-align:left; border-bottom:1px solid #eee;">
+                <th>Email</th><th>First</th><th>Last</th><th>Instrument</th><th>Admin</th><th>Memberships</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="user-table-body"></tbody>
+          </table>
+        </div>
+        <div style="padding:16px; overflow:auto;">
+          <form id="user-editor-form" onsubmit="saveUserProfile(event)" style="display:flex; flex-direction:column; gap:10px;">
+            <label class="small">Email</label>
+            <input id="user-email" name="email" type="email" required style="padding:8px;">
+            <div style="display:flex; gap:10px;">
+              <div style="flex:1;">
+                <label class="small">First name</label>
+                <input id="user-first-name" name="first_name" type="text" required style="padding:8px; width:100%;">
+              </div>
+              <div style="flex:1;">
+                <label class="small">Last name</label>
+                <input id="user-last-name" name="last_name" type="text" required style="padding:8px; width:100%;">
+              </div>
+            </div>
+            <label class="small">Instrument</label>
+            <input id="user-instrument" name="instrument" type="text" style="padding:8px;">
+            <label style="display:flex; align-items:center; gap:8px;">
+              <input id="user-is-admin" name="is_admin" type="checkbox">
+              <span class="small">Is admin</span>
+            </label>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" type="submit">Save profile</button>
+            </div>
+          </form>
+
+          <div style="border-top:1px solid #eee; margin:14px 0 10px;"></div>
+          <div>
+            <strong>Memberships</strong>
+            <ul id="user-memberships" style="margin-top:8px;"></ul>
+            <form id="membership-form" onsubmit="addMembership(event)" style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+              <input id="membership-user-id" type="hidden" name="user_id" value="">
+              <select name="ensemble_id" required style="padding:8px; min-width:200px;">
+                <option value="">Add to ensemble…</option>
+                {% for e in ensembles %}
+                  <option value="{{ e.id }}">{{ e.name }}</option>
+                {% endfor %}
+              </select>
+              <select name="role" style="padding:8px;">
+                <option value="member">member</option>
+                <option value="admin">admin (ensemble)</option>
+              </select>
+              <select name="status" style="padding:8px;">
+                <option value="active">active</option>
+                <option value="pending">pending</option>
+              </select>
+              <button class="btn secondary" type="submit">Add / Update</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

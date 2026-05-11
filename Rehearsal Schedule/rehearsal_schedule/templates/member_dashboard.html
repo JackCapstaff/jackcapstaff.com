@@ -1,0 +1,1015 @@
+{% extends "base.html" %}
+{% block title %}Member Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Concerts Section -->
+    <!-- Debug: concerts count = {{ concerts|length }} -->
+    {% if concerts %}
+    <div class="card mb-4">
+        <h3 style="margin-bottom: 16px;">
+            <i class="bi bi-calendar-event" style="margin-right: 8px;"></i> Upcoming Events
+        </h3>
+        
+        <!-- Debug: About to render {{ concerts|length }} concerts -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 16px;">
+            {% for concert in concerts %}
+                {% if concert.status == 'scheduled' %}
+                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
+                    <!-- Visible header (always shown) -->
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; cursor: pointer;" onclick="
+                        var details = this.parentElement.querySelector('.concert-details');
+                        var icon = this.querySelector('.toggle-icon');
+                        if (details.style.display === 'none') {
+                            details.style.display = 'block';
+                            icon.textContent = '▼';
+                        } else {
+                            details.style.display = 'none';
+                            icon.textContent = '▶';
+                        }
+                    ">
+                        <div style="flex: 1;">
+                            <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                {{ concert.ensemble_name }}
+                            </div>
+                            <div style="font-size: 1.1rem; font-weight: bold;">
+                                📅 {{ concert.date|uk_date_format }}
+                            </div>
+                            {% if concert.time %}
+                            <div style="font-size: 0.95rem; color: #666;">
+                                🕒 {{ concert.time }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <span class="toggle-icon" style="font-size: 1.2rem; color: #666; user-select: none;">▶</span>
+                    </div>
+                    
+                    <!-- Collapsible details (hidden by default) -->
+                    <div class="concert-details" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                        {% if concert.venue %}
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: bold; color: #666;">Venue:</span> {{ concert.venue }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if concert.uniform %}
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: bold; color: #666;">Uniform:</span> {{ concert.uniform }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if concert.programme %}
+                        <div style="margin-bottom: 12px;">
+                            <span style="font-weight: bold; color: #666;">Programme:</span>
+                            {{ concert.programme | format_programme | safe }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if concert.other_info %}
+                        <div style="margin-bottom: 8px; font-size: 0.9rem; color: #666;">
+                            <span style="font-weight: bold;">Other Info:</span> {{ concert.other_info }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if concert.schedule_id %}
+                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; flex-wrap: wrap;">
+                            <a href="{{ url_for('schedule_view', schedule_id=concert.schedule_id) }}" class="btn btn-sm" style="background-color: #0d6efd; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px;">
+                                <i class="bi bi-calendar-check"></i> View Rehearsal Schedule
+                            </a>
+                            {% if user and user.is_admin %}
+                            <a href="{{ url_for('admin_edit_schedule', schedule_id=concert.schedule_id) }}" class="btn btn-sm" style="background-color: #6c757d; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px;">
+                                <i class="bi bi-pencil"></i> Edit Schedule
+                            </a>
+                            <button onclick="event.stopPropagation(); openEditConcertModal('{{ concert.id }}', '{{ concert.ensemble_id }}')" class="btn btn-sm" style="background-color: #198754; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer;">
+                                <i class="bi bi-music-note"></i> Edit Concert
+                            </button>
+                            <form method="post" action="{{ url_for('admin_delete_concert', ensemble_id=concert.ensemble_id, concert_id=concert.id) }}" onsubmit="event.stopPropagation(); return confirm('Delete concert on {{ concert.date }}?');" style="margin:0;">
+                              <button type="submit" class="btn btn-sm" style="background-color:#dc3545; color:white; padding:6px 12px; border-radius:4px; border:none; cursor:pointer;">Delete</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        
+        {% set scheduled_concerts = [] %}
+        {% set other_concerts = [] %}
+        {% for c in concerts %}
+            {% if c.status == 'scheduled' %}
+                {% if scheduled_concerts.append(c) %}{% endif %}
+            {% else %}
+                {% if other_concerts.append(c) %}{% endif %}
+            {% endif %}
+        {% endfor %}
+        
+        {% if other_concerts %}
+        <details style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+            <summary style="cursor: pointer; font-weight: bold; color: #666;">
+                Past & Cancelled Concerts
+            </summary>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 16px; margin-top: 16px;">
+                {% for concert in other_concerts %}
+                    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: {% if concert.status == 'cancelled' %}#fff5f5{% else %}#f0f0f0{% endif %}; opacity: 0.8;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                    {{ concert.ensemble_name }}
+                                </div>
+                                <div style="font-size: 1.1rem; font-weight: bold;">
+                                    {{ concert.date|uk_date_format }}
+                                </div>
+                                {% if concert.time %}
+                                <div style="font-size: 0.95rem; color: #666;">
+                                    {{ concert.time }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <span style="display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; background-color: {% if concert.status == 'cancelled' %}#f08080{% else %}#90ee90{% endif %}; color: white;">
+                                {{ concert.status|upper }}
+                            </span>
+                        </div>
+                        
+                        {% if concert.venue %}
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: bold; color: #666;">Venue:</span> {{ concert.venue }}
+                        </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </details>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <h1>My Rehearsals</h1>
+    
+    <!-- View Toggle and Download -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-primary" id="listViewBtn">
+                <i class="bi bi-list-ul"></i> List View
+            </button>
+            <button type="button" class="btn btn-outline-primary active" id="calendarViewBtn">
+                <i class="bi bi-calendar3"></i> Calendar View
+            </button>
+        </div>
+        <a href="{{ url_for('download_my_schedule_pdf') }}" class="btn btn-success">
+            <i class="bi bi-file-pdf"></i> Download My Schedule
+        </a>
+    </div>
+    
+    <!-- List View -->
+    <div id="listView" class="d-none">
+        <div class="accordion" id="rehearsalAccordion">
+            <!-- Populated by JavaScript -->
+        </div>
+        <div id="listViewLoading" class="text-center py-4">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+        <div id="listViewEmpty" class="alert alert-info d-none">
+            No upcoming rehearsals found.
+        </div>
+    </div>
+    
+    <!-- Calendar View -->
+    <div id="calendarView">
+        <div class="row mb-3">
+            <div class="col text-center">
+                <button class="btn btn-sm btn-outline-secondary" id="prevMonth">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="mx-3 fw-bold" id="calendarMonths"></span>
+                <button class="btn btn-sm btn-outline-secondary" id="nextMonth">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12">
+                <div id="calendar1"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.calendar-month {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    background-color: white;
+}
+
+.calendar-header {
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    background-color: #e9ecef;
+    border: 1px solid #e9ecef;
+}
+
+.calendar-day-header {
+    text-align: center;
+    font-weight: bold;
+    padding: 0.5rem 0.25rem;
+    background-color: #f8f9fa;
+    font-size: 0.75rem;
+}
+
+.calendar-day {
+    min-height: 70px;
+    max-height: 100px;
+    padding: 0.25rem;
+    background-color: #fff;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.calendar-day.other-month {
+    background-color: #f8f9fa;
+    color: #6c757d;
+}
+
+.calendar-day-number {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.125rem;
+    flex-shrink: 0;
+}
+
+.calendar-rehearsals-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+}
+
+.calendar-rehearsal {
+    font-size: 0.65rem;
+    line-height: 1.2;
+    padding: 0.125rem 0.25rem;
+    margin-bottom: 0.125rem;
+    border-radius: 0.2rem;
+    background-color: #0d6efd;
+    color: white;
+    text-decoration: none;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+}
+
+.calendar-rehearsal:hover {
+    background-color: #0b5ed7;
+    color: white;
+    text-decoration: none;
+}
+
+.calendar-concert {
+    font-size: 0.65rem;
+    line-height: 1.2;
+    padding: 0.125rem 0.25rem;
+    margin-bottom: 0.125rem;
+    border-radius: 0.2rem;
+    background-color: #198754;
+    color: white;
+    text-decoration: none;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+}
+
+.calendar-concert:hover {
+    background-color: #157347;
+    color: white;
+    text-decoration: none;
+}
+
+/* Show scrollbar only on hover for cleaner look */
+.calendar-rehearsals-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.calendar-rehearsals-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.calendar-rehearsals-container::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 2px;
+}
+
+.calendar-rehearsals-container:hover::-webkit-scrollbar-thumb {
+    background: #a0aec0;
+}
+
+/* Today highlighting */
+.calendar-day.today {
+    background-color: #fff3cd;
+    border: 2px solid #ffc107;
+}
+
+.calendar-day.today .calendar-day-number {
+    font-weight: bold;
+    color: #ff6b6b;
+}
+
+.calendar-day.past-day {
+    background-color: #f7f7f7;
+    color: #9ca3af;
+    opacity: 0.85;
+}
+
+.reh-past .accordion-button {
+    background: #f6f6f6;
+    color: #7a7a7a;
+}
+
+.reh-past {
+    border-color: #e5e5e5;
+    opacity: 0.92;
+}
+
+/* Mobile: Stack calendars vertically */
+@media (max-width: 767.98px) {
+    .calendar-day {
+        min-height: 60px;
+        max-height: 80px;
+    }
+    
+    .calendar-rehearsal {
+        font-size: 0.6rem;
+        padding: 0.1rem 0.2rem;
+    }
+}
+
+.rehearsal-card {
+    border-left: 4px solid #0d6efd;
+}
+
+.rehearsal-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.rehearsal-item:last-child {
+    border-bottom: none;
+}
+
+.rehearsal-item.break {
+    background-color: #f8f9fa;
+    font-style: italic;
+}
+</style>
+
+<!-- Concert Details Modal -->
+<div class="modal fade" id="concertModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="concertModalTitle">Concert Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="concertModalContent">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Embed concerts data from server
+const concertsData = {{ concerts|tojson }};
+
+console.log('Member dashboard JavaScript loaded');
+console.log('Total concerts from server:', concertsData.length);
+console.log('Concert dates:', concertsData.map(c => ({ id: c.id, title: c.title, date: c.date, status: c.status })));
+
+let rehearsalsData = [];
+
+// Normalize concert dates to YYYY-MM-DD to avoid timezone/date-shift issues in the calendar
+try {
+    for (let i = 0; i < concertsData.length; i++) {
+        const c = concertsData[i];
+        if (!c || !c.date) continue;
+        try {
+            const d = new Date(c.date);
+            if (!isNaN(d.getTime())) {
+                concertsData[i].date = d.toISOString().split('T')[0];
+            } else {
+                // Try parsing as plain date string (YYYY-MM-DD)
+                concertsData[i].date = String(c.date).split('T')[0];
+            }
+        } catch (e) {
+            concertsData[i].date = String(c.date).split('T')[0];
+        }
+    }
+    console.log('Normalized concert dates:', concertsData.map(c => ({ id: c.id, date: c.date })));
+} catch (e) {
+    console.error('Error normalizing concert dates:', e);
+}
+let currentMonthOffset = 0; // Will be initialized to 0 to show current month
+
+// Show concert details in modal
+function showConcertDetails(concertId) {
+    const concert = concertsData.find(c => c.id === concertId);
+    if (!concert) return;
+    
+    document.getElementById('concertModalTitle').textContent = concert.title || concert.ensemble_name;
+    
+    let content = `
+        <div class="concert-detail">
+            <p><strong>Ensemble:</strong> ${concert.ensemble_name}</p>
+            <p><strong>Date:</strong> ${new Date(concert.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p><strong>Time:</strong> ${concert.time || 'Time not specified'}</p>
+            <p><strong>Venue:</strong> ${concert.venue || 'Venue not specified'}</p>
+    `;
+    
+    if (concert.uniform) {
+        content += `<p><strong>Uniform:</strong> ${concert.uniform}</p>`;
+    }
+    
+    if (concert.programme) {
+        content += `<p><strong>Programme:</strong></p><div class="bg-light p-2 rounded">${concert.programme.replace(/\n/g, '<br>')}</div>`;
+    }
+    
+    if (concert.other_info) {
+        content += `<p><strong>Other Information:</strong></p><div class="bg-light p-2 rounded">${concert.other_info.replace(/\n/g, '<br>')}</div>`;
+    }
+    
+    if (concert.schedule_id) {
+        content += `<div class="mt-3" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="/s/${concert.schedule_id}" class="btn btn-sm btn-primary">View Rehearsal Schedule</a>`;
+        {% if user and user.is_admin %}
+        content += `<button onclick="editConcertFromCalendar('${concert.id}', '${concert.ensemble_id}')" class="btn btn-sm btn-success"><i class="bi bi-pencil"></i> Edit Concert</button>`;
+        {% endif %}
+        content += `</div>`;
+    }
+    
+    content += `</div>`;
+    
+    document.getElementById('concertModalContent').innerHTML = content;
+    const modal = new bootstrap.Modal(document.getElementById('concertModal'));
+    modal.show();
+}
+
+// Load rehearsals data
+async function loadRehearsals() {
+    console.log('loadRehearsals() called');
+    try {
+        console.log('Fetching /api/member/rehearsals...');
+        const response = await fetch('/api/member/rehearsals');
+        rehearsalsData = await response.json();
+        console.log('Loaded rehearsals data:', rehearsalsData);
+        renderListView();
+        renderCalendarView();
+    } catch (error) {
+        console.error('Error loading rehearsals:', error);
+    }
+}
+
+// Render List View
+function renderListView() {
+    const accordion = document.getElementById('rehearsalAccordion');
+    const loading = document.getElementById('listViewLoading');
+    const empty = document.getElementById('listViewEmpty');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    loading.classList.add('d-none');
+    
+    // Extract rehearsals array from the response
+    const rehearsals = rehearsalsData.rehearsals || rehearsalsData.events || rehearsalsData || [];
+    
+    if (rehearsals.length === 0) {
+        empty.classList.remove('d-none');
+        return;
+    }
+    
+    empty.classList.add('d-none');
+    
+    accordion.innerHTML = rehearsals.map((reh, index) => {
+        const date = new Date(reh.date);
+        const dateMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const isPast = dateMidnight < today;
+        const day = date.getDate();
+        const suffix = ['th', 'st', 'nd', 'rd'][((day % 100) - 20) % 10] || ['th', 'st', 'nd', 'rd'][day % 100] || 'th';
+        const dateStr = date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/\d+/, day + suffix);
+        
+        const itemsHtml = reh.items.map(item => {
+            if (item.is_break) {
+                return `<div class="rehearsal-item break">☕ Break - ${item.time}</div>`;
+            }
+            return `
+                <div class="rehearsal-item">
+                    <div><strong>${item.title}</strong></div>
+                    <small class="text-muted">${item.time}</small>
+                </div>
+            `;
+        }).join('');
+        
+        // Determine header text and styling based on event_type
+        let headerText = '';
+        let headerClass = '';
+        let itemsHtmlContent = itemsHtml;
+        const eventType = reh.event_type || 'Rehearsal';
+        
+        if (eventType === 'Concert') {
+            // Concert event - look up concert details
+            const concerts = rehearsalsData.concerts || concertsData || [];
+            const concertForReh = concerts.find(c => c.date === reh.date && c.schedule_id === reh.schedule_id);
+            
+            if (concertForReh) {
+                headerText = `🎵 ${concertForReh.title}`;
+                headerClass = 'concert-header';
+                // Override items with concert details
+                itemsHtmlContent = `
+                    <div class="p-3">
+                        <div class="mb-2"><strong>📅 Date:</strong> ${dateStr}</div>
+                        ${concertForReh.time ? `<div class="mb-2"><strong>🕒 Time:</strong> ${concertForReh.time}</div>` : ''}
+                        ${concertForReh.venue ? `<div class="mb-2"><strong>📍 Venue:</strong> ${concertForReh.venue}</div>` : ''}
+                        ${concertForReh.uniform ? `<div class="mb-2"><strong>👔 Uniform:</strong> ${concertForReh.uniform}</div>` : ''}
+                        ${concertForReh.programme ? `<div class="mt-3"><strong>Programme:</strong><div class="bg-light p-2 rounded mt-1" style="white-space: pre-wrap; font-family: monospace;">${concertForReh.programme}</div></div>` : ''}
+                        ${concertForReh.other_info ? `<div class="mt-3"><strong>💡 Other Info:</strong><div class="bg-light p-2 rounded mt-1">${concertForReh.other_info}</div></div>` : ''}
+                    </div>
+                `;
+            } else {
+                headerText = `🎵 ${reh.ensemble_name} - Concert - ${dateStr}`;
+                headerClass = 'concert-header';
+            }
+        } else if (eventType === 'Sectional') {
+            // Sectional rehearsal - show as "Ensemble - Sectional - Section"
+            headerText = `<span style="background-color: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem; margin-right: 8px;">🎻 ${reh.section}</span>` +
+                        `${reh.ensemble_name} - Sectional - ${reh.section} - ${dateStr}`;
+            headerClass = 'sectional-header';
+        } else {
+            // Full ensemble rehearsal (default)
+            headerText = `${reh.ensemble_name} - Rehearsal ${reh.rehearsal_num} - ${dateStr}`;
+            headerClass = '';
+        }
+        
+        const pastClass = isPast ? 'reh-past' : '';
+
+        return `
+            <div class="accordion-item ${pastClass}">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed ${headerClass}" type="button" 
+                            data-bs-toggle="collapse" data-bs-target="#collapse${index}">
+                        <strong>${headerText}</strong>
+                    </button>
+                </h2>
+                <div id="collapse${index}" class="accordion-collapse collapse" 
+                     data-bs-parent="#rehearsalAccordion">
+                    <div class="accordion-body p-0">
+                        ${eventType === 'Concert' ? itemsHtmlContent : `<div class="rehearsal-card">${itemsHtml}</div>`}
+                        <div class="p-3">
+                            <a href="/s/${reh.schedule_id}?reh=${reh.rehearsal_num}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-eye"></i> View Full Schedule
+                            </a>
+                            <a href="/s/${reh.schedule_id}/pdf" class="btn btn-sm btn-secondary">
+                                <i class="bi bi-file-pdf"></i> Download PDF
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Render Calendar View
+function renderCalendarView() {
+    const today = new Date();
+    const month1 = new Date(today.getFullYear(), today.getMonth() + currentMonthOffset, 1);
+    
+    document.getElementById('calendarMonths').textContent = 
+        month1.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    
+    document.getElementById('calendar1').innerHTML = renderMonth(month1);
+}
+
+function renderMonth(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+    
+    const monthName = date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    
+    let html = `<div class="calendar-month">
+        <div class="calendar-header">${monthName}</div>
+        <div class="calendar-grid">
+            <div class="calendar-day-header">Sun</div>
+            <div class="calendar-day-header">Mon</div>
+            <div class="calendar-day-header">Tue</div>
+            <div class="calendar-day-header">Wed</div>
+            <div class="calendar-day-header">Thu</div>
+            <div class="calendar-day-header">Fri</div>
+            <div class="calendar-day-header">Sat</div>`;
+    
+    const currentDate = new Date(startDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < 42; i++) {
+        const isOtherMonth = currentDate.getMonth() !== month;
+        const isPastDay = currentDate < today;
+        // Build local YYYY-MM-DD to avoid UTC timezone shifts
+        const pad = (n) => String(n).padStart(2, '0');
+        const dateStr = `${currentDate.getFullYear()}-${pad(currentDate.getMonth()+1)}-${pad(currentDate.getDate())}`;
+        const isToday = currentDate.getTime() === today.getTime();
+        // Extract rehearsals from the response object
+        const rehearsals = rehearsalsData.rehearsals || rehearsalsData.events || rehearsalsData || [];
+        const concerts = rehearsalsData.concerts || concertsData || [];
+        const dayRehearsals = rehearsals.filter(reh => reh.date === dateStr);
+        const dayConcerts = concerts.filter(concert => {
+            const concertDate = concert.date;
+            const hasScheduledStatus = concert.status === 'scheduled' || concert.status === undefined || concert.status === null;
+            return concertDate === dateStr && hasScheduledStatus;
+        });
+        
+        html += `<div class="calendar-day ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${isPastDay ? 'past-day' : ''}">
+            <div class="calendar-day-number">${currentDate.getDate()}</div>
+            <div class="calendar-rehearsals-container">`;
+        
+        // Show concerts first (green)
+        dayConcerts.forEach(concert => {
+            const truncatedName = concert.ensemble_name.length > 15 ? concert.ensemble_name.substring(0, 15) + '...' : concert.ensemble_name;
+            const concertId = concert.concert_id || concert.id || '';
+            html += `<button class="calendar-concert" onclick="showConcertDetails('${concertId.replace(/'/g, "\\'")}')" title="Click to view details">
+                🎵 ${truncatedName}
+            </button>`;
+        });
+        
+        // Then show rehearsals (blue)
+        dayRehearsals.forEach(reh => {
+            // Skip concerts - already displayed above
+            if (reh.event_type === 'Concert') {
+                return;
+            }
+            const truncatedName = reh.ensemble_name.length > 15 ? reh.ensemble_name.substring(0, 15) + '...' : reh.ensemble_name;
+            
+            // Determine display label based on event type
+            let rehearsalLabel = `R${reh.rehearsal_num}`;
+            if (reh.event_type === 'Sectional' && reh.section && reh.section !== 'Full Ensemble') {
+                rehearsalLabel = reh.section;
+            }
+            
+            // Show section badge for sectionals
+            let sectionLabel = '';
+            if (reh.event_type === 'Sectional') {
+                sectionLabel = ` <span style="background-color: #fff3cd; color: #856404; font-size: 0.7rem; padding: 1px 4px; border-radius: 2px;">🎻 ${reh.section}</span>`;
+            }
+            
+            html += `<a href="/s/${reh.schedule_id}?reh=${reh.rehearsal_num}" class="calendar-rehearsal" title="${reh.section || 'Full Ensemble'}">
+                ${truncatedName} - ${rehearsalLabel}${sectionLabel}
+            </a>`;
+        });
+        
+        html += `</div></div>`;
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    html += `</div></div>`;
+    return html;
+}
+
+// View toggle handlers
+document.getElementById('listViewBtn').addEventListener('click', () => {
+    document.getElementById('listView').classList.remove('d-none');
+    document.getElementById('calendarView').classList.add('d-none');
+    document.getElementById('listViewBtn').classList.add('active');
+    document.getElementById('calendarViewBtn').classList.remove('active');
+});
+
+document.getElementById('calendarViewBtn').addEventListener('click', () => {
+    document.getElementById('listView').classList.add('d-none');
+    document.getElementById('calendarView').classList.remove('d-none');
+    document.getElementById('listViewBtn').classList.remove('active');
+    document.getElementById('calendarViewBtn').classList.add('active');
+});
+
+// Calendar navigation
+document.getElementById('prevMonth').addEventListener('click', () => {
+    currentMonthOffset -= 1;
+    renderCalendarView();
+});
+
+document.getElementById('nextMonth').addEventListener('click', () => {
+    currentMonthOffset += 1;
+    renderCalendarView();
+});
+
+// Load data on page load
+loadRehearsals();
+
+// Edit concert from calendar modal
+function editConcertFromCalendar(concertId, ensembleId) {
+    // Close the concert details modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('concertModal'));
+    if (modal) modal.hide();
+    
+    // Open edit modal
+    openEditConcertModalForDashboard(concertId, ensembleId);
+}
+
+// Edit concert from upcoming concerts section
+function openEditConcertModal(concertId, ensembleId) {
+    openEditConcertModalForDashboard(concertId, ensembleId);
+}
+
+// Unified edit concert modal for dashboard
+async function openEditConcertModalForDashboard(concertId, ensembleId) {
+    console.log('[EDIT CONCERT] Looking for concert:', concertId);
+    console.log('[EDIT CONCERT] rehearsalsData:', rehearsalsData);
+    console.log('[EDIT CONCERT] rehearsalsData.concerts:', rehearsalsData?.concerts);
+    console.log('[EDIT CONCERT] concertsData:', concertsData);
+    
+    // Find the concert
+    const concerts = rehearsalsData.concerts || concertsData || [];
+    console.log('[EDIT CONCERT] Combined concerts array:', concerts);
+    const concert = concerts.find(c => c.id === concertId);
+    console.log('[EDIT CONCERT] Found concert:', concert);
+    
+    if (!concert) {
+        console.error('[EDIT CONCERT] Concert not found! Available concerts:', concerts.map(c => ({id: c.id, title: c.title})));
+        alert('Concert not found');
+        return;
+    }
+    
+    // Create modal overlay
+    const overlay = document.createElement("div");
+    overlay.id = "editConcertModalOverlay";
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+    
+    // Create modal content
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+    `;
+    
+    modal.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: #111827;">Edit Concert</h3>
+            <button onclick="document.getElementById('editConcertModalOverlay')?.remove()" style="background: none; border: none; font-size: 24px; color: #6b7280; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Concert Title</label>
+            <input type="text" id="dashEditConcertTitle" value="${concert.title || ''}" placeholder="e.g., Spring Concert 2026" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Date</label>
+            <input type="date" id="dashEditConcertDate" value="${concert.date || ''}" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Time (HH:MM)</label>
+            <input type="text" id="dashEditConcertTime" value="${concert.time || ''}" placeholder="e.g., 19:30" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Venue</label>
+            <input type="text" id="dashEditConcertVenue" value="${concert.venue || ''}" placeholder="e.g., Town Hall" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Uniform</label>
+            <input type="text" id="dashEditConcertUniform" value="${concert.uniform || ''}" placeholder="e.g., Black tie, Concert dress" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Programme</label>
+            <div id="dashProgrammeSetsContainer" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- Sets will be added here dynamically -->
+            </div>
+            <button type="button" onclick="addDashProgrammeSet()" class="btn secondary" style="padding: 6px 12px; margin-top: 8px; font-size: 13px; background: #e5e7eb; color: #111827; border: none; border-radius: 6px; cursor: pointer;">+ Add Set</button>
+            <small style="color: #6b7280; display: block; margin-top: 4px;">Add sets for the concert programme. Line breaks will be preserved.</small>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px;">Other Info</label>
+            <textarea id="dashEditConcertOtherInfo" placeholder="Additional information..." style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box; min-height: 80px;">${concert.other_info || ''}</textarea>
+        </div>
+        
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button onclick="document.getElementById('editConcertModalOverlay')?.remove()" class="btn secondary" style="padding: 8px 16px; background: #e5e7eb; color: #111827; border: none; border-radius: 6px; cursor: pointer;">Cancel</button>
+            <button onclick="saveDashboardConcertEdit('${concertId}', '${ensembleId}', '${concert.schedule_id || ''}')" class="btn" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer;">Save Changes</button>
+        </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    // Initialize programme sets
+    initializeDashProgrammeSets(concert.programme || '');
+    
+    // Focus the title input
+    setTimeout(() => document.getElementById('dashEditConcertTitle').focus(), 100);
+}
+
+// Save concert edits from dashboard
+async function saveDashboardConcertEdit(concertId, ensembleId, scheduleId) {
+    const title = document.getElementById('dashEditConcertTitle').value.trim() || 'Concert';
+    const date = document.getElementById('dashEditConcertDate').value;
+    const time = document.getElementById('dashEditConcertTime').value.trim() || '';
+    const venue = document.getElementById('dashEditConcertVenue').value.trim() || '';
+    const uniform = document.getElementById('dashEditConcertUniform').value.trim() || '';
+    const programme = collectDashProgrammeSets();
+    const otherInfo = document.getElementById('dashEditConcertOtherInfo').value.trim() || '';
+    
+    try {
+        let url;
+        if (scheduleId) {
+            url = `/api/s/${scheduleId}/concert/${concertId}`;
+        } else {
+            url = `/api/ensembles/${ensembleId}/concerts/${concertId}`;
+        }
+        
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: title,
+                date: date,
+                time: time,
+                venue: venue,
+                uniform: uniform,
+                programme: programme,
+                other_info: otherInfo
+            })
+        });
+        
+        if (response.ok) {
+            alert('Concert updated successfully!');
+            document.getElementById('editConcertModalOverlay').remove();
+            // Reload the page to show updated data
+            location.reload();
+        } else {
+            const error = await response.text();
+            alert('Error saving concert: ' + error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to save concert: ' + error.message);
+    }
+}
+
+// Programme set management for dashboard modal
+function initializeDashProgrammeSets(programmeText) {
+  const container = document.getElementById('dashProgrammeSetsContainer');
+  if (!container) return;
+  
+    const normalized = (programmeText || '').replace(/\r\n/g, '\n');
+    const lines = normalized.split('\n');
+    const setRegex = /^Set\s+(\d+):?/i;
+    const sets = [];
+    let currentNum = null;
+    let currentLines = [];
+    lines.forEach(line => {
+        const m = line.match(setRegex);
+        if (m) {
+            if (currentNum !== null) {
+                sets.push({ num: currentNum, content: currentLines.join('\n') });
+            }
+            currentNum = m[1];
+            currentLines = [];
+        } else {
+            if (currentNum === null) currentNum = 1;
+            currentLines.push(line);
+        }
+    });
+    if (currentNum !== null) {
+        sets.push({ num: currentNum, content: currentLines.join('\n') });
+    }
+    if (sets.length === 0) {
+        sets.push({ num: 1, content: normalized });
+    }
+    sets.forEach((s, idx) => addDashProgrammeSet(s.num || idx + 1, s.content));
+}
+
+function addDashProgrammeSet(setNumber, content = '') {
+  const container = document.getElementById('dashProgrammeSetsContainer');
+  if (!container) return;
+  
+  if (!setNumber) {
+    const existingSets = container.querySelectorAll('.dash-programme-set');
+    setNumber = existingSets.length + 1;
+  }
+  
+  const setDiv = document.createElement('div');
+  setDiv.className = 'dash-programme-set';
+  setDiv.style.cssText = 'border: 1px solid #d1d5db; border-radius: 6px; padding: 12px; background: #f9fafb;';
+  
+  setDiv.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <label style="font-weight: 500; color: #374151; font-size: 13px;">Set ${setNumber}</label>
+      <button type="button" onclick="removeDashProgrammeSet(this)" class="btn secondary" style="padding: 4px 8px; font-size: 12px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Remove</button>
+    </div>
+    <textarea class="dash-programme-set-content" placeholder="Enter pieces for this set, one per line..." style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; box-sizing: border-box; min-height: 80px; font-family: monospace; resize: vertical;"></textarea>
+  `;
+  
+  // Set textarea content after creating element to preserve special characters
+  const textarea = setDiv.querySelector('.dash-programme-set-content');
+  if (textarea) {
+    textarea.value = content;
+  }
+  
+  container.appendChild(setDiv);
+  renumberDashProgrammeSets();
+}
+
+function removeDashProgrammeSet(button) {
+  const container = document.getElementById('dashProgrammeSetsContainer');
+  if (!container) return;
+  
+  const setDiv = button.closest('.dash-programme-set');
+  if (setDiv) {
+    setDiv.remove();
+    renumberDashProgrammeSets();
+    
+    const remainingSets = container.querySelectorAll('.dash-programme-set');
+    if (remainingSets.length === 0) {
+      addDashProgrammeSet(1, '');
+    }
+  }
+}
+
+function renumberDashProgrammeSets() {
+  const container = document.getElementById('dashProgrammeSetsContainer');
+  if (!container) return;
+  
+  const sets = container.querySelectorAll('.dash-programme-set');
+  sets.forEach((set, idx) => {
+    const label = set.querySelector('label');
+    if (label) {
+      label.textContent = `Set ${idx + 1}`;
+    }
+  });
+}
+
+function collectDashProgrammeSets() {
+  const container = document.getElementById('dashProgrammeSetsContainer');
+  if (!container) return '';
+  
+  const sets = container.querySelectorAll('.dash-programme-set');
+  const parts = [];
+  
+  sets.forEach((set, idx) => {
+        const textarea = set.querySelector('.dash-programme-set-content');
+        const content = textarea?.value || '';
+    if (content) {
+      parts.push(`Set ${idx + 1}:\n${content}`);
+    }
+  });
+  
+  return parts.join('\n\n');
+}
+</script>
+{% endblock %}

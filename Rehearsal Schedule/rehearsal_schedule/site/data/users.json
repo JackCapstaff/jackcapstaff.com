@@ -1,0 +1,37 @@
+[
+  {
+    "id": "872bf6d3b5bd45a1824cfb04c105c1ad",
+    "email": "jack@jackcapstaff.com",
+    "password_hash": "scrypt:32768:8:1$N5Sw5pGDoiD3HSW4$2c12b477263688d4f970e6b6cf9570c0d96e77a3dab4649ff56cc46ad597404cab8fed99f20736e06bd1efbfff6143fe1e4355ff2ec236a4cec97b31f9b8e06e",
+    "is_admin": true,
+    "created_at": 1768919326,
+    "first_name": "Jack",
+    "last_name": "Capstaff",
+    "instrument": "Conductor",
+    "name": "Jack Capstaff",
+    "reset_token": "93001d540bc047288e2aebf7a20adefb",
+    "reset_expires": 1778489701
+  },
+  {
+    "id": "4a729632800e4901849ad39452dde329",
+    "email": "charlottecapstaff@gmail.com",
+    "password_hash": "scrypt:32768:8:1$BQo64AThGOU0x2Fs$7fa7ddbf5a14fdf1463497d668b5c6c66f41ef6356a621eb3ecf942c9a1453f0dc4cba084e24c9ec7fdbfa42b7a69450ed9b91f4a97739f7044d0ca5cc132b29",
+    "is_admin": true,
+    "created_at": 1768919531,
+    "first_name": "Charlotte",
+    "last_name": "Capstaff",
+    "instrument": "Violin",
+    "name": "Charlotte Capstaff"
+  },
+  {
+    "id": "9fa5f65b93314f8bbc9b7bc684890092",
+    "email": "jackcapstaff@googlemail.com",
+    "password_hash": "scrypt:32768:8:1$bfyxlDrTKa7hO0ys$714e863d8a18662c093b624c5f773710aa4be957d20a113e4b0bbc2f87c7b87b2b712746114e85bdb0cb900c2b554e58a591828963350cc175d2954845a62e52",
+    "is_admin": false,
+    "created_at": 1769165508,
+    "first_name": "William",
+    "last_name": "Wilberforce",
+    "instrument": "",
+    "name": "William Wilberforce"
+  }
+]
