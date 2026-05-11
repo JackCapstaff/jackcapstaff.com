@@ -15,7 +15,7 @@ Webdesign by Jack Capstaff
 		<link rel="stylesheet" href="assets/css/scrolling.css"> <!-- Your existing CSS -->
 		<script src="assets/js/scrolling.js" defer></script> <!-- Your JavaScript for scrolling -->
 	</head>
-	<body class="landing is-preload">
+	<body class="landing is-preload" id="page-body">
 
 		<!-- Page Wrapper -->
 			<div id="page-wrapper">
@@ -84,7 +84,7 @@ Webdesign by Jack Capstaff
 										alt="Jack Capstaff conducting" 
 										loading="lazy" />
 								</div>
-								<div class="content">
+								<div class="content" data-editable="home_conductor" data-page="home" data-section="conductor">
 									<h2>Conductor</h2>
 									<p>Jack Capstaff believes that music can inspire people and enrich lives, both for musicians and audiences.&nbsp; &nbsp;With his energetic approach and commitment to the diversification of western classical music, Jack has brought music to new audiences and worked to make the arts accessible to many in underserved communities.</p>
 								</div>
@@ -102,7 +102,7 @@ Webdesign by Jack Capstaff
 										alt="Jack Capstaff in Derby cathedral with a mic" 
 										loading="lazy" />
 								</div>
-								<div class="content">
+								<div class="content" data-editable="home_composer" data-page="home" data-section="composer">
 									<h2>Composer</h2>
 									<p>"A prolific composer and arranger, Jack continues to push the boundaries of possibility in orchestral and band mediums, bringing new and exciting music, projects, and formats to audiences across the country."&nbsp; &nbsp; &nbsp; &nbsp;&nbsp;</p>
 								</div>
@@ -120,7 +120,7 @@ Webdesign by Jack Capstaff
 										alt="Jack Capstaff speaking at a lectern" 
 										loading="lazy" />
 								</div>
-								<div class="content">
+								<div class="content" data-editable="home_communicator" data-page="home" data-section="communicator">
 									<h2>Communicator</h2>
 									<p>As a public speaker and advocate for the arts; Jack has worked with organizations such as Brass Bands England, the Brass Band Conductor's Association, and given talks and presentations both at festivals, conferences, and the Royal Philharmonic Society Awards.&nbsp;</p>
 									<p>Read his full story <a href="Biography.html">here</a>&nbsp;</p>
@@ -174,6 +174,25 @@ Webdesign by Jack Capstaff
 			<script src="assets/js/breakpoints.min.js"></script>
 			<script src="assets/js/util.js"></script>
 			<script src="assets/js/main.js"></script>
+			<!-- TinyMCE for rich text editing -->
+			<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/7/tinymce.min.js"></script>
+			<!-- Admin status checker and page editor -->
+			<script>
+				(async function() {
+					try {
+						const response = await fetch('/admin/api/admin-check', { credentials: 'include' });
+						if (response.ok) {
+							const data = await response.json();
+							if (data.is_admin) {
+								document.getElementById('page-body').classList.add('is-admin');
+							}
+						}
+					} catch(e) {
+						// User not logged in, silently fail
+					}
+				})();
+			</script>
+			<script src="assets/js/page-editor.js"></script>
 
 	</body>
 </html>

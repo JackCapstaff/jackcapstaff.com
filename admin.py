@@ -6,8 +6,9 @@ Compatible with existing templates under templates/admin/**.
 from datetime import datetime
 from functools import wraps
 import re
+import os
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -534,3 +535,155 @@ def delete_user(user_id):
     db.session.commit()
     flash("User deleted.", "success")
     return redirect(url_for("admin.manage_users"))
+
+
+# ============= INLINE PAGE EDITOR API ENDPOINTS =============
+
+@admin_bp.route("/api/admin-check")
+def admin_check():
+    """Check if current user is admin"""
+    if current_user.is_authenticated and current_user.is_admin():
+        return jsonify({"is_admin": True}), 200
+    return jsonify({"is_admin": False}), 200
+
+@admin_bp.route("/api/page-content", methods=["POST"])
+@login_required
+def save_page_content():
+    """Save inline page content edits to database and optionally update HTML files"""
+    if not current_user.is_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db, _, _, _, PageContent, _ = _models()
+
+    try:
+        data = request.get_json()
+        page = (data.get("page") or "").strip()
+        section = (data.get("section") or "").strip()
+        content = (data.get("content") or "").strip()
+
+        if not page or not section:
+            return jsonify({"error": "Page and section are required"}), 400
+
+        # Find or create PageContent entry
+        pc = PageContent.query.filter_by(page=page, section=section).first()
+
+        if pc is None:
+            pc = PageContent(
+                page=page,
+                section=section,
+                content=content,
+                author_id=current_user.id,
+            )
+            db.session.add(pc)
+        else:
+            pc.content = content
+            pc.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        # Optionally update HTML file
+        try:
+            _update_html_file(page, section, content)
+        except Exception as e:
+            current_app.logger.warning(f"Failed to update HTML file: {e}")
+            # Don't fail the API call if HTML update fails
+
+        return jsonify({"success": True, "id": pc.id}), 200
+
+    except Exception as e:
+        current_app.logger.exception("Error saving page content")
+        return jsonify({"error": str(e)}), 500
+
+
+@admin_bp.route("/api/page-content/<page>/<section>", methods=["GET"])
+@login_required
+def get_page_content(page, section):
+    """Get page content from database"""
+    if not current_user.is_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db, _, _, _, PageContent, _ = _models()
+
+    try:
+        pc = PageContent.query.filter_by(page=page, section=section).first()
+
+        if pc is None:
+            return jsonify({"error": "Content not found"}), 404
+
+        return jsonify({
+            "id": pc.id,
+            "page": pc.page,
+            "section": pc.section,
+            "title": pc.title,
+            "content": pc.content,
+            "image_url": pc.image_url,
+            "published": pc.published,
+            "updated_at": pc.updated_at.isoformat() if pc.updated_at else None,
+        }), 200
+
+    except Exception as e:
+        current_app.logger.exception("Error retrieving page content")
+        return jsonify({"error": str(e)}), 500
+
+
+def _update_html_file(page, section, content):
+    """Update the HTML file with the new content"""
+    import re
+    from pathlib import Path
+
+    # Map page names to HTML files
+    page_map = {
+        "home": "index.html",
+        "biography": "Biography.html",
+        "schedule": "Schedule.html",
+        "media": "Media.html",
+        "news": "News.html",
+        "contact": "Contact.html",
+    }
+
+    html_file = page_map.get(page.lower())
+    if not html_file:
+        return
+
+    base_dir = current_app.config.get("BASE_DIR", os.path.dirname(current_app.instance_path))
+    html_path = os.path.join(base_dir, html_file)
+
+    if not os.path.exists(html_path):
+        return
+
+    # Read the HTML file
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # Find and replace the section content
+    # Look for patterns like <div data-editable="section_name">...</div>
+    pattern = rf'(<[^>]*data-editable=["\']?{re.escape(section)}["\']?[^>]*>)(.*?)(<\/[^>]+>)'
+    match = re.search(pattern, html_content, re.DOTALL | re.IGNORECASE)
+
+    if match:
+        # Replace the content between the opening and closing tags
+        updated_html = html_content[:match.start(2)] + content + html_content[match.end(2):]
+
+        # Write back to file
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(updated_html)
+
+        # Optionally commit to git
+        try:
+            import subprocess
+            subprocess.run(
+                ["git", "add", html_file],
+                cwd=base_dir,
+                check=False,
+                capture_output=True,
+                timeout=5,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", f"Update {page} page content: {section}"],
+                cwd=base_dir,
+                check=False,
+                capture_output=True,
+                timeout=5,
+            )
+        except Exception as e:
+            current_app.logger.warning(f"Failed to auto-commit changes: {e}")

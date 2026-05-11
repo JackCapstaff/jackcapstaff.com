@@ -12,7 +12,7 @@
 		<link rel="stylesheet" href="assets/css/main.css" />
 		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
 	</head>
-	<body class="is-preload">
+	<body class="is-preload" id="page-body">
 
 		<!-- Page Wrapper -->
 			<div id="page-wrapper">
@@ -58,7 +58,7 @@
 <hr />
 
 								<h4>Composer</h4>
-								<p>As a composer, Jack has been commissioned by some excellent and varied ensembles, such as Black Diamonds, which was commissioned for an anniversary concert by Carlton Main Frickley Colliery Band, and Fahla, commissioned by Sinfonia Newydd in collaboration with Artes Mundi and premiered in the National Museum of Wales. Other commissioned works include pieces from Solo to Symphony Orchestra. Jack’s specialism, and passion, lies in the creation and performance of contemporary music but firmly believes in the use of skills transferable from this endeavour to that of more classical repertoire and beyond, having worked on Mozart, to Messiaen, and lots in between.&nbsp;</p>
+								<div data-editable="composer" data-page="biography" data-section="composer"><p>As a composer, Jack has been commissioned by some excellent and varied ensembles, such as Black Diamonds, which was commissioned for an anniversary concert by Carlton Main Frickley Colliery Band, and Fahla, commissioned by Sinfonia Newydd in collaboration with Artes Mundi and premiered in the National Museum of Wales. Other commissioned works include pieces from Solo to Symphony Orchestra. Jack's specialism, and passion, lies in the creation and performance of contemporary music but firmly believes in the use of skills transferable from this endeavour to that of more classical repertoire and beyond, having worked on Mozart, to Messiaen, and lots in between.&nbsp;</p></div>
 								
 							  <h4>Conductor</h4>
 							  <p>Whilst at university, Jack took his first step into Brass Band conducting at a more senior level, taking on the Foresters Brass 2000 band. Within the first year, Jack and the band gained entry to the prestigious Spring Festival with an “alternative” entertainments program, much of which was arranged by Jack himself. Whilst in Cardiff, Jack also led the City of Cardiff M2 band. In 2018 Jack came 2nd in the national association of Brass Band conductors conducting competition, an achievement he matched in 2022, alongside taking the ‘highest UK participant’ award. Since 2018 Jack has been working with Derwent Brass, alongside his residency with Harlequin Brass, a symphony brass ensemble.&nbsp;</p>
@@ -103,6 +103,25 @@
 			<script src="assets/js/breakpoints.min.js"></script>
 			<script src="assets/js/util.js"></script>
 			<script src="assets/js/main.js"></script>
+			<!-- TinyMCE for rich text editing -->
+			<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/7/tinymce.min.js"></script>
+			<!-- Admin status checker and page editor -->
+			<script>
+				(async function() {
+					try {
+						const response = await fetch('/admin/api/admin-check', { credentials: 'include' });
+						if (response.ok) {
+							const data = await response.json();
+							if (data.is_admin) {
+								document.getElementById('page-body').classList.add('is-admin');
+							}
+						}
+					} catch(e) {
+						// User not logged in, silently fail
+					}
+				})();
+			</script>
+			<script src="assets/js/page-editor.js"></script>
 
 	</body>
 </html>
