@@ -14,6 +14,31 @@ body {
   color: var(--ink);
 }
 
+/* HEADER FIX - Ensure header is visible on rehearsal schedule pages */
+#header {
+  background-color: #2e3842 !important;
+}
+
+#header.alt {
+  background-color: #2e3842 !important;
+}
+
+#header h1 {
+  display: block !important;
+}
+
+#header nav > ul > li > a {
+  color: #fff !important;
+}
+
+#header nav > ul > li > a:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+#page-wrapper {
+  padding-top: 3em !important;
+}
+
 .wrap {
   max-width: 1800px;
   margin: 0 auto;
