@@ -84,6 +84,8 @@ def init_database():
                         ("is_active", 'ALTER TABLE "user" ADD COLUMN is_active BOOLEAN DEFAULT TRUE NOT NULL'),
                         ("created_at", 'ALTER TABLE "user" ADD COLUMN created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW() NOT NULL'),
                         ("updated_at", 'ALTER TABLE "user" ADD COLUMN updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW() NOT NULL'),
+                        ("reset_token", 'ALTER TABLE "user" ADD COLUMN reset_token VARCHAR(255) UNIQUE'),
+                        ("reset_token_expiry", 'ALTER TABLE "user" ADD COLUMN reset_token_expiry TIMESTAMP WITHOUT TIME ZONE'),
                     ]
 
                     for col_name, alter_sql in user_column_patches:

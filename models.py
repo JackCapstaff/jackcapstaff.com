@@ -1,7 +1,7 @@
 """
 Database models for Jack Capstaff CMS
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -21,6 +21,10 @@ def init_models(db):
         role = db.Column(db.String(50), default='viewer', nullable=False)
         is_active = db.Column(db.Boolean, default=True, nullable=False)
         
+        # Password reset flow
+        reset_token = db.Column(db.String(255), unique=True, nullable=True, index=True)
+        reset_token_expiry = db.Column(db.DateTime, nullable=True)
+        
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
         
@@ -34,6 +38,28 @@ def init_models(db):
 
         def check_password(self, password):
             return check_password_hash(self.password_hash, password)
+        
+        def generate_reset_token(self):
+            """Generate a unique reset token and set expiry to 1 hour from now"""
+            import secrets
+            self.reset_token = secrets.token_urlsafe(32)
+            self.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+            return self.reset_token
+        
+        def verify_reset_token(self, token):
+            """Check if token is valid and not expired"""
+            if not self.reset_token or self.reset_token != token:
+                return False
+            if not self.reset_token_expiry:
+                return False
+            if datetime.utcnow() > self.reset_token_expiry:
+                return False
+            return True
+        
+        def clear_reset_token(self):
+            """Clear reset token after use"""
+            self.reset_token = None
+            self.reset_token_expiry = None
         
         def has_permission(self, permission):
             """Check if user has specific permission based on role"""

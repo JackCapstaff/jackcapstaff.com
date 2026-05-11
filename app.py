@@ -3,7 +3,7 @@ import json
 import csv
 import os
 import smtplib
-from datetime import datetime
+from datetime import timedelta
 from email.message import EmailMessage
 from urllib.parse import urljoin, urlparse
 import uuid
@@ -52,7 +52,8 @@ app.config['SMTP_USE_TLS'] = os.environ.get('SMTP_USE_TLS', '1').strip() not in 
 app.config['BREVO_API_KEY'] = os.environ.get('BREVO_API_KEY', '').strip()
 app.config['BREVO_FROM_EMAIL'] = os.environ.get('BREVO_FROM_EMAIL', '').strip()
 app.config['BREVO_FROM_NAME'] = os.environ.get('BREVO_FROM_NAME', app.config['SITE_TITLE'] if 'SITE_TITLE' in app.config else 'Jack Capstaff').strip()
-app.config['CONTACT_TO_EMAIL'] = os.environ.get('CONTACT_TO_EMAIL', 'jack@jackcapstaff.com').strip()
+app.config['BREVO_PRIMARY_TO'] = os.environ.get('BREVO_PRIMARY_TO', '').strip()
+app.config['CONTACT_TO_EMAIL'] = os.environ.get('CONTACT_TO_EMAIL', app.config.get('BREVO_PRIMARY_TO', '').strip() or 'jack@jackcapstaff.com').strip()
 app.config['CONTACT_FROM_EMAIL'] = os.environ.get('CONTACT_FROM_EMAIL', app.config['SMTP_USERNAME'] or 'noreply@jackcapstaff.com').strip()
 app.config['SITE_TITLE'] = os.environ.get('SITE_TITLE', 'Jack Capstaff')
 
@@ -360,6 +361,114 @@ def send_contact_email(name, email, message, send_copy=False):
     return True, 'sent'
 
 
+def _send_password_reset_email_via_brevo(user_email, reset_url):
+    """Send password reset email via Brevo"""
+    api_key = app.config.get('BREVO_API_KEY', '').strip()
+    from_email = app.config.get('BREVO_FROM_EMAIL', '').strip()
+    from_name = app.config.get('BREVO_FROM_NAME', '').strip() or app.config.get('SITE_TITLE', 'Jack Capstaff')
+
+    if not api_key or not from_email:
+        return False, 'Brevo settings are incomplete.'
+
+    subject = 'Password Reset Request'
+    html_body = (
+        '<p>You requested a password reset for your Jack Capstaff account.</p>'
+        f'<p><a href="{reset_url}">Click here to reset your password</a></p>'
+        '<p>This link will expire in 1 hour.</p>'
+        '<p>If you did not request this, please ignore this email.</p>'
+    )
+    text_body = (
+        'You requested a password reset for your Jack Capstaff account.\n\n'
+        f'Reset link: {reset_url}\n\n'
+        'This link will expire in 1 hour.\n'
+        'If you did not request this, please ignore this email.\n'
+    )
+
+    payload = {
+        'sender': {'name': from_name, 'email': from_email},
+        'to': [{'email': user_email}],
+        'subject': subject,
+        'htmlContent': html_body,
+        'textContent': text_body,
+    }
+
+    try:
+        response = requests.post(
+            'https://api.brevo.com/v3/smtp/email',
+            headers={
+                'accept': 'application/json',
+                'api-key': api_key,
+                'content-type': 'application/json',
+            },
+            json=payload,
+            timeout=20,
+        )
+        if response.status_code >= 400:
+            return False, f'Brevo API error: {response.status_code}'
+    except Exception:
+        app.logger.exception('Brevo password reset email send failed')
+        return False, 'Failed to send email'
+
+    return True, 'sent'
+
+
+def send_password_reset_email(user_email, reset_url):
+    """Send password reset email using Brevo or SMTP fallback"""
+    if app.config.get('BREVO_API_KEY', '').strip():
+        sent, detail = _send_password_reset_email_via_brevo(user_email, reset_url)
+        if sent:
+            return True, detail
+
+    from_email = app.config['CONTACT_FROM_EMAIL']
+    smtp_host = app.config['SMTP_HOST']
+    smtp_username = app.config['SMTP_USERNAME']
+    smtp_password = app.config['SMTP_PASSWORD']
+
+    if not smtp_host or not from_email:
+        return False, 'Email settings are not configured.'
+
+    subject = 'Password Reset Request'
+    text_body = (
+        'You requested a password reset for your Jack Capstaff account.\n\n'
+        f'Reset link: {reset_url}\n\n'
+        'This link will expire in 1 hour.\n'
+        'If you did not request this, please ignore this email.\n'
+    )
+    html_body = (
+        '<p>You requested a password reset for your Jack Capstaff account.</p>'
+        f'<p><a href="{reset_url}">Click here to reset your password</a></p>'
+        '<p>This link will expire in 1 hour.</p>'
+        '<p>If you did not request this, please ignore this email.</p>'
+    )
+
+    mail = EmailMessage()
+    mail['Subject'] = subject
+    mail['From'] = from_email
+    mail['To'] = user_email
+    mail.set_content(text_body)
+    mail.add_alternative(html_body, subtype='html')
+
+    try:
+        if app.config['SMTP_USE_TLS']:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                if smtp_username:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(mail, from_addr=from_email, to_addrs=[user_email])
+        else:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                if smtp_username:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(mail, from_addr=from_email, to_addrs=[user_email])
+    except Exception:
+        app.logger.exception('Password reset email send failed')
+        return False, 'Failed to send email'
+
+    return True, 'sent'
+
+
 def load_schedule_events():
     csv_path = os.path.join(BASE_DIR, 'events.csv')
     events = []
@@ -558,6 +667,67 @@ def logout():
     logout_user()
     flash('You have been logged out.', 'success')
     return redirect(url_for('index'))
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+
+        user = User.query.filter_by(email=email).first()
+        if user:
+            user.generate_reset_token()
+            db.session.commit()
+            
+            reset_url = url_for('reset_password', token=user.reset_token, _external=True)
+            sent, detail = send_password_reset_email(user.email, reset_url)
+            
+            if sent:
+                flash('Check your email for password reset instructions.', 'success')
+            else:
+                flash('Password reset email could not be sent. Please try again.', 'warning')
+        else:
+            # Don't reveal whether email exists
+            flash('Check your email for password reset instructions.', 'success')
+        
+        return redirect(url_for('forgot_password'))
+
+    return render_template('forgot_password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    user = User.query.filter_by(reset_token=token).first()
+    if not user or not user.verify_reset_token(token):
+        flash('Invalid or expired reset link.', 'danger')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+
+        if not password:
+            flash('Password is required.', 'warning')
+            return render_template('reset_password.html', token=token)
+
+        if password != password_confirm:
+            flash('Passwords do not match.', 'warning')
+            return render_template('reset_password.html', token=token)
+
+        user.set_password(password)
+        user.clear_reset_token()
+        db.session.commit()
+        
+        flash('Your password has been reset. You can now log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html', token=token)
 
 
 with app.app_context():
