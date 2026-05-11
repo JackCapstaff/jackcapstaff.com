@@ -310,20 +310,17 @@ def biography():
 @app.route('/Schedule')
 @app.route('/Schedule.html')
 def schedule():
-    rehearsal_schedule_url = resolve_rehearsal_schedule_url()
+    public_calendar_url = f'{REHEARSAL_SCHEDULE_PREFIX}/my'
     upcoming_events = Event.query.filter_by(published=True).filter(
         Event.event_date >= datetime.utcnow()
     ).order_by(Event.event_date).all()
-    
-    if rehearsal_schedule_url:
-        return redirect(rehearsal_schedule_url)
 
     if rehearsal_schedule_app is not None:
-        return redirect(f'{REHEARSAL_SCHEDULE_PREFIX}/my')
+        return redirect(public_calendar_url)
 
     return render_template('Schedule.html', 
                          upcoming_events=upcoming_events,
-                         rehearsal_schedule_url=rehearsal_schedule_url)
+                         rehearsal_schedule_url=public_calendar_url)
 
 
 @app.route('/Media')
