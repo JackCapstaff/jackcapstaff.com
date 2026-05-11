@@ -139,11 +139,10 @@ from admin import admin_bp
 app.register_blueprint(admin_bp)
 
 rehearsal_schedule_app = load_rehearsal_schedule_app()
-# Temporarily disabled DispatcherMiddleware to debug routing issues
-# if rehearsal_schedule_app is not None:
-#     app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
-#         REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app,
-#     })
+if rehearsal_schedule_app is not None:
+    app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
+        REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app,
+    })
 
 
 @login_manager.user_loader
