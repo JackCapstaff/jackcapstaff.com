@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Event - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('admin_event_detail', event_id=event.id) }}" class="btn btn-secondary">&larr; Back to Event</a>
+    <a href="{{ url_for('view_event', event_id=event.id) }}" 
+       class="btn btn-success" target="_blank">
+       👁️ Preview Public Page
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header bg-warning">
+        <h3 class="mb-0">Edit Event</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="title">Event Title *</label>
+                <input type="text" class="form-control" id="title" name="title" value="{{ event.title }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description</label>
+                <div id="description-editor" style="background: #fff; color: #000; min-height: 220px;"></div>
+                <input type="hidden" id="description" name="description">
+                <button type="button" id="toggle-description-preview" class="btn btn-sm btn-outline-info mt-2">Preview Description</button>
+                <div id="description-preview" class="mt-2 p-3" style="display:none; border:1px solid #ccc; border-radius:6px; background:#fff; color:#111;"></div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="tickets_info_url">Tickets / Info Link</label>
+                        <input type="text" class="form-control" id="tickets_info_url" name="tickets_info_url" value="{{ event.tickets_info_url or '' }}" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="livestream_url">Livestream Link</label>
+                        <input type="text" class="form-control" id="livestream_url" name="livestream_url" value="{{ event.livestream_url or '' }}" placeholder="https://...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="youtube_url">YouTube Video Links</label>
+                <textarea class="form-control" id="youtube_url" name="youtube_url" rows="3" placeholder="https://www.youtube.com/watch?v=...">{{ event.youtube_embed_url or '' }}</textarea>
+                <small class="form-text text-muted">Paste one YouTube URL per line. Supports watch, shorts, youtu.be, or embed links.</small>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="event_date">Event Date & Time *</label>
+                        <input type="datetime-local" class="form-control" id="event_date" name="event_date" 
+                               value="{{ event.event_date.strftime('%Y-%m-%dT%H:%M') }}" required>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <input type="text" class="form-control" id="location" name="location" value="{{ event.location }}">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="event_photo">Event Photo</label>
+                {% if event.event_photo %}
+                <div class="mb-2">
+                    <img src="{{ event.event_photo | image_url }}" alt="Current event photo" style="max-width: 300px; border-radius: 8px;">
+                    <p class="text-muted mt-2"><small>Current photo - upload a new one to replace it</small></p>
+                </div>
+                {% endif %}
+                <input type="file" class="form-control-file" id="event_photo" name="event_photo" accept="image/*">
+                <small class="form-text text-muted">Upload a new featured photo for this event (optional).</small>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="ba_favourites_count">BA Favourites Count</label>
+                        <input type="number" class="form-control" id="ba_favourites_count" name="ba_favourites_count"
+                               min="1" max="20" value="{{ event.ba_favourites_count or 6 }}">
+                        <small class="form-text text-muted">How many top picks each BA contributor selects (default 6).</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="audience_top_n">Audience Top N to display</label>
+                        <input type="number" class="form-control" id="audience_top_n" name="audience_top_n"
+                               min="1" max="20" value="{{ event.audience_top_n or 3 }}">
+                        <small class="form-text text-muted">How many audience favourites to show in the pinned card (default 3).</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <button type="submit" class="btn btn-warning">Save Changes</button>
+                <button type="submit" name="share_to_facebook" value="1" class="btn btn-primary" style="background-color:#1877F2; border-color:#1877F2;">Save &amp; Publish to Facebook</button>
+                <a href="{{ url_for('admin_event_detail', event_id=event.id) }}" class="btn btn-secondary">Cancel</a>
+                <button type="button" class="btn btn-info" onclick='copyEvent({{ event.id }}, {{ event.title|tojson }})'>Copy Event</button>
+                <button type="button" class="btn btn-danger" onclick='deleteEvent({{ event.id }}, {{ event.title|tojson }})'>Delete Event</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script>
+const eventDescriptionQuill = new Quill('#description-editor', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'align': [] }],
+            ['blockquote', 'link'],
+            ['clean']
+        ]
+    }
+});
+
+eventDescriptionQuill.clipboard.dangerouslyPasteHTML({{ (event.description or '')|tojson }});
+
+document.querySelector('form').addEventListener('submit', function() {
+    document.getElementById('description').value = eventDescriptionQuill.root.innerHTML.trim();
+});
+
+document.getElementById('toggle-description-preview').addEventListener('click', function() {
+    const preview = document.getElementById('description-preview');
+    preview.innerHTML = eventDescriptionQuill.root.innerHTML;
+    preview.style.display = preview.style.display === 'none' ? 'block' : 'none';
+});
+
+function deleteEvent(eventId, eventTitle) {
+    if (confirm(`Are you sure you want to delete "${eventTitle}"? This will also delete all associated posts and photos.`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/event/${eventId}/delete`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function copyEvent(eventId, eventTitle) {
+    if (confirm(`Create a copy of "${eventTitle}" and open it for editing?`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/event/${eventId}/duplicate`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

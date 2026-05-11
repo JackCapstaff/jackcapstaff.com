@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Gallery - Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+    .admin-layout {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 1.5rem;
+    }
+
+    .panel {
+        background: var(--dark-card);
+        border: 1px solid rgba(196, 160, 82, 0.25);
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .album-item {
+        border: 1px solid rgba(196, 160, 82, 0.2);
+        border-radius: 8px;
+        padding: 0.7rem;
+        margin-bottom: 0.5rem;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .album-item.drop-target {
+        border-color: #28a745;
+        box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25);
+    }
+
+    .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 1rem;
+    }
+
+    .photo-card {
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--dark-card);
+        border: 1px solid rgba(196, 160, 82, 0.25);
+    }
+
+    .photo-card.dragging {
+        opacity: 0.5;
+    }
+
+    .photo-image {
+        width: 100%;
+        height: 160px;
+        object-fit: cover;
+        display: block;
+    }
+
+    .photo-info {
+        padding: 0.75rem;
+    }
+
+    .photo-actions {
+        display: flex;
+        gap: 0.4rem;
+        margin-top: 0.6rem;
+        flex-wrap: wrap;
+    }
+
+    .photo-actions button,
+    .photo-actions select {
+        font-size: 0.8rem;
+    }
+
+    .upload-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .upload-row-full {
+        grid-column: 1 / -1;
+    }
+
+    @media (max-width: 991px) {
+        .admin-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">&larr; Back to Admin Dashboard</a>
+</div>
+
+<h1 class="mb-4">Gallery Organizer</h1>
+
+<div class="admin-layout">
+    <div>
+        <div class="panel">
+            <h4>Create Folder</h4>
+            <form method="POST" action="{{ url_for('create_gallery_album') }}">
+                <div class="form-group">
+                    <label>Folder Name</label>
+                    <input type="text" name="name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Caption</label>
+                    <textarea name="caption" class="form-control" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Display Order</label>
+                    <input type="number" name="display_order" class="form-control" value="0">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Create Folder</button>
+            </form>
+        </div>
+
+        <div class="panel">
+            <h4>Folders</h4>
+            <div class="album-item" data-album-id="" draggable="false">
+                <strong>Ungrouped</strong>
+                <div><small class="text-muted">Drop photos here to remove folder</small></div>
+            </div>
+            {% for album in albums %}
+            <div class="album-item" data-album-id="{{ album.id }}" draggable="false">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>{{ album.name }}</strong>
+                        <div><small class="text-muted">{{ album.photos|length }} photo{% if album.photos|length != 1 %}s{% endif %}</small></div>
+                        {% if album.caption %}
+                        <small>{{ album.caption }}</small>
+                        {% endif %}
+                    </div>
+                    <form method="POST" action="{{ url_for('delete_gallery_album', album_id=album.id) }}" onsubmit="return confirm('Delete this folder? Photos will be moved to ungrouped.');">
+                        <button class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% else %}
+            <small class="text-muted">No folders created yet.</small>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div>
+        <div class="panel">
+            <h4>Upload Photos</h4>
+            <form id="upload-form">
+                <div class="upload-row">
+                    <div>
+                        <label>Choose Photos</label>
+                        <input type="file" id="photo-input" name="photos" class="form-control" multiple accept="image/*">
+                    </div>
+                    <div>
+                        <label>Folder (optional)</label>
+                        <select id="upload-album" class="form-control" name="album_id">
+                            <option value="">Ungrouped</option>
+                            {% for album in albums %}
+                            <option value="{{ album.id }}">{{ album.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="upload-row-full">
+                        <label>Caption for uploaded photos (optional)</label>
+                        <textarea class="form-control" id="photos-caption" rows="2"></textarea>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success mt-3">Upload</button>
+            </form>
+        </div>
+
+        <div class="panel">
+            <h4>Bulk Actions</h4>
+            <div class="form-inline">
+                <label class="mr-2">Apply to selected photos:</label>
+                <select id="bulk-album" class="form-control mr-2">
+                    <option value="">Ungrouped</option>
+                    {% for album in albums %}
+                    <option value="{{ album.id }}">{{ album.name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" class="btn btn-outline-primary mr-2" onclick="bulkOrganize('move')">Move</button>
+                <button type="button" class="btn btn-outline-info" onclick="bulkOrganize('copy')">Copy</button>
+            </div>
+            <small class="text-muted d-block mt-2">Tip: drag a photo card and drop it onto any folder for quick move.</small>
+        </div>
+
+        <h4 class="mb-3">All Photos ({{ photos|length }})</h4>
+        {% if photos %}
+        <div class="photo-grid">
+            {% for photo in photos %}
+            <div class="photo-card" id="photo-{{ photo.id }}" draggable="true" data-photo-id="{{ photo.id }}">
+                <img src="{{ photo.filename | image_url }}" alt="Gallery photo" class="photo-image">
+                <div class="photo-info">
+                    <div class="mb-1">
+                        <input type="checkbox" class="photo-checkbox" value="{{ photo.id }}"> Select
+                    </div>
+                    <div class="mb-1"><strong>Folder:</strong> {{ photo.album.name if photo.album else 'Ungrouped' }}</div>
+                    <div class="mb-1" id="caption-display-{{ photo.id }}">{{ photo.caption or 'No caption' }}</div>
+                    <div class="photo-actions">
+                        <button type="button" class="btn btn-sm btn-outline-info btn-edit-caption" data-photo-id="{{ photo.id }}">Caption</button>
+                        {% if photo.album_id %}
+                        <button type="button" class="btn btn-sm btn-outline-warning btn-set-cover" data-photo-id="{{ photo.id }}" data-album-id="{{ photo.album_id }}">Set Cover</button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-danger btn-delete-photo" data-photo-id="{{ photo.id }}">Delete</button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">No photos uploaded yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const uploadForm = document.getElementById('upload-form');
+const photoInput = document.getElementById('photo-input');
+
+uploadForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    if (!photoInput.files.length) {
+        alert('Select at least one photo.');
+        return;
+    }
+
+    const caption = document.getElementById('photos-caption').value.trim();
+    const albumId = document.getElementById('upload-album').value;
+
+    let completed = 0;
+    for (const file of photoInput.files) {
+        const formData = new FormData();
+        formData.append('photo', file);
+        if (caption) formData.append('caption', caption);
+        if (albumId) formData.append('album_id', albumId);
+
+        fetch('{{ url_for("upload_gallery_photo") }}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(resp => resp.json())
+        .then(data => {
+            completed += 1;
+            if (!data.success) {
+                alert(data.error || 'Upload failed for one image.');
+            }
+            if (completed === photoInput.files.length) {
+                location.reload();
+            }
+        })
+        .catch(() => {
+            completed += 1;
+            if (completed === photoInput.files.length) {
+                location.reload();
+            }
+        });
+    }
+});
+
+function editCaption(photoId) {
+    const current = document.getElementById(`caption-display-${photoId}`).textContent;
+    const next = prompt('Edit caption:', current === 'No caption' ? '' : current);
+    if (next === null) return;
+
+    const fd = new FormData();
+    fd.append('caption', next.trim());
+    fetch(`/admin/gallery/photo/${photoId}/update-caption`, { method: 'POST', body: fd })
+        .then(resp => resp.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById(`caption-display-${photoId}`).textContent = data.caption || 'No caption';
+            }
+        });
+}
+
+function deletePhoto(photoId) {
+    if (!confirm('Delete this photo?')) return;
+    fetch(`/admin/gallery/photo/${photoId}/delete`, { method: 'POST' })
+        .then(resp => resp.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById(`photo-${photoId}`).remove();
+            }
+        });
+}
+
+function setAsCover(photoId, albumId) {
+    const fd = new FormData();
+    fd.append('photo_id', photoId);
+    fetch(`/admin/gallery/albums/${albumId}/set-cover`, { method: 'POST', body: fd })
+        .then(resp => resp.json())
+        .then(data => {
+            if (data.success) {
+                alert('Album cover updated.');
+            }
+        });
+}
+
+function bulkOrganize(action) {
+    const selected = Array.from(document.querySelectorAll('.photo-checkbox:checked')).map(el => el.value);
+    if (!selected.length) {
+        alert('Select at least one photo.');
+        return;
+    }
+
+    const fd = new FormData();
+    fd.append('action', action);
+    fd.append('album_id', document.getElementById('bulk-album').value);
+    selected.forEach(id => fd.append('photo_ids', id));
+
+    fetch('/admin/gallery/photos/bulk-organize', { method: 'POST', body: fd })
+        .then(resp => resp.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || 'Bulk action failed.');
+            }
+        });
+}
+
+document.querySelectorAll('.btn-edit-caption').forEach(btn => {
+    btn.addEventListener('click', () => editCaption(btn.dataset.photoId));
+});
+
+document.querySelectorAll('.btn-set-cover').forEach(btn => {
+    btn.addEventListener('click', () => setAsCover(btn.dataset.photoId, btn.dataset.albumId));
+});
+
+document.querySelectorAll('.btn-delete-photo').forEach(btn => {
+    btn.addEventListener('click', () => deletePhoto(btn.dataset.photoId));
+});
+
+let draggingPhotoId = null;
+
+document.querySelectorAll('.photo-card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', function() {
+        draggingPhotoId = this.dataset.photoId;
+        this.classList.add('dragging');
+    });
+    card.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        draggingPhotoId = null;
+    });
+});
+
+document.querySelectorAll('.album-item').forEach(target => {
+    target.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('drop-target');
+    });
+    target.addEventListener('dragleave', function() {
+        this.classList.remove('drop-target');
+    });
+    target.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('drop-target');
+        if (!draggingPhotoId) return;
+
+        const fd = new FormData();
+        fd.append('album_id', this.dataset.albumId || '');
+        fetch(`/admin/gallery/photo/${draggingPhotoId}/set-album`, { method: 'POST', body: fd })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.error || 'Move failed.');
+                }
+            });
+    });
+});
+</script>
+{% endblock %}

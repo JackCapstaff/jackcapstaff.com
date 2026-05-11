@@ -1,0 +1,43 @@
+{% extends 'admin/dashboard.html' %}
+
+{% block content %}
+<div class="container">
+  <h2>Marketing Recipients</h2>
+  <form method="POST" class="form-inline mb-3">
+    <div class="form-group mr-2">
+      <input class="form-control" name="email" placeholder="email@example.com">
+    </div>
+    <div class="form-group mr-2">
+      <input class="form-control" name="name" placeholder="Name (optional)">
+    </div>
+    <button class="btn btn-primary" type="submit">Add</button>
+  </form>
+
+  <p class="text-muted">This list includes registered users who have opted in to marketing (you can toggle their preference) and any manually added addresses.</p>
+  <table class="table table-sm">
+    <thead><tr><th>Email</th><th>Name</th><th>Source</th><th>Added</th><th>Active</th><th></th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.email }}</td>
+        <td>{{ e.name or '' }}</td>
+        <td>{{ 'User' if e.source == 'user' else 'Manual' }}</td>
+        <td>{{ e.added_at | to_london('%Y-%m-%d') if e.added_at else '' }}</td>
+        <td>{{ 'Yes' if e.active else 'No' }}</td>
+        <td>
+          {% if e.source == 'list' and e.active %}
+          <form method="POST" action="{{ url_for('admin_marketing_remove_recipient', entry_id=e.id) }}">
+            <button class="btn btn-sm btn-outline-danger">Remove</button>
+          </form>
+          {% elif e.source == 'user' and e.active %}
+          <form method="POST" action="{{ url_for('admin_marketing_remove_user_optin', user_id=e.id) }}">
+            <button class="btn btn-sm btn-outline-danger">Disable Opt-in</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

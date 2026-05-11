@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} - Admin - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">&larr; Back to Dashboard</a>
+    <a href="{{ url_for('view_event', event_id=event.id) }}" 
+       class="btn btn-success btn-lg" target="_blank">
+       👁️ Preview Public Page
+    </a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h2 class="mb-0">{{ event.title }}</h2>
+        <div>
+            <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-warning btn-sm">Edit Event</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="mb-2"><strong>📅 Date:</strong> {{ event.event_date.strftime('%B %d, %Y at %I:%M %p') }}</p>
+        <p class="mb-2"><strong>📍 Location:</strong> {{ event.location or 'Location TBA' }}</p>
+        <p class="mb-2"><strong>Created by:</strong> {{ event.creator.username }}</p>
+        <p class="mb-2">
+            {% if event.competition_facebook_post_id %}
+            <span class="badge badge-success">Competition Facebook: Shared</span>
+            {% else %}
+            <span class="badge badge-secondary">Competition Facebook: Not Shared</span>
+            {% endif %}
+        </p>
+        <form method="POST" action="{{ url_for('update_competition_facebook', event_id=event.id) }}" class="mb-3">
+            <button type="submit" class="btn btn-info btn-sm">Publish Competition Tables to Facebook</button>
+        </form>
+        <form method="POST" action="{{ url_for('admin_toggle_voting', event_id=event.id) }}" class="mb-3">
+            {% if event.voting_closed %}
+            <button type="submit" class="btn btn-success btn-sm">🔓 Re-open Voting</button>
+            <span class="badge badge-danger ml-2">Voting Closed</span>
+            {% else %}
+            <button type="submit" class="btn btn-danger btn-sm">🔒 Close Voting</button>
+            <span class="badge badge-success ml-2">Voting Open</span>
+            {% endif %}
+        </form>
+        {% set youtube_urls = event.youtube_embed_url | youtube_urls %}
+        {% if youtube_urls %}
+            {% if allow_third_party_media %}
+                {% for yt_url in youtube_urls %}
+                <div class="embed-responsive embed-responsive-16by9 mb-3">
+                    <iframe
+                        class="embed-responsive-item"
+                        src="{{ yt_url }}"
+                        title="{{ event.title }} video"
+                        frameborder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowfullscreen
+                    ></iframe>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="alert alert-secondary mb-3">
+                <p class="mb-2">Video embeds are blocked because non-essential cookies are disabled.</p>
+                <form method="POST" action="{{ url_for('cookie_consent') }}" class="mb-0">
+                    <input type="hidden" name="choice" value="accept">
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Enable YouTube Cookies</button>
+                </form>
+            </div>
+            {% endif %}
+        {% endif %}
+        <hr>
+        <div class="preserve-breaks">{{ event.description | safe_richtext | safe }}</div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Posts ({{ stories|length }})</h3>
+    <div>
+        <a href="{{ url_for('manage_event_competition', event_id=event.id) }}" class="btn btn-info mr-2">Competition Tables</a>
+        <a href="{{ url_for('create_story', event_id=event.id) }}" class="btn btn-success">➕ Add Post</a>
+    </div>
+</div>
+
+{% if stories %}
+{% for story in stories %}
+<div class="card story-card mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h4 class="card-title">{{ story.title }}</h4>
+                <p class="text-muted">
+                    <small>🕒 {{ story.timestamp | to_london('%B %d, %Y at %I:%M %p') }}</small> | 
+                    <small>👤 {{ story.creator.username }}</small>
+                </p>
+                <p class="mb-2">
+                    {% if story.facebook_post_id %}
+                    <span class="badge badge-success">Facebook: Shared</span>
+                    {% else %}
+                    <span class="badge badge-secondary">Facebook: Not Shared</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <a href="{{ url_for('edit_story', story_id=story.id) }}" class="btn btn-warning">Edit</a>
+                <form method="POST" action="{{ url_for('update_story_facebook', story_id=story.id) }}" style="display:inline-block;">
+                    <button type="submit" class="btn btn-info">Update Facebook</button>
+                </form>
+                <button type="button" class="btn btn-danger" 
+                        onclick="deleteStory({{ story.id }}, '{{ story.title }}')">Delete</button>
+            </div>
+        </div>
+        
+        <div class="card-text mt-3 preserve-breaks">{{ story.content | safe_richtext | safe }}</div>
+        
+        {% if story.photos %}
+        <div class="photo-gallery mt-3">
+            {% for photo in story.photos %}
+            <div class="photo-item">
+                <img src="{{ photo.filename | image_url }}" 
+                     alt="{{ photo.caption or 'Event photo' }}" 
+                     class="img-fluid"
+                     onclick="window.open(this.src, '_blank')">
+                <button class="photo-delete-btn" onclick="deletePhoto({{ photo.id }}, this)">✕</button>
+                {% if photo.caption %}
+                <p class="text-center mt-1"><small>{{ photo.caption }}</small></p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info">
+    <p class="mb-0">No posts yet. <a href="{{ url_for('create_story', event_id=event.id) }}">Add the first post!</a></p>
+</div>
+{% endif %}
+
+<h3 class="mb-3 mt-4">🗳️ Audience Votes ({{ votes|length }})</h3>
+{% if votes %}
+<div class="card mb-4">
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="thead-dark">
+                <tr>
+                    <th>User</th>
+                    <th>Voted For</th>
+                    <th>Time</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vote in votes %}
+                <tr>
+                    <td>{{ vote.user.username }}</td>
+                    <td>{{ vote.entry.band_name }}</td>
+                    <td><small>{{ vote.updated_at | to_london('%d %b %Y %H:%M') }}</small></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_delete_vote', vote_id=vote.id) }}"
+                              onsubmit="return confirm('Delete vote by {{ vote.user.username }}?')">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<p class="text-muted">No audience votes yet.</p>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteStory(storyId, storyTitle) {
+    if (confirm(`Are you sure you want to delete "${storyTitle}"? This will also delete all associated photos.`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/story/${storyId}/delete`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function deletePhoto(photoId, button) {
+    if (confirm('Are you sure you want to delete this photo?')) {
+        fetch(`/admin/photo/${photoId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                button.closest('.photo-item').remove();
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+}
+</script>
+{% endblock %}

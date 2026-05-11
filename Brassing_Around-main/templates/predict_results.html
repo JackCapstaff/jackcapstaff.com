@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}BA Top {{ ba_count }} Favourites - {{ event.title }}{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary btn-sm">&larr; Back to Event</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header text-white" style="background: var(--brass-gold,#c4a052);">
+        <h2 class="mb-0">🎯 BA Top {{ ba_count }} Favourites — {{ event.title }}</h2>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Drag the bands into your preferred order. The <strong>top {{ ba_count }}</strong> positions (highlighted in gold) are counted as your favourites — bands below the line are ignored.
+        </p>
+
+        <form method="POST" id="predictions-form">
+
+            <ul id="predictions-list" class="list-group mb-3" style="list-style:none; padding:0;">
+                {% for entry in entries %}
+                <li class="list-group-item draggable-item"
+                    draggable="true"
+                    data-entry-id="{{ entry.id }}"
+                    data-in-top="{{ 'true' if (user_predictions.get(entry.id, loop.index) <= ba_count) else 'false' }}"
+                    style="cursor:move;">
+                    <input type="hidden" name="entry_id" value="{{ entry.id }}">
+                    <input type="hidden" name="position" value="{{ user_predictions.get(entry.id, loop.index) }}" class="position-input">
+                    <div class="d-flex align-items-center" style="gap:0.75rem;">
+                        <div class="drag-handle text-muted" style="font-size:1.2em;">⋮⋮</div>
+                        <div style="flex:1;">
+                            <strong>{{ entry.band_name }}</strong>
+                            {% if entry.conductor %}
+                            <div class="text-muted"><small>Conductor: {{ entry.conductor }}</small></div>
+                            {% endif %}
+                        </div>
+                        <div class="position-display" style="min-width:50px; text-align:center;">
+                            <span class="badge position-badge" style="font-size:1em;">
+                                {{ user_predictions.get(entry.id, loop.index) }}
+                            </span>
+                        </div>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+
+            <div class="d-flex" style="gap:0.5rem;">
+                <button type="submit" class="btn btn-success">💾 Save My Top {{ ba_count }}</button>
+                <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const BA_COUNT = {{ ba_count }};
+let draggedElement = null;
+
+function updatePositions() {
+    const items = document.querySelectorAll('#predictions-list .draggable-item');
+    items.forEach((item, index) => {
+        const pos = index + 1;
+        item.querySelector('.position-input').value = pos;
+        const badge = item.querySelector('.position-badge');
+        badge.textContent = pos;
+
+        if (pos <= BA_COUNT) {
+            item.style.background = 'rgba(196, 160, 82, 0.12)';
+            item.style.borderLeft = '4px solid var(--brass-gold, #c4a052)';
+            badge.className = 'badge badge-warning position-badge';
+        } else {
+            item.style.background = 'rgba(255,255,255,0.03)';
+            item.style.borderLeft = '4px solid transparent';
+            badge.className = 'badge badge-secondary position-badge';
+        }
+    });
+}
+
+// Insert a visual divider after position ba_count
+function insertDivider() {
+    const existing = document.getElementById('favourites-divider');
+    if (existing) existing.remove();
+
+    const items = document.querySelectorAll('#predictions-list .draggable-item');
+    if (items.length >= BA_COUNT) {
+        const divider = document.createElement('li');
+        divider.id = 'favourites-divider';
+        divider.style.cssText = 'list-style:none; padding:0.4rem 1rem; background:rgba(196,160,82,0.25); border-left:4px solid var(--brass-gold,#c4a052); font-size:0.8em; color: var(--brass-gold, #c4a052); pointer-events:none;';
+        divider.textContent = '— Favourite picks count above this line —';
+        items[BA_COUNT - 1].after(divider);
+    }
+}
+
+const list = document.getElementById('predictions-list');
+
+list.querySelectorAll('.draggable-item').forEach(item => {
+    item.addEventListener('dragstart', function () {
+        draggedElement = this;
+        this.style.opacity = '0.5';
+    });
+    item.addEventListener('dragend', function () {
+        this.style.opacity = '1';
+        draggedElement = null;
+        updatePositions();
+        insertDivider();
+    });
+    item.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        if (!draggedElement || draggedElement === this) return;
+        const allItems = Array.from(list.querySelectorAll('.draggable-item'));
+        const from = allItems.indexOf(draggedElement);
+        const to = allItems.indexOf(this);
+        if (from < to) {
+            this.parentNode.insertBefore(draggedElement, this.nextSibling);
+        } else {
+            this.parentNode.insertBefore(draggedElement, this);
+        }
+    });
+});
+
+document.getElementById('predictions-form').addEventListener('submit', function () {
+    updatePositions();
+});
+
+// Initialise on load
+updatePositions();
+insertDivider();
+</script>
+{% endblock %}

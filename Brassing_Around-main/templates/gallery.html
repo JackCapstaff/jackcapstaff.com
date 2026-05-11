@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Photo Gallery - Brassing Around{% endblock %}
+
+{% block extra_css %}
+<style>
+    .albums-grid,
+    .gallery-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 2rem;
+        padding: 2rem 0;
+    }
+
+    .album-card,
+    .gallery-item {
+        position: relative;
+        overflow: hidden;
+        border-radius: 12px;
+        background: var(--dark-card);
+        box-shadow: 0 4px 12px rgba(196, 160, 82, 0.2);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .album-card:hover,
+    .gallery-item:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 8px 24px rgba(196, 160, 82, 0.3);
+    }
+
+    .album-link {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .album-link:hover {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .album-meta {
+        padding: 1.2rem;
+    }
+
+    .album-meta h4 {
+        margin-bottom: 0.4rem;
+    }
+
+    .gallery-image {
+        width: 100%;
+        height: 300px;
+        object-fit: cover;
+        display: block;
+    }
+
+    .gallery-caption {
+        padding: 1.5rem;
+        background: var(--dark-card);
+        min-height: 80px;
+        display: flex;
+        align-items: center;
+    }
+
+    .gallery-caption p {
+        margin: 0;
+        color: var(--text-light);
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    .gallery-caption .no-caption {
+        font-style: italic;
+        color: var(--text-muted);
+    }
+
+    .section-title {
+        color: var(--brass-gold);
+        font-family: 'Playfair Display', serif;
+        border-bottom: 3px solid var(--brass-gold);
+        padding-bottom: 0.5rem;
+        display: inline-block;
+        margin-bottom: 2rem;
+    }
+
+    .jumbotron {
+        background: linear-gradient(135deg, var(--brass-dark) 0%, #000000 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 3rem 2rem;
+        margin-bottom: 2rem;
+    }
+
+    .jumbotron h1 {
+        text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+    }
+
+    .empty-gallery {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-muted);
+    }
+
+    .empty-gallery h3 {
+        color: var(--text-light);
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Photo Gallery</h1>
+    <p class="lead">Browse albums from our performances, bands, and community events</p>
+</div>
+
+{% if albums %}
+<h2 class="section-title">Albums</h2>
+
+<div class="albums-grid">
+    {% for album in albums %}
+    {% set cover = album.cover_photo or (album.photos[0] if album.photos else None) %}
+    <a href="{{ url_for('gallery_album_detail', album_id=album.id) }}" class="album-link">
+        <div class="album-card">
+            {% if cover %}
+            <img src="{{ cover.filename | image_url }}" alt="{{ album.name }}" class="gallery-image">
+            {% else %}
+            <div class="gallery-image d-flex align-items-center justify-content-center" style="background: rgba(196, 160, 82, 0.12);">
+                <span class="text-muted">No Cover Photo</span>
+            </div>
+            {% endif %}
+            <div class="album-meta">
+                <h4>{{ album.name }}</h4>
+                <p class="mb-1 text-muted">{{ album.photos|length }} photo{% if album.photos|length != 1 %}s{% endif %}</p>
+                {% if album.caption %}
+                <p class="mb-0">{{ album.caption }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if ungrouped_photos %}
+<h2 class="section-title">Ungrouped Photos</h2>
+
+<div class="gallery-grid">
+    {% for photo in ungrouped_photos %}
+    <div class="gallery-item">
+        <img src="{{ photo.filename | image_url }}" alt="Gallery photo" class="gallery-image">
+        <div class="gallery-caption">
+            {% if photo.caption %}
+            <p>{{ photo.caption }}</p>
+            {% else %}
+            <p class="no-caption">No caption provided</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not albums and not ungrouped_photos %}
+<div class="empty-gallery">
+    <h3>Gallery Coming Soon</h3>
+    <p>We're building our photo gallery. Check back soon for memories from our events!</p>
+</div>
+{% endif %}
+{% endblock %}

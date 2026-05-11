@@ -1,0 +1,79 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Jack Capstaff - Login</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="assets/css/main.css" />
+		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+		<div id="page-wrapper">
+			<header id="header">
+				<h1><a href="index.html">jack capstaff</a></h1>
+				<nav id="nav">
+					<ul>
+						<li class="special">
+							<a href="#menu" class="menuToggle"><span>Menu</span></a>
+							<div id="menu">
+								<ul>
+									<li><a href="index.html">Home</a></li>
+									<li><a href="Biography.html">Biography</a></li>
+									<li><a href="Schedule.html">Schedule</a></li>
+									<li><a href="Media.html">Media</a></li>
+									<li><a href="News.html">News</a></li>
+									<li><a href="Contact.html">Contact</a></li>
+								</ul>
+							</div>
+						</li>
+					</ul>
+				</nav>
+			</header>
+
+			<article id="main">
+				<header>
+					<h2>LOGIN</h2>
+					<p>Access the site admin area and saved features</p>
+				</header>
+				<section class="wrapper style5">
+					<div class="inner">
+						{% with messages = get_flashed_messages(with_categories=true) %}
+							{% if messages %}
+								{% for category, message in messages %}
+									<div class="alert alert-{{ category }}" style="margin-bottom: 1rem;">
+										{{ message }}
+									</div>
+								{% endfor %}
+							{% endif %}
+						{% endwith %}
+
+						<form method="post" action="{{ url_for('login') }}">
+							<div class="row gtr-uniform">
+								<div class="col-12">
+									<input type="text" name="identifier" placeholder="Username or email" required />
+								</div>
+								<div class="col-12">
+									<input type="password" name="password" placeholder="Password" required />
+								</div>
+								<div class="col-12">
+									<ul class="actions">
+										<li><input type="submit" value="Login" class="primary" /></li>
+										<li><a class="button" href="{{ url_for('register') }}">Register</a></li>
+									</ul>
+								</div>
+							</div>
+						</form>
+					</div>
+				</section>
+			</article>
+		</div>
+
+		<script src="assets/js/jquery.min.js"></script>
+		<script src="assets/js/jquery.scrollex.min.js"></script>
+		<script src="assets/js/jquery.scrolly.min.js"></script>
+		<script src="assets/js/browser.min.js"></script>
+		<script src="assets/js/breakpoints.min.js"></script>
+		<script src="assets/js/util.js"></script>
+		<script src="assets/js/main.js"></script>
+	</body>
+</html>

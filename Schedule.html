@@ -27,6 +27,7 @@
 									<li><a href="Media.html">Media</a></li>
 									<li><a href="News.html">News</a></li>
 									<li><a href="Contact.html">Contact</a></li>
+									<li><a href="/login">Login</a></li>
 								</ul>
 							</div>
 						</li>
@@ -103,7 +104,7 @@
 								console.log('CSV parsed:', results);
 								const events = results.data.filter(event => {
 									// Exclude events where 'Private' is TRUE (case-insensitive)
-									return !(event['Private'] && event['Private'].toUpperCase() === 'TRUE');
+										return event['Start Date'] && !(event['Private'] && event['Private'].toUpperCase() === 'TRUE');
 								});
 								console.log('Filtered events:', events);
 
@@ -112,10 +113,14 @@
 
 								events.forEach(event => {
 									try {
-										const dateParts = event['Start Date'].split('/');
-										const year = parseInt(dateParts[2]);
-										const month = parseInt(dateParts[0]) - 1;
-										const day = parseInt(dateParts[1]);
+											const startDate = String(event['Start Date']).trim();
+											const dateParts = startDate.split(/[\/\-]/).map(part => parseInt(part, 10));
+											if (dateParts.length !== 3 || dateParts.some(Number.isNaN)) {
+												throw new Error('Invalid date format');
+											}
+											const [firstPart, secondPart, year] = dateParts;
+											const day = firstPart > 12 ? firstPart : secondPart;
+											const month = firstPart > 12 ? secondPart - 1 : firstPart - 1;
 										const eventDate = new Date(year, month, day);
 										const formattedDate = eventDate.toLocaleDateString();
 

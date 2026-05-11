@@ -1,0 +1,391 @@
+import importlib.util
+import json
+import csv
+import os
+import smtplib
+from datetime import datetime
+from email.message import EmailMessage
+
+from flask import Flask, flash, redirect, render_template, request, url_for
+from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def resolve_database_url():
+    database_url = os.environ.get('DATABASE_URL', '').strip()
+    if database_url:
+        return database_url.replace('postgres://', 'postgresql://', 1)
+
+    if os.environ.get('DYNO'):
+        raise RuntimeError(
+            'A persistent DATABASE_URL is required in Heroku production. '
+            'Attach Heroku Postgres or set DATABASE_URL.'
+        )
+
+    return 'sqlite:///' + os.path.join(BASE_DIR, 'jackcapstaff.db')
+
+
+app = Flask(__name__, template_folder='.', static_folder='.', static_url_path='')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-secret-key-in-production')
+app.config['SQLALCHEMY_DATABASE_URI'] = resolve_database_url()
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SMTP_HOST'] = os.environ.get('SMTP_HOST', '').strip()
+app.config['SMTP_PORT'] = int(os.environ.get('SMTP_PORT', '587'))
+app.config['SMTP_USERNAME'] = os.environ.get('SMTP_USERNAME', '').strip()
+app.config['SMTP_PASSWORD'] = os.environ.get('SMTP_PASSWORD', '').strip()
+app.config['SMTP_USE_TLS'] = os.environ.get('SMTP_USE_TLS', '1').strip() not in {'0', 'false', 'False'}
+app.config['CONTACT_TO_EMAIL'] = os.environ.get('CONTACT_TO_EMAIL', 'jack@jackcapstaff.com').strip()
+app.config['CONTACT_FROM_EMAIL'] = os.environ.get('CONTACT_FROM_EMAIL', app.config['SMTP_USERNAME'] or 'noreply@jackcapstaff.com').strip()
+app.config['SITE_TITLE'] = os.environ.get('SITE_TITLE', 'Jack Capstaff')
+
+REHEARSAL_SCHEDULE_ROOT = os.path.join(BASE_DIR, 'Rehearsal Schedule', 'rehearsal_schedule')
+REHEARSAL_SCHEDULE_DATA_DIR = os.path.join(REHEARSAL_SCHEDULE_ROOT, 'site', 'data', 'schedules')
+REHEARSAL_SCHEDULE_PREFIX = '/rehearsal-schedule'
+
+
+def load_rehearsal_schedule_app():
+    app_path = os.path.join(REHEARSAL_SCHEDULE_ROOT, 'app.py')
+    if not os.path.exists(app_path):
+        return None
+
+    spec = importlib.util.spec_from_file_location('jackcapstaff_rehearsal_schedule_app', app_path)
+    if spec is None or spec.loader is None:
+        return None
+
+    module = importlib.util.module_from_spec(spec)
+    current_dir = os.getcwd()
+    try:
+        os.chdir(REHEARSAL_SCHEDULE_ROOT)
+        spec.loader.exec_module(module)
+    finally:
+        os.chdir(current_dir)
+    return getattr(module, 'app', None)
+
+
+def resolve_default_schedule_id():
+    if not os.path.isdir(REHEARSAL_SCHEDULE_DATA_DIR):
+        return None
+
+    published_candidates = []
+    fallback_candidates = []
+
+    for filename in os.listdir(REHEARSAL_SCHEDULE_DATA_DIR):
+        if not filename.endswith('.json'):
+            continue
+
+        file_path = os.path.join(REHEARSAL_SCHEDULE_DATA_DIR, filename)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as json_file:
+                schedule_data = json.load(json_file)
+        except Exception:
+            continue
+
+        schedule_id = schedule_data.get('id') or filename[:-5]
+        score = (
+            int(schedule_data.get('published_at') or 0),
+            int(schedule_data.get('updated_at') or 0),
+            os.path.getmtime(file_path),
+            schedule_id,
+        )
+        fallback_candidates.append((score, schedule_id))
+        if schedule_data.get('status') == 'published':
+            published_candidates.append((score, schedule_id))
+
+    candidates = published_candidates or fallback_candidates
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def resolve_rehearsal_schedule_url():
+    schedule_id = resolve_default_schedule_id()
+    if not schedule_id:
+        return None
+
+    return f'{REHEARSAL_SCHEDULE_PREFIX}/s/{schedule_id}'
+
+
+db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+rehearsal_schedule_app = load_rehearsal_schedule_app()
+if rehearsal_schedule_app is not None:
+    app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
+        REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app,
+    })
+
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+class ContactMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        return db.session.get(User, int(user_id))
+    except (TypeError, ValueError):
+        return None
+
+
+@app.context_processor
+def inject_globals():
+    return {
+        'site_title': app.config['SITE_TITLE'],
+        'current_year': datetime.utcnow().year,
+    }
+
+
+def send_contact_email(name, email, message, send_copy=False):
+    to_email = app.config['CONTACT_TO_EMAIL']
+    from_email = app.config['CONTACT_FROM_EMAIL']
+    smtp_host = app.config['SMTP_HOST']
+    smtp_username = app.config['SMTP_USERNAME']
+    smtp_password = app.config['SMTP_PASSWORD']
+
+    if not smtp_host or not to_email or not from_email:
+        return False, 'Email settings are not configured.'
+
+    subject = 'New message from jackcapstaff.com'
+    text_body = (
+        'You have received a new message from jackcapstaff.com\n\n'
+        f'Name: {name}\n'
+        f'Email: {email}\n\n'
+        f'Message:\n{message}\n'
+    )
+    html_body = (
+        '<p><strong>You have received a new message from jackcapstaff.com</strong></p>'
+        f'<p><strong>Name:</strong> {name}</p>'
+        f'<p><strong>Email:</strong> {email}</p>'
+        f'<p><strong>Message:</strong><br>{message.replace(chr(10), "<br>")}</p>'
+    )
+
+    mail = EmailMessage()
+    mail['Subject'] = subject
+    mail['From'] = from_email
+    mail['To'] = to_email
+    mail['Reply-To'] = email
+    mail.set_content(text_body)
+    mail.add_alternative(html_body, subtype='html')
+
+    recipients = [to_email]
+    if send_copy and email:
+        recipients.append(email)
+
+    try:
+        if app.config['SMTP_USE_TLS']:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                if smtp_username:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(mail, from_addr=from_email, to_addrs=recipients)
+        else:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                if smtp_username:
+                    server.login(smtp_username, smtp_password)
+                server.send_message(mail, from_addr=from_email, to_addrs=recipients)
+    except Exception as exc:
+        app.logger.exception('Contact email send failed')
+        return False, str(exc)
+
+    return True, 'sent'
+
+
+def load_schedule_events():
+    csv_path = os.path.join(BASE_DIR, 'events.csv')
+    events = []
+
+    if not os.path.exists(csv_path):
+        return events
+
+    with open(csv_path, newline='', encoding='utf-8-sig') as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            if (row.get('Private') or '').strip().upper() == 'TRUE':
+                continue
+
+            start_date = (row.get('Start Date') or '').strip()
+            start_time = (row.get('Start Time') or '').strip()
+            try:
+                start_dt = datetime.strptime(f'{start_date} {start_time}', '%m/%d/%Y %H:%M:%S')
+            except ValueError:
+                try:
+                    start_dt = datetime.strptime(start_date, '%m/%d/%Y')
+                except ValueError:
+                    start_dt = datetime.min
+
+            events.append({
+                'subject': (row.get('Subject') or '').strip(),
+                'start_dt': start_dt,
+                'date_label': start_dt.strftime('%d %b %Y') if start_dt != datetime.min else start_date,
+                'time_label': start_dt.strftime('%H:%M') if start_dt != datetime.min and start_time else '',
+                'location': (row.get('Location') or '').strip(),
+                'description': (row.get('Description') or '').strip(),
+            })
+
+    events.sort(key=lambda item: item['start_dt'])
+    return events
+
+
+@app.route('/')
+@app.route('/index.html')
+def index():
+    return render_template('index.html', upcoming_events=load_schedule_events()[:3])
+
+
+@app.route('/Biography')
+@app.route('/Biography.html')
+def biography():
+    return render_template('Biography.html')
+
+
+@app.route('/schedule')
+@app.route('/Schedule')
+@app.route('/Schedule.html')
+def schedule():
+    rehearsal_schedule_url = resolve_rehearsal_schedule_url()
+    if rehearsal_schedule_url:
+        return redirect(rehearsal_schedule_url)
+
+    flash('The rehearsal schedule app is not available yet.', 'warning')
+    return render_template('Schedule.html', upcoming_events=load_schedule_events())
+
+
+@app.route('/Media')
+@app.route('/Media.html')
+def media():
+    return render_template('Media.html')
+
+
+@app.route('/News')
+@app.route('/News.html')
+def news():
+    return render_template('News.html')
+
+
+@app.route('/contact', methods=['GET', 'POST'])
+@app.route('/Contact')
+@app.route('/Contact.html', methods=['GET', 'POST'])
+def contact():
+    if request.method == 'POST':
+        name = request.form.get('demo-name', '').strip()
+        email = request.form.get('demo-email', '').strip()
+        message = request.form.get('demo-message', '').strip()
+        send_copy = request.form.get('demo-copy') == 'on'
+
+        if not name or not email or not message:
+            flash('Please complete the contact form.', 'warning')
+            return render_template('Contact.html')
+
+        db.session.add(ContactMessage(name=name, email=email, message=message))
+        db.session.commit()
+
+        sent, detail = send_contact_email(name, email, message, send_copy=send_copy)
+        if sent:
+            flash('Your message has been sent successfully.', 'success')
+        else:
+            flash(f'Your message was saved, but email could not be sent: {detail}', 'warning')
+        return redirect(url_for('contact'))
+
+    return render_template('Contact.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        identifier = request.form.get('identifier', '').strip()
+        password = request.form.get('password', '')
+
+        user = User.query.filter(
+            (User.username == identifier) | (User.email == identifier)
+        ).first()
+        if user and user.check_password(password):
+            login_user(user)
+            flash('Logged in successfully.', 'success')
+            return redirect(url_for('index'))
+
+        flash('Invalid username, email, or password.', 'danger')
+
+    return render_template('login.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if not username or not email or not password:
+            flash('Please complete all registration fields.', 'warning')
+            return render_template('register.html')
+
+        if password != confirm_password:
+            flash('Passwords do not match.', 'warning')
+            return render_template('register.html')
+
+        if User.query.filter((User.username == username) | (User.email == email)).first():
+            flash('That username or email already exists.', 'warning')
+            return render_template('register.html')
+
+        user = User(username=username, email=email)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+
+        login_user(user)
+        flash('Registration complete. You are now logged in.', 'success')
+        return redirect(url_for('index'))
+
+    return render_template('register.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('You have been logged out.', 'success')
+    return redirect(url_for('index'))
+
+
+with app.app_context():
+    db.create_all()
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', '5000'))
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', '0') == '1')

@@ -28,9 +28,15 @@ const eventLink = document.getElementById('event-link');
 
 function updateEvent() {
     const event = events[currentIndex];
+    if (!eventTitle || !eventDatetime || !eventLink || !eventBox) {
+        return;
+    }
+
     eventTitle.textContent = event.title;
     eventDatetime.textContent = event.datetime;
-    eventImage.src = event.image;
+    if (eventImage) {
+        eventImage.src = event.image;
+    }
     eventLink.href = event.link;
 
     eventBox.style.transform = 'translateX(100%)'; // Start from the right side
@@ -49,7 +55,9 @@ function updateEvent() {
 let intervalId = setInterval(updateEvent, 10000);
 updateEvent(); // Initial call for the first event
 
-eventBox.addEventListener('mouseenter', () => clearInterval(intervalId)); // Pause on hover
-eventBox.addEventListener('mouseleave', () => {
-    intervalId = setInterval(updateEvent, 10000); // Resume when mouse leaves
-});
+if (eventBox) {
+    eventBox.addEventListener('mouseenter', () => clearInterval(intervalId)); // Pause on hover
+    eventBox.addEventListener('mouseleave', () => {
+        intervalId = setInterval(updateEvent, 10000); // Resume when mouse leaves
+    });
+}

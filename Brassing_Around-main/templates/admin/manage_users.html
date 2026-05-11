@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users - Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12 d-flex justify-content-between align-items-center">
+        <h1 style="color: var(--brass-gold);">Manage Users</h1>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="card mb-4" style="background: linear-gradient(135deg, var(--dark-card) 0%, #2a2a2a 100%); border: 2px solid var(--brass-dark);">
+    <div class="card-body">
+        <h5 style="color: var(--brass-gold);">User Roles Explained</h5>
+        <ul class="mb-0">
+            <li><strong>Admin:</strong> Full access - manage events, stories, profiles, and users</li>
+            <li><strong>Contributor:</strong> Can create and edit stories, but cannot manage events or profiles</li>
+            <li><strong>User:</strong> Can view events and add comments only</li>
+        </ul>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(90deg, var(--brass-dark) 0%, var(--brass-gold) 100%); color: var(--dark-bg);">
+        <h4 class="mb-0">All Users ({{ users|length }})</h4>
+        <a href="{{ url_for('export_marketing_list') }}" class="btn btn-sm btn-dark">
+            📧 Export Marketing List ({{ users|selectattr('marketing_opt_in')|list|length }} opted in)
+        </a>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Marketing</th>
+                        <th>Joined</th>
+                        <th>Stats</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>
+                            <strong>{{ user.username }}</strong>
+                            {% if user.id == current_user.id %}
+                            <span class="badge badge-info">You</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.role == 'admin' or user.is_admin %}
+                            <span class="badge badge-danger">Admin</span>
+                            {% elif user.role == 'contributor' %}
+                            <span class="badge badge-warning">Contributor</span>
+                            {% else %}
+                            <span class="badge badge-secondary">User</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if user.marketing_opt_in %}
+                            <span class="badge badge-success" title="Opted in">✓ Yes</span>
+                            {% else %}
+                            <span class="badge badge-secondary" title="Not opted in">No</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ user.created_at | to_london('%b %d, %Y') }}</small></td>
+                        <td>
+                            <small>
+                                {{ user.events|length }} events<br>
+                                {{ user.stories|length }} stories<br>
+                                {{ user.comments|length }} comments
+                            </small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-outline-primary">Edit</a>
+                                {% if user.id != current_user.id %}
+                                <button class="btn btn-outline-danger" onclick="deleteUser({{ user.id }}, '{{ user.username }}')">Delete</button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteUser(userId, username) {
+    if (confirm(`Are you sure you want to delete user "${username}"? This will also delete all their events, stories, and comments. This action cannot be undone.`)) {
+        fetch(`/admin/user/${userId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert(data.error || 'Error deleting user');
+            }
+        })
+        .catch(error => {
+            alert('Error deleting user');
+            console.error('Error:', error);
+        });
+    }
+}
+</script>
+{% endblock %}

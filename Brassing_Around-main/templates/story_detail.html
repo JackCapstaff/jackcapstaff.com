@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{{ story.title }} - {{ event.title }} - Brassing Around{% endblock %}
+
+{% block head_meta %}
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="Brassing Around">
+    <meta property="og:title" content="{{ story.title }} | {{ event.title }}">
+    <meta property="og:description" content="{{ preview_text }}">
+    <meta property="og:url" content="{{ share_url }}">
+    {% if og_image_url %}
+    <meta property="og:image" content="{{ og_image_url }}">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    {% endif %}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ story.title }} | {{ event.title }}">
+    <meta name="twitter:description" content="{{ preview_text }}">
+    {% if og_image_url %}
+    <meta name="twitter:image" content="{{ og_image_url }}">
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary btn-sm">&larr; Back to Event</a>
+    <a href="{{ share_url }}" class="btn btn-outline-secondary btn-sm" target="_blank">Post Share Link</a>
+</div>
+
+<div class="card story-card mb-4">
+    <div class="card-body">
+        <p class="text-muted mb-2"><strong>From:</strong> {{ event.title }}</p>
+        <h1 class="mb-3">{{ story.title }}</h1>
+        {% if story.competition_entry and story.competition_entry.conductor %}
+        <p class="text-muted mb-2"><strong>Conductor:</strong> {{ story.competition_entry.conductor }}</p>
+        {% endif %}
+        <p class="text-muted">
+            <small>🕒 {{ story.timestamp | to_london('%B %d, %Y at %I:%M %p') }}</small>
+            |
+            <small>👤 {{ story.creator.username }}</small>
+        </p>
+
+        {% if story.photos %}
+        <div class="photo-gallery mt-4 mb-4">
+            {% for photo in story.photos %}
+            <div class="photo-item">
+                <img src="{{ photo.filename | image_url }}" alt="{{ photo.caption or story.title }}" class="img-fluid">
+                {% if photo.caption %}
+                <p class="text-center mt-1"><small>{{ photo.caption }}</small></p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="preserve-breaks">{{ story.content | safe_richtext | safe }}</div>
+    </div>
+</div>
+
+{% if fb_comments %}
+<div class="card mt-2 mb-4">
+    <div class="card-header d-flex align-items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#1877F2" viewBox="0 0 24 24" class="mr-2"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.883v2.271h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+        <strong>Facebook Comments</strong>
+        <span class="badge badge-secondary ml-2">{{ fb_comments|length }}</span>
+    </div>
+    <div class="list-group list-group-flush">
+        {% for comment in fb_comments %}
+        <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+                <strong>{{ comment.author }}</strong>
+                <small class="text-muted">{{ comment.created_time }}</small>
+            </div>
+            <p class="mb-0 mt-1">{{ comment.message }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

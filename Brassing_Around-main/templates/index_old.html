@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Welcome to Brassing Around! 🎺</h1>
+    <p class="lead">Bringing the joy of brass music to communities everywhere</p>
+    <hr class="my-4">
+    <p>Browse our events and posts from volunteers making music happen!</p>
+</div>
+
+<h2 class="mb-4">Our Events</h2>
+
+{% if events %}
+<div class="row">
+    {% for event in events %}
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">{{ event.title }}</h5>
+                <p class="card-text text-muted">
+                    <small>📅 {{ event.event_date.strftime('%B %d, %Y at %I:%M %p') }}</small><br>
+                    <small>📍 {{ event.location or 'Location TBA' }}</small>
+                </p>
+                <p class="card-text preview-text">{{ event.description | preview_text(150) }}</p>
+                <p class="text-muted">
+                    <small>{{ event.stories|length }} {% if event.stories|length == 1 %}post{% else %}posts{% endif %}</small>
+                </p>
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-primary btn-sm">View Event</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p class="mb-0">No events yet. Check back soon!</p>
+</div>
+{% endif %}
+{% endblock %}

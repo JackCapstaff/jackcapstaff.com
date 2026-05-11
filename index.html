@@ -35,12 +35,25 @@ Webdesign by Jack Capstaff
 											<li><a href="Media.html">Media</a></li>
 											<li><a href="News.html">News</a></li>
 											<li><a href="Contact.html">Contact</a></li>
+											<li><a href="/login">Login</a></li>
 										</ul>
 									</div>
 								</li>
 							</ul>
 						</nav>
 					</header>
+
+					{% with messages = get_flashed_messages(with_categories=true) %}
+						{% if messages %}
+							<div class="inner" style="padding-top: 1rem;">
+								{% for category, message in messages %}
+									<div class="alert alert-{{ category }}" style="margin-bottom: 1rem;">
+										{{ message }}
+									</div>
+								{% endfor %}
+							</div>
+						{% endif %}
+					{% endwith %}
 
 				<!-- Banner -->
 					<section id="banner">

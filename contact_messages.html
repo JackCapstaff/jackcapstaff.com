@@ -1,0 +1,54 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Jack Capstaff - Contact Messages</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="assets/css/main.css" />
+		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+		<div id="page-wrapper">
+			<header id="header">
+				<h1><a href="index.html">jack capstaff</a></h1>
+			</header>
+
+			<article id="main">
+				<header>
+					<h2>Contact Messages</h2>
+					<p>Stored submissions from the contact form</p>
+				</header>
+				<section class="wrapper style5">
+					<div class="inner">
+						<div class="table-wrapper">
+							<table>
+								<thead>
+									<tr>
+										<th>Name</th>
+										<th>Email</th>
+										<th>Message</th>
+										<th>Received</th>
+									</tr>
+								</thead>
+								<tbody>
+									{% for message in messages %}
+									<tr>
+										<td>{{ message.name }}</td>
+										<td><a href="mailto:{{ message.email }}">{{ message.email }}</a></td>
+										<td>{{ message.message }}</td>
+										<td>{{ message.created_at.strftime('%d %b %Y %H:%M') }}</td>
+									</tr>
+									{% else %}
+									<tr>
+										<td colspan="4">No messages yet.</td>
+									</tr>
+									{% endfor %}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+			</article>
+		</div>
+	</body>
+</html>

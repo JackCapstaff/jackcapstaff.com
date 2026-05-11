@@ -1,0 +1,36 @@
+{% extends 'admin/dashboard.html' %}
+
+{% block content %}
+<div class="container">
+  <h2>Sent Marketing Emails</h2>
+  <table class="table table-sm">
+    <thead><tr><th>Subject</th><th>Sent At</th><th>Recipients</th><th></th></tr></thead>
+    <tbody>
+      {% for s in items %}
+      <tr>
+        <td>{{ s.subject }}</td>
+        <td>{{ s.created_at | to_london('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ s.recipients_count }}</td>
+        <td><button class="btn btn-sm btn-outline-secondary" data-toggle="modal" data-target="#preview{{ s.id }}">Preview</button></td>
+      </tr>
+
+      <!-- Modal -->
+      <div class="modal fade" id="preview{{ s.id }}" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Preview: {{ s.subject }}</h5>
+              <button type="button" class="close" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+              {{ s.html_content | safe }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

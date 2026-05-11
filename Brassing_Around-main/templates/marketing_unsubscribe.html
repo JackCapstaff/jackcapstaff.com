@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+  {% if status == 'invalid' %}
+    <div class="alert alert-danger">This unsubscribe link is invalid.</div>
+  {% elif status == 'expired' %}
+    <div class="alert alert-warning">This unsubscribe link has expired. Please contact us if you still want to unsubscribe.</div>
+  {% elif status == 'unsubscribed' %}
+    <div class="alert alert-success">{{ email }} has been unsubscribed from marketing emails.</div>
+  {% elif status == 'not_found' %}
+    <div class="alert alert-info">Email not found in our records.</div>
+  {% else %}
+    <div class="alert alert-info">Unknown unsubscribe status.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}{{ profile.name }} - Our People - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('our_people') }}" class="btn btn-secondary btn-sm">&larr; Back to Our People</a>
+    {% if current_user.is_authenticated and current_user.has_admin_access() %}
+    <a href="{{ url_for('edit_profile', profile_id=profile.id) }}" class="btn btn-warning btn-sm">Quick Edit Profile</a>
+    {% endif %}
+</div>
+
+<div class="card mb-4">
+    {% if profile.photo or profile.card_photo %}
+    <img src="{{ (profile.photo or profile.card_photo) | image_url }}" class="card-img-top" alt="{{ profile.name }}" style="max-height: 500px; object-fit: cover;">
+    {% endif %}
+    <div class="card-body">
+        <h2 class="mb-3">{{ profile.name }}</h2>
+        <div class="preserve-breaks">{{ profile.bio | safe_richtext | safe }}</div>
+    </div>
+</div>
+{% endblock %}

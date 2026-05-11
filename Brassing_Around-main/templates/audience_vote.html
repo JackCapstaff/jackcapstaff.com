@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Vote — {{ event.title }}{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary btn-sm">&larr; Back to Event</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header text-white" style="background: var(--brass-gold, #c4a052);">
+        <h2 class="mb-0">🎺 Cast Your Vote — {{ event.title }}</h2>
+    </div>
+    <div class="card-body">
+        {% if voting_closed %}
+        <div class="alert alert-danger text-center">
+            <strong>Voting is now closed.</strong><br>
+            Thank you to everyone who cast a vote!
+        </div>
+        {% elif voting_locked %}
+        <div class="alert alert-warning text-center">
+            <strong>Voting hasn't opened yet.</strong><br>
+            Audience voting opens on the day of the event — {{ event.event_date.strftime('%A %-d %B %Y') }}.
+        </div>
+        {% elif existing_vote %}
+        <div class="alert alert-info">
+            You currently voted for <strong>{{ existing_vote.entry.band_name }}</strong>. Select a different band below to change your vote.
+        </div>
+        {% else %}
+        <p class="text-muted mb-3">Pick the band you think is the best on the day. You can only vote for one band, but you can always come back and change your vote.</p>
+        {% endif %}
+
+        {% if entries %}
+        <form method="POST" id="vote-form">
+            <div class="list-group mb-4">
+                {% for entry in entries %}
+                <label class="list-group-item list-group-item-action d-flex align-items-center" style="cursor:pointer;
+                    {% if existing_vote and existing_vote.entry_id == entry.id %}
+                    background: rgba(196,160,82,0.15); border-left: 4px solid var(--brass-gold,#c4a052);
+                    {% endif %}
+                ">
+                    <input type="radio" name="entry_id" value="{{ entry.id }}" class="mr-3"
+                        {% if existing_vote and existing_vote.entry_id == entry.id %}checked{% endif %}
+                        required>
+                    <div>
+                        <strong>{{ entry.band_name }}</strong>
+                        {% if entry.conductor %}
+                        <div class="text-muted"><small>Conductor: {{ entry.conductor }}</small></div>
+                        {% endif %}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+
+            <div class="d-flex" style="gap:0.5rem;">
+                <button type="submit" class="btn btn-success">
+                    {% if existing_vote %}🔄 Update My Vote{% else %}🗳️ Submit Vote{% endif %}
+                </button>
+                <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-muted">No competing bands have been added to this event yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if current_user.is_authenticated and current_user.has_admin_access() and all_votes %}
+<div class="card mb-4">
+    <div class="card-header text-white" style="background: var(--brass-dark, #7a6020);">
+        <h5 class="mb-0">🗳️ Admin: All Votes ({{ all_votes|length }})</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="thead-dark">
+                <tr>
+                    <th>User</th>
+                    <th>Voted For</th>
+                    <th>Time</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vote in all_votes %}
+                <tr>
+                    <td>{{ vote.user.username }}</td>
+                    <td>{{ vote.entry.band_name }}</td>
+                    <td><small>{{ vote.updated_at | to_london('%d %b %Y %H:%M') }}</small></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_delete_vote', vote_id=vote.id) }}"
+                              onsubmit="return confirm('Delete vote by {{ vote.user.username }}?')">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}Positions Vacant - Brassing Around{% endblock %}
+
+{% block content %}
+<main class="container">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h1 class="display-4 mb-2" style="color: var(--brass-gold);">Positions Vacant</h1>
+            <p class="lead text-muted">Find your next brass band opportunity</p>
+        </div>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card bg-dark border-brass" style="border-color: var(--brass-gold);">
+                <div class="card-body">
+                    <h5 class="card-title" style="color: var(--brass-gold);">Filter Positions</h5>
+                    <form method="get" class="filter-form">
+                        <div class="form-group mr-3 mb-2">
+                            <label for="instrument" class="mr-2">Instrument:</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                   id="instrument" name="instrument" placeholder="e.g., Cornet" 
+                                   value="{{ current_instrument }}">
+                        </div>
+
+                        <div class="form-group mr-3 mb-2">
+                            <label for="section" class="mr-2">Section:</label>
+                            <select class="form-control bg-dark text-light border-secondary" 
+                                    id="section" name="section">
+                                <option value="">Any Section</option>
+                                {% for sec in sections %}
+                                <option value="{{ sec }}" {% if current_section == sec %}selected{% endif %}>
+                                    {{ sec }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-group mr-3 mb-2 filter-day-group">
+                            <label class="mr-2 d-block">Rehearsal Days:</label>
+                            <div class="day-checkbox-grid">
+                                {% for day in days %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="filter-day-{{ day }}" name="rehearsal_days" value="{{ day }}" {% if day in current_rehearsal_days %}checked{% endif %}>
+                                    <label class="form-check-label" for="filter-day-{{ day }}">{{ day }}</label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="form-group mr-3 mb-2">
+                            <label for="postcode" class="mr-2">Postcode:</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                   id="postcode" name="postcode" placeholder="e.g., LS1 4AP"
+                                   value="{{ current_postcode }}">
+                        </div>
+
+                        <div class="form-group mr-3 mb-2">
+                            <label for="distance" class="mr-2">Within (km):</label>
+                            <input type="number" min="1" max="250" step="1"
+                                   class="form-control bg-dark text-light border-secondary"
+                                   id="distance" name="distance" value="{{ current_distance }}">
+                        </div>
+
+                        <button type="submit" class="btn mb-2" style="background-color: var(--brass-gold); color: black;">
+                            Filter
+                        </button>
+                        <a href="{{ url_for('positions_vacant') }}" class="btn btn-secondary mb-2 ml-2">
+                            Clear
+                        </a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Positions List -->
+    <div class="row">
+        <div class="col-md-12">
+            {% if distance_warning %}
+            <div class="alert alert-warning" role="alert">{{ distance_warning }}</div>
+            {% endif %}
+            {% if positions.items %}
+                <div class="row">
+                    {% for position in positions.items %}
+                    <div class="col-md-6 mb-4">
+                        <div class="card bg-dark h-100 border-secondary hover-highlight" 
+                             style="transition: all 0.3s ease; cursor: pointer;">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <div>
+                                        <h5 class="card-title" style="color: var(--brass-gold);">
+                                            {{ position.instrument }}
+                                        </h5>
+                                        <p class="card-text text-muted mb-1">
+                                            <strong>Band:</strong> {{ position.band.name }}
+                                        </p>
+                                    </div>
+                                    <span class="badge badge-info">{{ position.section }} Section</span>
+                                </div>
+
+                                <p class="card-text mb-2">
+                                    <strong style="color: var(--brass-light);">Location:</strong> {{ position.band.postcode }}
+                                </p>
+
+                                {% if position.distance_km is defined %}
+                                <p class="card-text mb-2">
+                                    <strong style="color: var(--brass-light);">Distance:</strong> {{ position.distance_km }} km
+                                </p>
+                                {% endif %}
+
+                                {% if position.rehearsal_days %}
+                                <p class="card-text mb-2">
+                                    <strong style="color: var(--brass-light);">Rehearsal Days:</strong> {{ position.rehearsal_days }}
+                                </p>
+                                {% endif %}
+
+                                {% if position.description %}
+                                <p class="card-text text-muted small mb-3">
+                                    {{ position.description[:150] }}{% if position.description|length > 150 %}...{% endif %}
+                                </p>
+                                {% endif %}
+
+                                <a href="{{ url_for('position_detail', position_id=position.id) }}" 
+                                   class="btn btn-sm" style="background-color: var(--brass-gold); color: black;">
+                                    View Details
+                                </a>
+                            </div>
+                            <div class="card-footer bg-darker border-secondary text-muted small">
+                                Posted {{ position.created_at.strftime('%d %B %Y') }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Pagination -->
+                {% if positions.pages > 1 %}
+                <nav aria-label="Page navigation" class="mb-4">
+                    <ul class="pagination justify-content-center">
+                        {% if positions.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link bg-dark text-light" href="{{ url_for('positions_vacant', page=positions.prev_num, instrument=current_instrument, section=current_section, postcode=current_postcode, distance=current_distance, rehearsal_days=current_rehearsal_days) }}">
+                                Previous
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% for page_num in positions.iter_pages() %}
+                            {% if page_num %}
+                                {% if page_num == positions.page %}
+                                <li class="page-item active">
+                                    <span class="page-link" style="background-color: var(--brass-gold); color: black;">
+                                        {{ page_num }}
+                                    </span>
+                                </li>
+                                {% else %}
+                                <li class="page-item">
+                                    <a class="page-link bg-dark text-light" href="{{ url_for('positions_vacant', page=page_num, instrument=current_instrument, section=current_section, postcode=current_postcode, distance=current_distance, rehearsal_days=current_rehearsal_days) }}">
+                                        {{ page_num }}
+                                    </a>
+                                </li>
+                                {% endif %}
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if positions.has_next %}
+                        <li class="page-item">
+                            <a class="page-link bg-dark text-light" href="{{ url_for('positions_vacant', page=positions.next_num, instrument=current_instrument, section=current_section, postcode=current_postcode, distance=current_distance, rehearsal_days=current_rehearsal_days) }}">
+                                Next
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+            {% else %}
+                <div class="alert alert-info text-center" role="alert">
+                    <h5>No positions found</h5>
+                    <p class="mb-0">Try adjusting your filters or <a href="{{ url_for('positions_vacant') }}" class="alert-link">view all positions</a></p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Call to Action for Band Owners -->
+    {% if current_user.is_authenticated %}
+    <div class="row mt-5 mb-3">
+        <div class="col-md-12">
+            <div class="alert" style="background-color: var(--brass-dark); border-color: var(--brass-gold); border: 2px solid var(--brass-gold); color: var(--text-light);">
+                <h5 style="color: var(--brass-gold);">Looking for musicians?</h5>
+                <p class="mb-0">Create your band and post position vacancies to reach potential members in your area.</p>
+                <a href="{{ url_for('register_band') }}" class="btn btn-sm mt-2" style="background-color: var(--brass-gold); color: black;">
+                    Register Your Band
+                </a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row mt-5 mb-3">
+        <div class="col-md-12">
+            <div class="alert" style="background-color: var(--brass-dark); border-color: var(--brass-gold); border: 2px solid var(--brass-gold); color: var(--text-light);">
+                <h5 style="color: var(--brass-gold);">Want to find more opportunities?</h5>
+                <p class="mb-0">Create an account to save your filters and get notified about new positions matching your criteria.</p>
+                <a href="{{ url_for('register') }}" class="btn btn-sm mt-2" style="background-color: var(--brass-gold); color: black;">
+                    Sign Up
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</main>
+
+<style>
+    .bg-darker {
+        background-color: #0a0a0a !important;
+    }
+
+    .hover-highlight:hover {
+        border-color: var(--brass-gold) !important;
+        box-shadow: 0 0 15px rgba(196, 160, 82, 0.3);
+    }
+
+    .border-brass {
+        border-color: var(--brass-gold) !important;
+    }
+
+    .filter-form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 0.75rem;
+    }
+
+    .filter-day-group {
+        min-width: 280px;
+    }
+
+    .day-checkbox-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+        gap: 0.25rem 1rem;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--brass-dark);
+        border-radius: 8px;
+        background: var(--dark-card);
+    }
+
+    .form-check-label {
+        color: var(--text-light);
+    }
+
+    @media (max-width: 767px) {
+        .filter-form .form-group {
+            width: 100%;
+            margin-right: 0 !important;
+        }
+    }
+</style>
+{% endblock %}

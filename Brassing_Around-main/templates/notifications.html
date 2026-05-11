@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="container centered-content">
+    <h2 class="section-title">Notifications</h2>
+
+    <form method="POST" action="{{ url_for('mark_notifications_read') }}">
+        <button type="submit" class="btn btn-sm btn-outline-secondary mb-3">Mark all as read</button>
+    </form>
+
+    {% if notifications %}
+    <div class="list-group">
+        {% for n in notifications %}
+        <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {% if not n.is_read %}font-weight-bold{% endif %}" style="background: var(--dark-card); border:1px solid var(--brass-dark);">
+            <div>
+                <div style="color: var(--brass-gold);">{{ n.actor.username if n.actor else 'System' }} &middot; {{ n.verb.replace('_',' ') }}</div>
+                <div style="color: var(--text-light);">{% if n.target_url %}<a href="{{ n.target_url }}">View</a>{% else %}{{ n.data or '' }}{% endif %}</div>
+                <small class="text-muted">{{ n.created_at | to_london('%d %b %Y %H:%M') }}</small>
+            </div>
+            <div>
+                {% if not n.is_read %}
+                <form method="POST" action="{{ url_for('mark_notification_read', note_id=n.id) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-primary">Mark read</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">No notifications.</div>
+    {% endif %}
+</div>
+{% endblock %}

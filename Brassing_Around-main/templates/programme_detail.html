@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entry.title }} - Brassing Around{% endblock %}
+
+{% block head_meta %}
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="Brassing Around">
+    <meta property="og:title" content="{{ entry.title }}">
+    <meta property="og:description" content="{{ preview_text }}">
+    <meta property="og:url" content="{{ share_url }}">
+    {% if og_image_url %}
+    <meta property="og:image" content="{{ og_image_url }}">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('concerts') if entry.section == 'promotion' else url_for('archive') }}" class="btn btn-secondary btn-sm">&larr; Back</a>
+    {% if current_user.is_authenticated and current_user.has_admin_access() %}
+    <a href="{{ url_for('edit_programme', entry_id=entry.id) }}" class="btn btn-warning btn-sm">Quick Edit Entry</a>
+    {% endif %}
+</div>
+
+<div class="card mb-4">
+    {% if entry.photo %}
+    <img src="{{ entry.photo | image_url }}" class="card-img-top" style="max-height: 420px; object-fit: cover;" alt="{{ entry.title }}">
+    {% endif %}
+    <div class="card-body">
+        <div class="mb-2">
+            {% if entry.entry_type == 'initiative' %}
+            <span class="badge badge-info">Initiative</span>
+            {% else %}
+            <span class="badge badge-secondary">Concert</span>
+            {% endif %}
+        </div>
+        <h2>{{ entry.title }}</h2>
+        <p class="text-muted mb-3">
+            <strong>📅 {{ entry.entry_date.strftime('%B %d, %Y') }}</strong><br>
+            <strong>📍 {{ entry.location or 'Location TBA' }}</strong>
+        </p>
+        {% if entry.tickets_info_url or entry.livestream_url %}
+        <p class="mb-3">
+            {% if entry.tickets_info_url %}
+            <a href="{{ entry.tickets_info_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary mr-2">Tickets/Info</a>
+            {% endif %}
+            {% if entry.livestream_url %}
+            <a href="{{ entry.livestream_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-danger">Livestream</a>
+            {% endif %}
+        </p>
+        {% endif %}
+        {% set youtube_urls = entry.youtube_embed_url | youtube_urls %}
+        {% if youtube_urls %}
+            {% if allow_third_party_media %}
+                {% for yt_url in youtube_urls %}
+                <div class="embed-responsive embed-responsive-16by9 mb-3">
+                    <iframe
+                        class="embed-responsive-item"
+                        src="{{ yt_url }}"
+                        title="{{ entry.title }} video"
+                        frameborder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowfullscreen
+                    ></iframe>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="alert alert-secondary mb-3">
+                <p class="mb-2">Video embeds are blocked because non-essential cookies are disabled.</p>
+                <form method="POST" action="{{ url_for('cookie_consent') }}" class="mb-0">
+                    <input type="hidden" name="choice" value="accept">
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Enable YouTube Cookies</button>
+                </form>
+            </div>
+            {% endif %}
+        {% endif %}
+        <hr>
+        <div class="preserve-breaks">{{ entry.review | safe_richtext | safe }}</div>
+
+        {% if entry.programme_works %}
+        <hr>
+        <h4 class="mt-4">Programme</h4>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Work</th>
+                        <th>Composer</th>
+                        <th>Arranger</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for work in entry.programme_works|sort(attribute='display_order') %}
+                    <tr>
+                        <td>{{ work.work_title }}</td>
+                        <td>{{ work.composer or '-' }}</td>
+                        <td>{{ work.arranger or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if fb_comments %}
+<div class="card mt-2 mb-4">
+    <div class="card-header d-flex align-items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#1877F2" viewBox="0 0 24 24" class="mr-2"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.883v2.271h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+        <strong>Facebook Comments</strong>
+        <span class="badge badge-secondary ml-2">{{ fb_comments|length }}</span>
+    </div>
+    <div class="list-group list-group-flush">
+        {% for comment in fb_comments %}
+        <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+                <strong>{{ comment.author }}</strong>
+                <small class="text-muted">{{ comment.created_time }}</small>
+            </div>
+            <p class="mb-0 mt-1">{{ comment.message }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

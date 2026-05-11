@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}{{ position.instrument }} - {{ band.name }} - Brassing Around{% endblock %}
+
+{% block content %}
+<main class="container">
+    <!-- Back Link -->
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <a href="{{ url_for('positions_vacant') }}" class="text-muted">
+                ← Back to Positions
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Position Details -->
+        <div class="col-md-8">
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-body">
+                    <h2 style="color: var(--brass-gold);" class="mb-3">{{ position.instrument }}</h2>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <p class="mb-2">
+                                <strong style="color: var(--brass-light);">Section:</strong><br>
+                                <span class="badge badge-info">{{ position.section }} Section</span>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-2">
+                                <strong style="color: var(--brass-light);">Band:</strong><br>
+                                <a href="{{ url_for('band_detail', band_id=band.id) }}" 
+                                   style="color: var(--brass-gold);">
+                                    {{ band.name }}
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+
+                    {% if position.rehearsal_days %}
+                    <div class="mb-4">
+                        <h5 style="color: var(--brass-gold);">Rehearsal Schedule</h5>
+                        <p class="text-muted">{{ position.rehearsal_days }}</p>
+                    </div>
+                    {% endif %}
+
+                    {% if position.description %}
+                    <div class="mb-4">
+                        <h5 style="color: var(--brass-gold);">About This Position</h5>
+                        <p class="text-light">{{ position.description }}</p>
+                    </div>
+                    {% endif %}
+
+                    <div class="text-muted small mt-4 pt-3 border-top border-secondary">
+                        Posted on {{ position.created_at.strftime('%d %B %Y') }}
+                        {% if position.expires_at %}
+                        <br>Expires on {{ position.expires_at.strftime('%d %B %Y') }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Band Information Sidebar -->
+        <div class="col-md-4">
+            <div class="card bg-dark border-secondary sticky-top" style="top: 20px;">
+                <div class="card-body">
+                    {% if band.logo %}
+                    <img src="{{ url_for('static', filename=band.logo) }}" 
+                         alt="{{ band.name }} logo" class="img-fluid rounded mb-3" style="max-height: 150px;">
+                    {% endif %}
+
+                    <h5 class="card-title" style="color: var(--brass-gold);">{{ band.name }}</h5>
+
+                    <p class="text-muted small mb-3">
+                        <strong>Location:</strong> {{ band.postcode }}
+                    </p>
+
+                    {% if band.description %}
+                    <p class="card-text text-light small mb-3">
+                        {{ band.description[:200] }}{% if band.description|length > 200 %}...{% endif %}
+                    </p>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <p class="mb-2">
+                            <strong style="color: var(--brass-light);">Members:</strong> 
+                            <span class="text-muted">{{ band.members|length }}</span>
+                        </p>
+                    </div>
+
+                    {% if band.email %}
+                    <p class="text-muted small mb-2">
+                        <strong>Contact:</strong><br>
+                        <a href="mailto:{{ band.email }}" style="color: var(--brass-gold);">
+                            {{ band.email }}
+                        </a>
+                    </p>
+                    {% endif %}
+
+                    {% if band.website %}
+                    <p class="text-muted small mb-3">
+                        <strong>Website:</strong><br>
+                        <a href="{{ band.website }}" target="_blank" style="color: var(--brass-gold);">
+                            {{ band.website }}
+                        </a>
+                    </p>
+                    {% endif %}
+
+                    <a href="{{ url_for('band_detail', band_id=band.id) }}" 
+                       class="btn btn-block" style="background-color: var(--brass-gold); color: black;">
+                        View Band Profile
+                    </a>
+
+                    {% if current_user.is_authenticated %}
+                    <p class="text-center text-muted small mt-3">
+                        Interested in this position?<br>
+                        Contact {{ band.name }} via email for more information.
+                    </p>
+                    {% else %}
+                    <p class="text-center text-muted small mt-3">
+                        <a href="{{ url_for('login') }}">Log in</a> to connect with bands.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Related Positions from Same Band -->
+    {% set related_positions = band.positions | selectattr('is_active', 'equalto', True) | list %}
+    {% if related_positions | length > 1 %}
+    <div class="row mt-5 mb-4">
+        <div class="col-md-12">
+            <h4 style="color: var(--brass-gold);">Other Positions with {{ band.name }}</h4>
+            <div class="row">
+                {% for pos in related_positions %}
+                    {% if pos.id != position.id %}
+                    <div class="col-md-6 mb-3">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <h6 class="card-title" style="color: var(--brass-gold);">{{ pos.instrument }}</h6>
+                                <p class="card-text text-muted small mb-2">
+                                    <span class="badge badge-info">{{ pos.section }} Section</span>
+                                </p>
+                                <a href="{{ url_for('position_detail', position_id=pos.id) }}" 
+                                   class="btn btn-sm" style="background-color: var(--brass-gold); color: black;">
+                                    View Position
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</main>
+
+<style>
+    @media (max-width: 767px) {
+        .sticky-top {
+            position: static !important;
+        }
+    }
+</style>
+{% endblock %}

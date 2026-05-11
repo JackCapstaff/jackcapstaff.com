@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Register Your Band - Brassing Around{% endblock %}
+
+{% block content %}
+<main class="container">
+    <div class="row mb-4">
+        <div class="col-md-8 offset-md-2">
+            <h2 style="color: var(--brass-gold);" class="mb-3">Register Your Band</h2>
+            <p class="text-muted mb-4">Start posting positions and connect with musicians in your area</p>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-8 offset-md-2">
+            <div class="card bg-dark border-secondary">
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        <!-- Band Name -->
+                        <div class="form-group">
+                            <label for="name" style="color: var(--brass-light);">
+                                <strong>Band Name *</strong>
+                            </label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                   id="name" name="name" required placeholder="e.g., City Brass Band">
+                            <small class="form-text text-muted">Enter your band's official name</small>
+                        </div>
+
+                        <!-- Postcode -->
+                        <div class="form-group">
+                            <label for="postcode" style="color: var(--brass-light);">
+                                <strong>Postcode *</strong>
+                            </label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary" 
+                                   id="postcode" name="postcode" required placeholder="e.g., SW1A 1AA">
+                            <small class="form-text text-muted">Your band's base location postcode (for distance filtering)</small>
+                        </div>
+
+                        <!-- Description -->
+                        <div class="form-group">
+                            <label for="description" style="color: var(--brass-light);">
+                                <strong>About Your Band</strong>
+                            </label>
+                            <textarea class="form-control bg-dark text-light border-secondary" 
+                                      id="description" name="description" rows="4" 
+                                      placeholder="Tell musicians about your band, its history, and what you're looking for..."></textarea>
+                            <small class="form-text text-muted">This will be displayed on your band's profile page</small>
+                        </div>
+
+                        <div class="row">
+                            <!-- Website -->
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="website" style="color: var(--brass-light);">
+                                        <strong>Website</strong>
+                                    </label>
+                                    <input type="url" class="form-control bg-dark text-light border-secondary" 
+                                           id="website" name="website" placeholder="https://yourband.com">
+                                    <small class="form-text text-muted">Optional band website URL</small>
+                                </div>
+                            </div>
+
+                            <!-- Email -->
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="email" style="color: var(--brass-light);">
+                                        <strong>Contact Email</strong>
+                                    </label>
+                                    <input type="email" class="form-control bg-dark text-light border-secondary" 
+                                           id="email" name="email" placeholder="contact@yourband.com">
+                                    <small class="form-text text-muted">How musicians can reach you</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Logo Upload -->
+                        <div class="form-group">
+                            <label for="logo" style="color: var(--brass-light);">
+                                <strong>Band Logo</strong>
+                            </label>
+                            <div class="custom-file">
+                                <input type="file" class="custom-file-input bg-dark text-light" 
+                                       id="logo" name="logo" accept="image/*">
+                                <label class="custom-file-label bg-dark text-light" for="logo">
+                                    Choose file...
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">PNG, JPG, or GIF (max 25MB)</small>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="form-group mt-4">
+                            <button type="submit" class="btn btn-block" 
+                                    style="background-color: var(--brass-gold); color: black; font-weight: bold;">
+                                Register Band
+                            </button>
+                            <a href="{{ url_for('positions_vacant') }}" class="btn btn-block btn-secondary mt-2">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="row mt-5 mb-4">
+        <div class="col-md-8 offset-md-2">
+            <h4 style="color: var(--brass-gold);" class="mb-4">After Registration</h4>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card bg-dark border-brass" style="border-color: var(--brass-gold);">
+                        <div class="card-body">
+                            <h6 style="color: var(--brass-gold);">Manage Members</h6>
+                            <p class="text-muted small">Add band members and assign roles like conductor or musician</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card bg-dark border-brass" style="border-color: var(--brass-gold);">
+                        <div class="card-body">
+                            <h6 style="color: var(--brass-gold);">Post Positions</h6>
+                            <p class="text-muted small">Create position vacancies for any instrument and section</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card bg-dark border-brass" style="border-color: var(--brass-gold);">
+                        <div class="card-body">
+                            <h6 style="color: var(--brass-gold);">Set Rehearsal Days</h6>
+                            <p class="text-muted small">Let musicians know when you rehearse and how often</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card bg-dark border-brass" style="border-color: var(--brass-gold);">
+                        <div class="card-body">
+                            <h6 style="color: var(--brass-gold);">Reach Musicians</h6>
+                            <p class="text-muted small">Get discovered by players looking for bands in your area</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<style>
+    .border-brass {
+        border-color: var(--brass-gold) !important;
+    }
+
+    .custom-file-label {
+        color: #6c757d;
+    }
+
+    .custom-file-label::after {
+        content: "Choose file...";
+    }
+</style>
+
+<script>
+    // Update file label with selected filename
+    document.getElementById('logo').addEventListener('change', function(e) {
+        const fileName = e.target.files[0]?.name || 'Choose file...';
+        const label = document.querySelector('.custom-file-label');
+        label.textContent = fileName;
+    });
+</script>
+{% endblock %}

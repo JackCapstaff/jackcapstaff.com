@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Create Profile - Admin{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0" style="color: var(--dark-bg);">Create New Profile</h2>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="name">Name *</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="short_bio">Short Bio (for card display) *</label>
+                        <input type="text" class="form-control" id="short_bio" name="short_bio" 
+                               placeholder="One sentence that appears on the people card (e.g., 'Lead trumpet player')" required>
+                        <small class="form-text text-muted">Keep this to one sentence. If left blank, the full bio will be truncated for the card.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bio">Full Bio (for detail page) *</label>
+                        <div id="bio-editor" style="background: #fff; color: #000; min-height: 220px;"></div>
+                        <input type="hidden" id="bio" name="bio" required>
+                        <small class="form-text text-muted">Use formatting tools for bold, underline, italics, headings, lists, links, and sizes.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="card_photo">Card Photo</label>
+                        <input type="file" class="form-control-file" id="card_photo" name="card_photo" 
+                               accept="image/png,image/jpeg,image/jpg,image/gif">
+                        <small class="form-text text-muted">Used on the Our People cards. Recommended: portrait or square crop around 800px wide.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="photo">Bio Page Cover Photo</label>
+                        <input type="file" class="form-control-file" id="photo" name="photo" 
+                               accept="image/png,image/jpeg,image/jpg,image/gif">
+                        <small class="form-text text-muted">Used on the full bio page. Recommended: larger image, at least 1600px wide.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="display_order">Display Order</label>
+                        <input type="number" class="form-control" id="display_order" name="display_order" 
+                               value="0" min="0" max="999">
+                        <small class="form-text text-muted">Higher numbers appear first. Use this to feature certain profiles at the top.</small>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{{ url_for('manage_profiles') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Create Profile</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script>
+const bioQuill = new Quill('#bio-editor', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'align': [] }],
+            ['blockquote', 'link'],
+            ['clean']
+        ]
+    }
+});
+
+document.querySelector('form').addEventListener('submit', function(e) {
+    const bioInput = document.getElementById('bio');
+    const html = bioQuill.root.innerHTML.trim();
+    const plainText = bioQuill.getText().trim();
+
+    if (!plainText) {
+        e.preventDefault();
+        alert('Bio cannot be empty.');
+        return;
+    }
+
+    bioInput.value = html;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Concerts & Initiatives - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Concerts & Initiatives</h1>
+    <p class="lead">Promoted concerts, initiatives, and featured projects</p>
+    <hr class="my-4">
+    <p class="centered-content">
+        Brassing Around brings brass music to communities through performances, workshops,
+        collaborations, and special initiatives. Explore what we are promoting right now.
+    </p>
+</div>
+
+<div class="card mb-5 search-card" style="background: linear-gradient(135deg, var(--dark-card) 0%, #2a2a2a 100%); border: 2px solid var(--brass-dark);">
+    <div class="card-body">
+        <h4 class="mb-3" style="color: var(--brass-gold);">Search Concerts & Initiatives</h4>
+        <form action="{{ url_for('concerts') }}" method="GET">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="concert-search-query">Keyword</label>
+                    <input type="text" class="form-control" id="concert-search-query" name="q" value="{{ q or '' }}" placeholder="Title, location, review...">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="concert-date-from">From Date</label>
+                    <input type="date" class="form-control" id="concert-date-from" name="date_from" value="{{ date_from or '' }}">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="concert-date-to">To Date</label>
+                    <input type="date" class="form-control" id="concert-date-to" name="date_to" value="{{ date_to or '' }}">
+                </div>
+            </div>
+            <div class="d-flex justify-content-end" style="gap: 0.5rem;">
+                <a href="{{ url_for('concerts') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+                <button type="submit" class="btn btn-sm btn-primary">Search</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if current_user.is_authenticated and current_user.has_admin_access() %}
+<div class="mb-4 text-right">
+    <a href="{{ url_for('create_programme', section='promotion', entry_type='concert') }}" class="btn btn-success">Add Promoted Entry</a>
+</div>
+{% endif %}
+
+{% if entries %}
+<div class="row">
+    {% for entry in entries %}
+    <div class="col-md-6 mb-4">
+        <div class="card h-100 clickable-card">
+            <a class="card-stretched-link" href="{{ url_for('programme_detail', entry_id=entry.id) }}" aria-label="Open full details for {{ entry.title }}"></a>
+            {% if entry.photo %}
+            <img src="{{ entry.photo | image_url }}" class="card-img-top" style="height: 250px; object-fit: cover;" alt="{{ entry.title }}">
+            {% else %}
+            <div style="height: 250px; background: linear-gradient(135deg, var(--brass-dark) 0%, var(--dark-card) 100%); display: flex; align-items: center; justify-content: center; opacity: 0.6;">
+                <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 150px; opacity: 0.7;">
+            </div>
+            {% endif %}
+            <div class="card-body">
+                <div class="mb-2">
+                    {% if entry.entry_type == 'initiative' %}
+                    <span class="badge badge-info">Initiative</span>
+                    {% else %}
+                    <span class="badge badge-primary">Concert</span>
+                    {% endif %}
+                </div>
+                <h5 class="card-title">{{ entry.title }}</h5>
+                <p class="text-muted mb-3">
+                    <strong>📅 {{ entry.entry_date.strftime('%B %d, %Y') }}</strong><br>
+                    <strong>📍 {{ entry.location or 'Location TBA' }}</strong>
+                </p>
+                {% if entry.tickets_info_url or entry.livestream_url %}
+                <p class="mb-3 card-actions">
+                    {% if entry.tickets_info_url %}
+                    <a href="{{ entry.tickets_info_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary mr-2">Tickets/Info</a>
+                    {% endif %}
+                    {% if entry.livestream_url %}
+                    <a href="{{ entry.livestream_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-danger">Livestream</a>
+                    {% endif %}
+                </p>
+                {% endif %}
+                {% if entry.youtube_embed_url %}
+                <p class="mb-2"><span class="badge badge-dark">Video Available</span></p>
+                {% endif %}
+                <p class="card-text preview-text">{{ entry.review | preview_text(220) }}</p>
+            </div>
+            <div class="card-footer card-actions">
+                <small class="text-muted">Read More...</small>
+                {% if current_user.is_authenticated and current_user.has_admin_access() %}
+                <a href="{{ url_for('edit_programme', entry_id=entry.id) }}" class="btn btn-sm btn-outline-warning float-right">Quick Edit</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info text-center mx-auto" style="max-width: 600px;">
+    <h4>No promoted concerts or initiatives yet</h4>
+    <p class="mb-0">Add curated concert and initiative entries from the admin area to feature them here.</p>
+</div>
+{% endif %}
+
+<div class="card mt-section" style="background: linear-gradient(135deg, var(--brass-dark) 0%, var(--dark-card) 100%); border: 2px solid var(--brass-gold);">
+    <div class="card-body text-center py-5">
+        <h3 class="mb-3" style="color: var(--brass-gold);">Want to Get Involved?</h3>
+        <p class="lead mb-4">Join to comment on concert updates, react to posts, and take part in audience favourites.</p>
+        {% if current_user.is_authenticated %}
+        <p class="text-muted">You're in. Jump into the latest updates and join the conversation.</p>
+        {% else %}
+        <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">Create Free Account</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

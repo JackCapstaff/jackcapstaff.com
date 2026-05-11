@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(90deg, var(--brass-dark) 0%, var(--brass-gold) 100%); color: var(--dark-bg);">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h2 class="mb-0">My Profile</h2>
+                    <a href="{{ url_for('edit_my_profile') }}" class="btn btn-light btn-sm">
+                        <i class="fas fa-edit"></i> Edit Profile
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        {% if current_user.profile_photo %}
+                        <img src="{{ current_user.profile_photo | image_url }}" 
+                             alt="{{ current_user.username }}" 
+                             class="img-fluid rounded-circle mb-3"
+                             style="max-width: 250px; border: 4px solid var(--brass-gold);">
+                        {% else %}
+                        <div class="rounded-circle d-flex align-items-center justify-content-center mb-3 mx-auto" 
+                             style="width: 250px; height: 250px; background: linear-gradient(135deg, var(--brass-dark), var(--brass-gold)); border: 4px solid var(--brass-gold);">
+                            <i class="fas fa-user" style="font-size: 100px; color: var(--dark-bg);"></i>
+                        </div>
+                        {% endif %}
+                        
+                        <h3>{{ current_user.username }}</h3>
+                        
+                        {% if current_user.role == 'admin' or current_user.is_admin %}
+                        <span class="badge badge-danger">Admin</span>
+                        {% elif current_user.role == 'contributor' %}
+                        <span class="badge badge-warning">Contributor</span>
+                        {% else %}
+                        <span class="badge badge-secondary">User</span>
+                        {% endif %}
+                        
+                        <p class="text-muted mt-2 mb-0">
+                            <small>Member since {{ current_user.created_at.strftime('%B %Y') }}</small>
+                        </p>
+                    </div>
+                    
+                    <div class="col-md-8">
+                        <h4 style="color: var(--brass-gold); border-bottom: 2px solid var(--brass-gold); padding-bottom: 10px;">About</h4>
+                        
+                        <div class="mb-4">
+                            <p><strong>Email:</strong> {{ current_user.email }}</p>
+                            
+                            {% if current_user.bio %}
+                            <p><strong>Bio:</strong></p>
+                            <p>{{ current_user.bio|nl2br|safe }}</p>
+                            {% else %}
+                            <p class="text-muted"><em>No bio added yet. Click "Edit Profile" to add one.</em></p>
+                            {% endif %}
+                        </div>
+                        
+                        <h4 style="color: var(--brass-gold); border-bottom: 2px solid var(--brass-gold); padding-bottom: 10px;">Activity</h4>
+                        
+                        <div class="row text-center mt-3">
+                            <div class="col-md-4">
+                                <div class="card" style="background: var(--dark-card);">
+                                    <div class="card-body">
+                                        <h3 class="mb-0" style="color: var(--brass-gold);">{{ current_user.events|length }}</h3>
+                                        <small>Events Created</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card" style="background: var(--dark-card);">
+                                    <div class="card-body">
+                                        <h3 class="mb-0" style="color: var(--brass-gold);">{{ current_user.stories|length }}</h3>
+                                        <small>Posts Shared</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card" style="background: var(--dark-card);">
+                                    <div class="card-body">
+                                        <h3 class="mb-0" style="color: var(--brass-gold);">{{ current_user.comments|length }}</h3>
+                                        <small>Comments Posted</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% if current_user.role == 'admin' or current_user.is_admin %}
+                        <div class="alert alert-info mt-4">
+                            <strong>Admin Privileges:</strong> You have full access to manage events, posts, profiles, and users.
+                        </div>
+                        {% elif current_user.role == 'contributor' %}
+                        <div class="alert alert-warning mt-4">
+                            <strong>Contributor Privileges:</strong> You can create and edit posts for any event.
+                        </div>
+                        {% else %}
+                        <div class="alert alert-secondary mt-4">
+                            <strong>User Privileges:</strong> You can view events and add comments to posts.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center mt-4">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to Home</a>
+            {% if current_user.role == 'admin' or current_user.is_admin %}
+            <a href="{{ url_for('admin_dashboard') }}" class="btn" style="background: var(--brass-gold); color: var(--dark-bg);">Go to Admin Dashboard</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

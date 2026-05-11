@@ -1,0 +1,66 @@
+[Mismatch] 'Fanfare – La Péri' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Fanfare – La Péri' has 5 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Fanfare – La Péri' has 5 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Fanfare – La Péri' has 10 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'Fanfare – La Péri' has 5 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Candide Overture' has 10 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Candide Overture' has 20 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Candide Overture' has 20 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Candide Overture' has 20 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'Candide Overture' has 20 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Candide Overture' has 20 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Bohemian Rhapsody' has 10 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Bohemian Rhapsody' has 10 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Bohemian Rhapsody' has 5 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Bohemian Rhapsody' has 10 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'Bohemian Rhapsody' has 10 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Bohemian Rhapsody' has 10 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'España' has 10 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'España' has 20 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'España' has 10 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'España' has 20 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'España' has 15 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'España' has 20 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Conga del Fuego Nuevo' has 10 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Conga del Fuego Nuevo' has 5 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Conga del Fuego Nuevo' has 20 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Conga del Fuego Nuevo' has 20 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Conga del Fuego Nuevo' has 10 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Christmas Overture' has 10 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Christmas Overture' has 15 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Christmas Overture' has 5 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Christmas Overture' has 15 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'Christmas Overture' has 10 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Christmas Overture' has 15 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Sleigh Ride' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Sleigh Ride' has 5 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Sleigh Ride' has 10 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Bells of Christmas' has 10 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Bells of Christmas' has 25 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Bells of Christmas' has 5 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Bells of Christmas' has 25 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'Bells of Christmas' has 25 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Bells of Christmas' has 25 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Schneewalzer' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Schneewalzer' has 5 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Schneewalzer' has 5 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Carols for Choir and Orchestra' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Carols for Choir and Orchestra' has 5 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Carols for Choir and Orchestra' has 10 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'Carols for Choir and Orchestra' has 5 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Carols for Choir and Orchestra' has 5 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Nutcracker - Miniature Overture' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Nutcracker - Miniature Overture' has 5 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Nutcracker - March' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Nutcracker - Russian Dance (Trepak)' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Nutcracker - Russian Dance (Trepak)' has 5 min in Rehearsal 5 but required sections not available that night.
+[Mismatch] 'Nutcracker - Arabian Dance (Coffee)' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Nutcracker - Arabian Dance (Coffee)' has 10 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Nutcracker - Chinese Dance (Tea)' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Nutcracker - Dance of the Reed Flutes (Mirlitons)' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Nutcracker - Dance of the Reed Flutes (Mirlitons)' has 10 min in Rehearsal 3 but required sections not available that night.
+[Mismatch] 'Nutcracker - Dance of the Reed Flutes (Mirlitons)' has 5 min in Rehearsal 6 but required sections not available that night.
+[Mismatch] 'Nutcracker - Waltz of the Flowers' has 5 min in Rehearsal 1 but required sections not available that night.
+[Mismatch] 'Nutcracker - Waltz of the Flowers' has 10 min in Rehearsal 2 but required sections not available that night.
+[Mismatch] 'Nutcracker - Waltz of the Flowers' has 5 min in Rehearsal 4 but required sections not available that night.
+[Mismatch] 'Nutcracker - Waltz of the Flowers' has 5 min in Rehearsal 6 but required sections not available that night.

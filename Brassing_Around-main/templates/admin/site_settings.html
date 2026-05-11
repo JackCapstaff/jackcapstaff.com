@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Site Settings - Admin{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Site Settings</h1>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header" style="background: linear-gradient(90deg, var(--brass-dark) 0%, var(--brass-gold) 100%); color: var(--dark-bg);">
+                <h3 class="mb-0">Homepage Welcome Section</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="homepage_bg_image">Background Image</label>
+                        
+                        {% if settings.homepage_bg_image %}
+                        <div class="mb-3">
+                            <p><strong>Current Background:</strong></p>
+                            <img src="{{ url_for('static', filename='uploads/' ~ settings.homepage_bg_image) }}" 
+                                 alt="Current homepage background" 
+                                 class="img-fluid rounded"
+                                 style="max-width: 600px; border: 3px solid var(--brass-gold); box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+                            
+                            <div class="mt-3">
+                                <button type="button" class="btn btn-danger btn-sm" onclick="removeBackground()">
+                                    <i class="fas fa-trash"></i> Remove Background Image
+                                </button>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> No background image set. Upload one below to add a beautiful backdrop to your homepage welcome section.
+                        </div>
+                        {% endif %}
+                        
+                        <input type="file" class="form-control-file mt-3" id="homepage_bg_image" name="homepage_bg_image" accept="image/*">
+                        <small class="form-text text-muted">
+                            Upload a high-quality image (JPG, PNG, or GIF). Recommended size: 1920x1080 or larger for best results.
+                        </small>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                    </div>
+                </form>
+                
+                {% if settings.updated_at %}
+                <hr>
+                <p class="text-muted mb-0">
+                    <small>
+                        <i class="fas fa-clock"></i> Last updated: {{ settings.updated_at | to_london('%B %d, %Y at %I:%M %p') }}
+                        {% if settings.updated_by %}
+                        by {{ settings.updated_by.username }}
+                        {% endif %}
+                    </small>
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">Facebook Integration</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="alert alert-info">
+                        <strong><i class="fas fa-info-circle"></i> Facebook Setup Instructions:</strong>
+                        <ol class="mb-0 mt-2">
+                            <li>Create a Facebook Page if you don't have one</li>
+                            <li>Go to <a href="https://developers.facebook.com/" target="_blank" class="alert-link">Facebook for Developers</a></li>
+                            <li>Create an App and get your Page Access Token</li>
+                            <li>Copy your Page ID and Access Token below</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="facebook_page_id">Facebook Page ID</label>
+                        <input type="text" class="form-control" id="facebook_page_id" name="facebook_page_id" 
+                               value="{{ settings.facebook_page_id or '' }}"
+                               placeholder="e.g., 123456789012345">
+                        <small class="form-text text-muted">
+                            Find your Page ID at <a href="https://www.facebook.com/help/1503421039731588" target="_blank">facebook.com/help/1503421039731588</a>
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="facebook_access_token">Page Access Token</label>
+                        <input type="password" class="form-control" id="facebook_access_token" name="facebook_access_token" 
+                               value="{{ settings.facebook_access_token or '' }}"
+                               placeholder="Enter your long-lived page access token">
+                        <small class="form-text text-muted">
+                            Keep this token secure! It allows posting to your Facebook page. Use a long-lived token.
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="auto_share_stories" name="auto_share_stories"
+                                   {% if settings.auto_share_stories %}checked{% endif %}>
+                            <label class="custom-control-label" for="auto_share_stories">
+                                <strong>Automatically share new posts to Facebook</strong>
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">
+                            When enabled, every new post will be automatically posted to your Facebook page.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="auto_share_programmes" name="auto_share_programmes"
+                                   {% if settings.auto_share_programmes %}checked{% endif %}>
+                            <label class="custom-control-label" for="auto_share_programmes">
+                                <strong>Automatically share new programme/concert entries to Facebook</strong>
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">
+                            When enabled, new concerts or programme entries will be shared automatically.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="auto_share_news" name="auto_share_news"
+                                   {% if settings.auto_share_news %}checked{% endif %}>
+                            <label class="custom-control-label" for="auto_share_news">
+                                <strong>Automatically share new news items to Facebook</strong>
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">
+                            When enabled, new news items will be shared automatically.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="auto_share_events" name="auto_share_events"
+                                   {% if settings.auto_share_events %}checked{% endif %}>
+                            <label class="custom-control-label" for="auto_share_events">
+                                <strong>Automatically share new events and announcements to Facebook</strong>
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">
+                            When enabled, new events or updates will be posted automatically.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="auto_share_competitions" name="auto_share_competitions"
+                                   {% if settings.auto_share_competitions %}checked{% endif %}>
+                            <label class="custom-control-label" for="auto_share_competitions">
+                                <strong>Automatically share competition tables to Facebook</strong>
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">
+                            When enabled, competition table updates will be shared automatically.
+                        </small>
+                    </div>
+                    
+                    {% if settings.facebook_page_id and settings.facebook_access_token %}
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i> Facebook is configured! 
+                        {% if settings.auto_share_stories %}
+                        Auto-sharing is <strong>enabled</strong>.
+                        {% else %}
+                        Auto-sharing is <strong>disabled</strong>.
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i> Facebook not fully configured. Add both Page ID and Access Token above.
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-save"></i> Save All Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card" style="background: var(--dark-card);">
+            <div class="card-body">
+                <h5 style="color: var(--brass-gold);">
+                    <i class="fas fa-lightbulb"></i> Tips for Best Results
+                </h5>
+                <h6 class="mt-3">Homepage Background:</h6>
+                <ul>
+                    <li>Use high-resolution images (at least 1920x1080 pixels)</li>
+                    <li>Choose images with good contrast so the white text is readable</li>
+                    <li>Landscape/wide photos work best for the welcome section</li>
+                    <li>The image will be dimmed automatically to maintain text readability</li>
+                </ul>
+                <h6 class="mt-3">Facebook Sharing:</h6>
+                <ul>
+                    <li>Use a <strong>long-lived</strong> Page Access Token (60+ days) to avoid frequent reauthorization</li>
+                    <li>Test with auto-sharing disabled first, then enable once confirmed working</li>
+                    <li>Post shares include the event title, post title, author username, and post content</li>
+                    <li>Concerts, initiatives, archive entries, and competition tables must be published manually</li>
+                    <li>Make sure your Facebook Page is published and accessible</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if settings.updated_at %}
+<div class="text-center mt-3 text-muted">
+    <small>
+        <i class="fas fa-clock"></i> Last updated: {{ settings.updated_at | to_london('%B %d, %Y at %I:%M %p') }}
+        {% if settings.updated_by %}
+        by {{ settings.updated_by.username }}
+        {% endif %}
+    </small>
+</div>
+{% endif %}
+
+<form id="removeBackgroundForm" method="POST" action="{{ url_for('remove_bg_image') }}" style="display: none;">
+</form>
+
+<script>
+function removeBackground() {
+    if (confirm('Are you sure you want to remove the background image?')) {
+        document.getElementById('removeBackgroundForm').submit();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Add Post - {{ event.title }} - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('admin_event_detail', event_id=event.id) }}" class="btn btn-secondary">&larr; Back to Event</a>
+    <a href="{{ url_for('view_event', event_id=event.id) }}" 
+       class="btn btn-success" target="_blank">
+       👁️ Preview Event Page
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header bg-success text-white">
+        <h3 class="mb-0">Add Post to: {{ event.title }}</h3>
+    </div>
+    <div class="card-body">
+        {% if competition_entry %}
+        <div class="alert alert-info">
+            Creating a post linked to competition band: <strong>{{ competition_entry.band_name }}</strong>
+        </div>
+        {% endif %}
+        <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="competition_entry_id" value="{{ competition_entry.id if competition_entry else '' }}">
+            <div class="form-group">
+                <label for="title">Post Title *</label>
+                <input type="text" class="form-control" id="title" name="title" value="{{ prefilled_title or '' }}" required>
+                <small class="form-text text-muted">Give your post a descriptive title</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="content">Post Content *</label>
+                <div id="story-editor" style="background: #fff; color: #000; min-height: 220px;"></div>
+                <input type="hidden" id="content" name="content" required>
+                <small class="form-text text-muted">Use the toolbar to format text (bold, underline, headings, lists, links, font sizes).</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="timestamp">Post Timestamp *</label>
+                <input type="datetime-local" class="form-control" id="timestamp" name="timestamp" required>
+                <small class="form-text text-muted">When did this post take place?</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="photos">Photos</label>
+                <input type="file" class="form-control-file" id="photos" name="photos" multiple accept="image/*">
+                <small class="form-text text-muted">You can select multiple photos (PNG, JPG, GIF - max 25MB each)</small>
+            </div>
+            
+            <div id="preview-container" class="mb-3"></div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-success">Add Post</button>
+                <a href="{{ url_for('admin_event_detail', event_id=event.id) }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script>
+const quill = new Quill('#story-editor', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'align': [] }],
+            ['blockquote', 'link'],
+            ['clean']
+        ]
+    }
+});
+
+document.querySelector('form').addEventListener('submit', function(e) {
+    const contentInput = document.getElementById('content');
+    const html = quill.root.innerHTML.trim();
+    const plainText = quill.getText().trim();
+
+    if (!plainText) {
+        e.preventDefault();
+        alert('Post content cannot be empty.');
+        return;
+    }
+
+    contentInput.value = html;
+});
+
+// Set default timestamp to now
+document.addEventListener('DOMContentLoaded', function() {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    const localISOTime = (new Date(now - offset)).toISOString().slice(0, 16);
+    document.getElementById('timestamp').value = localISOTime;
+});
+
+// Preview selected images
+document.getElementById('photos').addEventListener('change', function(e) {
+    const previewContainer = document.getElementById('preview-container');
+    previewContainer.innerHTML = '';
+    
+    if (this.files.length > 0) {
+        const header = document.createElement('h5');
+        header.textContent = 'Photo Preview:';
+        previewContainer.appendChild(header);
+        
+        const previewDiv = document.createElement('div');
+        previewDiv.className = 'photo-gallery';
+        
+        for (let file of this.files) {
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.style.width = '150px';
+                    img.style.height = '150px';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '5px';
+                    img.style.margin = '5px';
+                    previewDiv.appendChild(img);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        previewContainer.appendChild(previewDiv);
+    }
+});
+</script>
+{% endblock %}

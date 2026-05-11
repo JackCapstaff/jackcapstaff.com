@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Events - Brassing Around{% endblock %}
+
+{% block extra_css %}
+<style>
+    .event-card {
+        transition: all 0.3s ease;
+        margin-bottom: 2rem;
+    }
+    
+    .event-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 12px 32px rgba(196, 160, 82, 0.3);
+    }
+    
+    .event-image {
+        width: 100%;
+        height: 250px;
+        object-fit: cover;
+        border-radius: 12px 12px 0 0;
+    }
+    
+    .event-placeholder {
+        width: 100%;
+        height: 250px;
+        background: linear-gradient(135deg, var(--brass-dark) 0%, var(--dark-card) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 5rem;
+        color: var(--brass-gold);
+        border-radius: 12px 12px 0 0;
+        opacity: 0.6;
+    }
+    
+    .event-date-badge {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: var(--brass-gold);
+        color: var(--dark-bg);
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-weight: bold;
+        box-shadow: 0 4px 12px rgba(196, 160, 82, 0.4);
+    }
+    
+    .section-title {
+        color: var(--brass-gold);
+        font-family: 'Playfair Display', serif;
+        border-bottom: 3px solid var(--brass-gold);
+        padding-bottom: 0.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .search-card .form-control[type='date'] {
+        min-width: 0;
+        width: 100%;
+    }
+
+    @media (max-width: 575.98px) {
+        .search-card .card-body {
+            padding: 1rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Our Events</h1>
+    <p class="lead">Discover upcoming concerts and relive memorable performances</p>
+</div>
+
+<!-- Search Form -->
+<div class="card mb-5 search-card" style="background: linear-gradient(135deg, var(--dark-card) 0%, #2a2a2a 100%); border: 2px solid var(--brass-dark);">
+    <div class="card-body">
+        <h4 class="mb-3" style="color: var(--brass-gold);">
+            <i class="fas fa-search"></i> Search Events & Posts
+        </h4>
+        <form action="{{ url_for('search_events') }}" method="GET">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="search-query" class="form-label">Search by keyword</label>
+                    <input type="text" class="form-control" id="search-query" name="q" 
+                           placeholder="Event name, band name, location, description...">
+                    <small class="form-text text-muted">Search events, posts, and descriptions</small>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="date-from" class="form-label">From Date</label>
+                    <input type="date" class="form-control" id="date-from" name="date_from">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="date-to" class="form-label">To Date</label>
+                    <input type="date" class="form-control" id="date-to" name="date_to">
+                </div>
+            </div>
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Search
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if upcoming_events %}
+<h2 class="section-title">Upcoming Events</h2>
+<div class="row">
+    {% for event in upcoming_events %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card event-card h-100 clickable-card">
+            <a class="card-stretched-link" href="{{ url_for('view_event', event_id=event.id) }}" aria-label="Open event details for {{ event.title }}"></a>
+            <div style="position: relative;">
+                {% if event.event_photo %}
+                <img src="{{ event.event_photo | image_url }}" alt="{{ event.title }}" class="event-image">
+                {% else %}
+                <div class="event-placeholder">
+                    <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 120px; opacity: 0.7;">
+                </div>
+                {% endif %}
+                <div class="event-date-badge">
+                    {{ event.event_date.strftime('%b %d') }}
+                </div>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ event.title }}</h5>
+                <p class="text-muted mb-2">
+                    <small>📅 {{ event.event_date.strftime('%B %d, %Y at %I:%M %p') }}</small><br>
+                    <small>📍 {{ event.location or 'Location TBA' }}</small>
+                </p>
+                {% if event.tickets_info_url or event.livestream_url %}
+                <p class="mb-2">
+                    {% if event.tickets_info_url %}
+                    <a href="{{ event.tickets_info_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary mr-1">Tickets/Info</a>
+                    {% endif %}
+                    {% if event.livestream_url %}
+                    <a href="{{ event.livestream_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-danger">Livestream</a>
+                    {% endif %}
+                </p>
+                {% endif %}
+                <p class="card-text preview-text">{{ event.description | preview_text(120) }}</p>
+                <p class="text-muted">
+                    <small>{{ event.stories|length }} {% if event.stories|length == 1 %}post{% else %}posts{% endif %}</small>
+                </p>
+            </div>
+            <div class="card-footer card-actions">
+                {% if current_user.is_authenticated and current_user.is_contributor %}
+                <div class="btn-group btn-group-sm d-flex" role="group">
+                    <a href="{{ url_for('create_story', event_id=event.id) }}" class="btn btn-success w-50">
+                        <i class="fas fa-plus"></i> Add Post
+                    </a>
+                    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-primary w-50">View Details</a>
+                </div>
+                {% else %}
+                <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-primary btn-block">View Details</a>
+                {% endif %}
+                {% if current_user.is_authenticated and current_user.has_admin_access() %}
+                <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-sm btn-outline-warning btn-block mt-2">Quick Edit Event</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info text-center mx-auto mb-section" style="max-width: 600px;">
+    <h4>No upcoming events</h4>
+    <p class="mb-0">Check back soon for new performances!</p>
+</div>
+{% endif %}
+
+{% if past_events %}
+<h2 class="section-title mt-section">Past Events</h2>
+<div id="pastEventsAccordion" class="accordion">
+    <div class="card" style="background: var(--dark-card); border: 1px solid var(--brass-dark);">
+        <div class="card-header" id="pastEventsHeader" style="background: linear-gradient(135deg, var(--brass-dark) 0%, #2a2a2a 100%);">
+            <h5 class="mb-0">
+                <button class="btn btn-link text-left w-100" type="button" data-toggle="collapse" data-target="#pastEventsCollapse" aria-expanded="false" aria-controls="pastEventsCollapse" style="color: var(--text-light); text-decoration: none;">
+                    Show Past Events ({{ past_events|length }})
+                </button>
+            </h5>
+        </div>
+
+        <div id="pastEventsCollapse" class="collapse" aria-labelledby="pastEventsHeader" data-parent="#pastEventsAccordion">
+            <div class="card-body">
+                <div class="row">
+                    {% for event in past_events %}
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card event-card h-100 clickable-card" style="opacity: 0.85;">
+                            <a class="card-stretched-link" href="{{ url_for('view_event', event_id=event.id) }}" aria-label="Open event memories for {{ event.title }}"></a>
+                            <div style="position: relative;">
+                                {% if event.event_photo %}
+                                <img src="{{ event.event_photo | image_url }}" alt="{{ event.title }}" class="event-image" style="filter: grayscale(30%);">
+                                {% else %}
+                                <div class="event-placeholder" style="opacity: 0.3;">
+                                    <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 120px; opacity: 0.5;">
+                                </div>
+                                {% endif %}
+                                <div class="event-date-badge" style="background: var(--brass-dark);">
+                                    {{ event.event_date.strftime('%b %d') }}
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title">{{ event.title }}</h5>
+                                <p class="text-muted mb-2">
+                                    <small>📅 {{ event.event_date.strftime('%B %d, %Y') }}</small><br>
+                                    <small>📍 {{ event.location or 'Location TBA' }}</small>
+                                </p>
+                                {% if event.tickets_info_url or event.livestream_url %}
+                                <p class="mb-2">
+                                    {% if event.tickets_info_url %}
+                                    <a href="{{ event.tickets_info_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary mr-1">Tickets/Info</a>
+                                    {% endif %}
+                                    {% if event.livestream_url %}
+                                    <a href="{{ event.livestream_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-danger">Livestream</a>
+                                    {% endif %}
+                                </p>
+                                {% endif %}
+                                <p class="card-text preview-text">{{ event.description | preview_text(120) }}</p>
+                                <p class="text-muted">
+                                    <small>{{ event.stories|length }} {% if event.stories|length == 1 %}post{% else %}posts{% endif %}</small>
+                                </p>
+                            </div>
+                            <div class="card-footer card-actions">
+                                {% if current_user.is_authenticated and current_user.is_contributor %}
+                                <div class="btn-group btn-group-sm d-flex" role="group">
+                                    <a href="{{ url_for('create_story', event_id=event.id) }}" class="btn btn-success w-50">
+                                        <i class="fas fa-plus"></i> Add Post
+                                    </a>
+                                    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary w-50">View Memories</a>
+                                </div>
+                                {% else %}
+                                <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary btn-block">View Memories</a>
+                                {% endif %}
+                                {% if current_user.is_authenticated and current_user.has_admin_access() %}
+                                <a href="{{ url_for('edit_event', event_id=event.id) }}" class="btn btn-sm btn-outline-warning btn-block mt-2">Quick Edit Event</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

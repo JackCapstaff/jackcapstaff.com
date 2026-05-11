@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Create Event - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary btn-sm">&larr; Back to Dashboard</a>
+</div>
+
+<div class="card">
+    <div class="card-header bg-success text-white">
+        <h3 class="mb-0">Create New Event</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="title">Event Title *</label>
+                <input type="text" class="form-control" id="title" name="title" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description</label>
+                <div id="description-editor" style="background: #fff; color: #000; min-height: 220px;"></div>
+                <input type="hidden" id="description" name="description">
+                <small class="form-text text-muted">Describe the event with formatting (bold, italics, underline, headings, lists, links, and font sizes).</small>
+                <button type="button" id="toggle-description-preview" class="btn btn-sm btn-outline-info mt-2">Preview Description</button>
+                <div id="description-preview" class="mt-2 p-3" style="display:none; border:1px solid #ccc; border-radius:6px; background:#fff; color:#111;"></div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="tickets_info_url">Tickets / Info Link</label>
+                        <input type="text" class="form-control" id="tickets_info_url" name="tickets_info_url" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="livestream_url">Livestream Link</label>
+                        <input type="text" class="form-control" id="livestream_url" name="livestream_url" placeholder="https://...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="youtube_url">YouTube Video Links</label>
+                <textarea class="form-control" id="youtube_url" name="youtube_url" rows="3" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+                <small class="form-text text-muted">Paste one YouTube URL per line. Supports watch, shorts, youtu.be, or embed links.</small>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="event_date">Event Date & Time *</label>
+                        <input type="datetime-local" class="form-control" id="event_date" name="event_date" required>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <input type="text" class="form-control" id="location" name="location" 
+                               placeholder="e.g., Central Park, Community Center">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="event_photo">Event Photo</label>
+                <input type="file" class="form-control-file" id="event_photo" name="event_photo" accept="image/*">
+                <small class="form-text text-muted">Upload a featured photo for this event. This will appear in the carousel and event listings.</small>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-success">Create Event</button>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script>
+const eventDescriptionQuill = new Quill('#description-editor', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'align': [] }],
+            ['blockquote', 'link'],
+            ['clean']
+        ]
+    }
+});
+
+document.querySelector('form').addEventListener('submit', function() {
+    document.getElementById('description').value = eventDescriptionQuill.root.innerHTML.trim();
+});
+
+document.getElementById('toggle-description-preview').addEventListener('click', function() {
+    const preview = document.getElementById('description-preview');
+    preview.innerHTML = eventDescriptionQuill.root.innerHTML;
+    preview.style.display = preview.style.display === 'none' ? 'block' : 'none';
+});
+</script>
+{% endblock %}

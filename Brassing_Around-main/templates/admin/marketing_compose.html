@@ -1,0 +1,85 @@
+{% extends 'admin/dashboard.html' %}
+
+{% block content %}
+<div class="container">
+  <h2>Compose Marketing Email</h2>
+  <form method="POST">
+    <div class="form-group">
+      <label for="subject">Subject</label>
+      <input class="form-control" id="subject" name="subject" />
+    </div>
+    <div class="form-group">
+      <label for="html_content">Content (rich text)</label>
+      <textarea id="html_content" name="html_content" class="form-control" rows="12"></textarea>
+    </div>
+    <div class="form-group form-check">
+      <input type="checkbox" class="form-check-input" id="send_to_opted_in" name="send_to_opted_in" checked>
+      <label class="form-check-label" for="send_to_opted_in">Send to all users who have marketing accepted</label>
+    </div>
+    <div class="form-group">
+      <label for="manual_recipients">Manual recipients (comma/newline separated)</label>
+      <textarea class="form-control" id="manual_recipients" name="manual_recipients" rows="3"></textarea>
+    </div>
+    <div class="form-group">
+      <label for="media_upload">Upload image or video</label>
+      <div class="input-group">
+        <input type="file" id="media_upload" class="form-control-file" accept="image/*,video/*">
+        <div class="input-group-append">
+          <button type="button" id="upload_insert" class="btn btn-outline-secondary">Upload & Insert</button>
+        </div>
+      </div>
+      <small class="form-text text-muted">Uploads go to Cloudinary if configured; otherwise saved to local uploads.</small>
+    </div>
+    <button class="btn btn-primary" type="submit">Send</button>
+    <a class="btn btn-secondary" href="{{ url_for('admin_marketing_recipients') }}">Manage Recipients</a>
+  </form>
+</div>
+
+<!-- TinyMCE (self-hosted via jsDelivr to avoid cloud API banner) -->
+<script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js"></script>
+<script>
+  tinymce.init({
+    selector: '#html_content',
+    height: 400,
+    menubar: false,
+    plugins: ['link','image','media','table','lists','code','help'],
+    toolbar: 'undo redo | bold italic underline | alignleft aligncenter alignright | bullist numlist | link image media | code',
+    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }'
+  });
+</script>
+<script>
+  document.getElementById('upload_insert').addEventListener('click', function () {
+    var input = document.getElementById('media_upload');
+    if (!input.files || !input.files[0]) {
+      alert('Please choose a file to upload.');
+      return;
+    }
+    var file = input.files[0];
+    var fd = new FormData();
+    fd.append('file', file);
+
+    fetch('{{ url_for("admin_marketing_upload") }}', {
+      method: 'POST',
+      body: fd,
+      credentials: 'same-origin'
+    }).then(function (resp) { return resp.json(); }).then(function (data) {
+      if (!data.success) {
+        alert('Upload failed: ' + (data.error || 'unknown'));
+        return;
+      }
+      var url = data.url;
+      var ext = file.name.split('.').pop().toLowerCase();
+      var video_exts = ['mp4','webm','mov','avi','m4v'];
+      if (video_exts.indexOf(ext) !== -1) {
+        tinymce.activeEditor.insertContent('<p><video controls src="' + url + '" style="max-width:100%;"></video></p>');
+      } else {
+        tinymce.activeEditor.insertContent('<p><img src="' + url + '" style="max-width:100%;"/></p>');
+      }
+      input.value = '';
+    }).catch(function (err) {
+      alert('Upload error');
+      console.error(err);
+    });
+  });
+</script>
+{% endblock %}

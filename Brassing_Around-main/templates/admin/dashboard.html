@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Admin Dashboard</h1>
+    <div>
+        <a href="{{ url_for('create_news') }}" class="btn btn-info mr-2">📰 Create News</a>
+        <a href="{{ url_for('create_event') }}" class="btn btn-success">➕ Create New Event</a>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <strong>Welcome, {{ current_user.username }}!</strong> Manage events, posts, and admin invitations here.
+</div>
+
+<div class="card mb-4">
+    <div class="card-header" style="background: linear-gradient(90deg, #22577a 0%, #38a3a5 100%); color: white;">
+        <h4 class="mb-0">📧 Email Diagnostics</h4>
+    </div>
+    <div class="card-body">
+        <p class="mb-3">Send a test email through Brevo to confirm API key and sender setup.</p>
+        <form method="POST" action="{{ url_for('admin_test_email') }}">
+            <div class="form-row align-items-end">
+                <div class="col-md-7">
+                    <label for="test_email" class="mb-1">Test recipient</label>
+                    <input
+                        type="email"
+                        name="test_email"
+                        id="test_email"
+                        class="form-control"
+                        value="{{ current_user.email }}"
+                        required
+                    >
+                </div>
+                <div class="col-md-5 mt-2 mt-md-0">
+                    <button type="submit" class="btn btn-primary">Send Test Email</button>
+                </div>
+            </div>
+            <small class="form-text text-muted mt-2">
+                Uses configured sender: <code>{{ config.BREVO_FROM_EMAIL }}</code>
+            </small>
+        </form>
+        <div class="mt-3">
+            <a href="{{ url_for('admin_marketing_compose') }}" class="btn btn-outline-primary mr-2">✉️ Compose Marketing Email</a>
+            <a href="{{ url_for('admin_marketing_recipients') }}" class="btn btn-outline-secondary mr-2">📋 Recipients</a>
+            <a href="{{ url_for('admin_marketing_sent') }}" class="btn btn-outline-info">🕘 Sent History</a>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Invitations Section -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">🎫 Admin Invitations</h4>
+    </div>
+    <div class="card-body">
+        <p>Create invitation codes to grant specific privileges to new volunteers.</p>
+        
+        <form method="POST" action="{{ url_for('create_invitation') }}" class="mb-3">
+            <div class="form-row align-items-end">
+                <div class="col-md-3">
+                    <label for="role">User Role:</label>
+                    <select name="role" id="role" class="form-control">
+                        <option value="admin">Admin (Full Access)</option>
+                        <option value="contributor" selected>Contributor (Posts Only)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="days_valid">Valid for:</label>
+                    <select name="days_valid" id="days_valid" class="form-control">
+                        <option value="1">1 day</option>
+                        <option value="7" selected>7 days</option>
+                        <option value="14">14 days</option>
+                        <option value="30">30 days</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="invite_email">Email invite to:</label>
+                    <input type="email" name="invite_email" id="invite_email" class="form-control" placeholder="Optional email address">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary">Generate Code</button>
+                </div>
+            </div>
+            <small class="form-text text-muted mt-2">
+                <strong>Admin:</strong> Full access to all features | 
+                <strong>Contributor:</strong> Can create/edit posts only
+            </small>
+        </form>
+        
+        {% if invitations %}
+        <h5 class="mt-4">Active Invitation Codes</h5>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Role</th>
+                        <th>Expires</th>
+                        <th>Created By</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in invitations %}
+                    <tr>
+                        <td>
+                            <code class="bg-light p-1" style="font-size: 0.85em;">{{ inv.code }}</code>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard('{{ inv.code }}')">📋 Copy</button>
+                        </td>
+                        <td>
+                            {% if inv.role == 'admin' %}
+                            <span class="badge badge-danger">Admin</span>
+                            {% else %}
+                            <span class="badge badge-warning">Contributor</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ inv.expires_at | to_london('%b %d, %Y %I:%M %p') }}</td>
+                        <td>{{ inv.creator.username }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('revoke_invitation', invite_id=inv.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Revoke this invitation?')">Revoke</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No active invitations. Create one above to invite new users.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Our People Profiles Section -->
+<div class="card mb-4">
+    <div class="card-header" style="background: linear-gradient(90deg, var(--brass-dark) 0%, var(--brass-gold) 100%); color: var(--dark-bg);">
+        <h4 class="mb-0">👥 Our People Profiles</h4>
+    </div>
+    <div class="card-body">
+        <p>Manage the profiles displayed on the "Our People" page.</p>
+        <a href="{{ url_for('manage_profiles') }}" class="btn btn-primary">
+            <i class="fas fa-users"></i> Manage Profiles
+        </a>
+    </div>
+</div>
+
+<!-- Photo Gallery Section -->
+<div class="card mb-4">
+    <div class="card-header" style="background: linear-gradient(90deg, #6c5ce7 0%, #a29bfe 100%); color: white;">
+        <h4 class="mb-0">📸 Photo Gallery</h4>
+    </div>
+    <div class="card-body">
+        <p>Upload and manage photos with captions for the public gallery page.</p>
+        <a href="{{ url_for('manage_gallery') }}" class="btn btn-primary" style="background-color: #6c5ce7; border-color: #6c5ce7;">
+            <i class="fas fa-images"></i> Manage Gallery
+        </a>
+    </div>
+</div>
+
+<!-- User Management Section -->
+<div class="card mb-4">
+    <div class="card-header bg-warning text-dark">
+        <h4 class="mb-0">🔐 User Management</h4>
+    </div>
+    <div class="card-body">
+        <p>Manage all user accounts, roles, and permissions.</p>
+        <a href="{{ url_for('manage_users') }}" class="btn btn-warning">
+            <i class="fas fa-user-cog"></i> Manage Users
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h4 class="mb-0">🎺 Concerts, Initiatives & Archive</h4>
+    </div>
+    <div class="card-body">
+        <p>Create promoted concert entries and past archive entries independently from the upcoming events system.</p>
+        <a href="{{ url_for('manage_programmes') }}" class="btn btn-secondary">Manage Concerts & Archive</a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header" style="background: linear-gradient(90deg, #0f4c75 0%, #3282b8 100%); color: white;">
+        <h4 class="mb-0">📰 News</h4>
+    </div>
+    <div class="card-body">
+        <p>Create and manage website news updates.</p>
+        <a href="{{ url_for('manage_news') }}" class="btn btn-info">Manage News</a>
+    </div>
+</div>
+
+<!-- Site Settings Section -->
+<div class="card mb-4">
+    <div class="card-header bg-info text-white">
+        <h4 class="mb-0">⚙️ Site Settings</h4>
+    </div>
+    <div class="card-body">
+        <p>Customize your website appearance and homepage settings.</p>
+        <a href="{{ url_for('site_settings') }}" class="btn btn-info">
+            <i class="fas fa-cog"></i> Manage Settings
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-dark text-white">
+        <h4 class="mb-0">🗄️ Database Preview</h4>
+    </div>
+    <div class="card-body">
+        <p>View table counts and recent records to quickly check production data health.</p>
+        <a href="{{ url_for('admin_db_preview') }}" class="btn btn-dark">Open DB Preview</a>
+    </div>
+</div>
+
+<h3 class="mb-3">All Events</h3>
+
+{% if events %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="thead-dark">
+            <tr>
+                <th>Title</th>
+                <th>Date</th>
+                <th>Location</th>
+                <th>Posts</th>
+                <th>Created By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event in events %}
+            <tr>
+                <td><strong>{{ event.title }}</strong></td>
+                <td>{{ event.event_date.strftime('%b %d, %Y') }}</td>
+                <td>{{ event.location or 'TBA' }}</td>
+                <td><span class="badge badge-primary">{{ event.stories|length }}</span></td>
+                <td>{{ event.creator.username }}</td>
+                <td>
+                    <div class="d-flex flex-wrap align-items-center" style="gap: 0.35rem;">
+                        <a href="{{ url_for('view_event', event_id=event.id) }}" 
+                           class="btn btn-sm btn-outline-success" target="_blank" title="Preview public page">
+                           👁️ Preview</a>
+                        <a href="{{ url_for('admin_event_detail', event_id=event.id) }}" 
+                           class="btn btn-sm btn-outline-info">Manage</a>
+                        <a href="{{ url_for('edit_event', event_id=event.id) }}" 
+                           class="btn btn-sm btn-outline-warning">Edit</a>
+                        <form method="POST" action="{{ url_for('duplicate_event', event_id=event.id) }}" class="mb-0">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Copy</button>
+                        </form>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-danger"
+                            onclick='deleteEvent({{ event.id }}, {{ event.title|tojson }})'
+                        >Delete</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-warning">
+    <p class="mb-0">No events yet. <a href="{{ url_for('create_event') }}">Create your first event!</a></p>
+</div>
+{% endif %}
+
+<h3 class="mb-3 mt-5">All News</h3>
+
+{% if news_items %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="thead-dark">
+            <tr>
+                <th>Title</th>
+                <th>Published</th>
+                <th>Created By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in news_items %}
+            <tr>
+                <td><strong>{{ item.title }}</strong></td>
+                <td>{{ item.published_at | to_london('%b %d, %Y') }}</td>
+                <td>{{ item.creator.username }}</td>
+                <td>
+                    <div class="d-flex flex-wrap align-items-center" style="gap: 0.35rem;">
+                        <a href="{{ url_for('news_detail', news_id=item.id) }}" class="btn btn-sm btn-outline-success" target="_blank">Preview</a>
+                        <a href="{{ url_for('edit_news', news_id=item.id) }}" class="btn btn-sm btn-outline-warning">Edit</a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p class="mb-0">No news yet. <a href="{{ url_for('create_news') }}">Create your first news item.</a></p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteEvent(eventId, eventTitle) {
+    if (confirm(`Are you sure you want to delete "${eventTitle}"? This will also delete all associated posts and photos.`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/event/${eventId}/delete`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        alert('Invitation code copied to clipboard!');
+    }, function(err) {
+        console.error('Could not copy text: ', err);
+    });
+}
+</script>
+{% endblock %}

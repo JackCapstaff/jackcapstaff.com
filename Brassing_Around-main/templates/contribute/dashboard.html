@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Contribute - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Contribute to Events</h1>
+</div>
+
+<div class="alert alert-success">
+    <strong>Welcome, {{ current_user.username }}!</strong> As a contributor, you can create and edit posts for any event.
+</div>
+
+<!-- My Recent Posts -->
+{% if my_stories %}
+<div class="card mb-4">
+    <div class="card-header" style="background: linear-gradient(90deg, var(--brass-dark) 0%, var(--brass-gold) 100%); color: var(--dark-bg);">
+        <h4 class="mb-0">My Recent Posts</h4>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Post Title</th>
+                        <th>Event</th>
+                        <th>Posted</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for story in my_stories[:5] %}
+                    <tr>
+                        <td><strong>{{ story.title }}</strong></td>
+                        <td>{{ story.event.title }}</td>
+                        <td>{{ story.timestamp | to_london('%b %d, %Y') }}</td>
+                        <td>
+                            <a href="{{ url_for('edit_story', story_id=story.id) }}" class="btn btn-sm btn-warning">Edit</a>
+                            <a href="{{ url_for('view_event', event_id=story.event_id) }}#story-{{ story.id }}" class="btn btn-sm btn-info">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<h3 class="mb-3">Upcoming Events</h3>
+<p class="text-muted">Add your posts to these upcoming events:</p>
+
+{% if upcoming_events %}
+<div class="row mb-section">
+    {% for event in upcoming_events %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div style="position: relative;">
+                {% if event.event_photo %}
+                <img src="{{ event.event_photo | image_url }}" alt="{{ event.title }}" 
+                     style="width: 100%; height: 200px; object-fit: cover;">
+                {% else %}
+                <div style="width: 100%; height: 200px; background: linear-gradient(135deg, var(--brass-dark), var(--dark-card)); display: flex; align-items: center; justify-content: center;">
+                    <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 120px; opacity: 0.7;">
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ event.title }}</h5>
+                <p class="text-muted mb-2">
+                    <small>📅 {{ event.event_date.strftime('%B %d, %Y at %I:%M %p') }}</small><br>
+                    <small>📍 {{ event.location or 'Location TBA' }}</small>
+                </p>
+                <p class="text-muted">
+                    <small>{{ event.stories|length }} {% if event.stories|length == 1 %}post{% else %}posts{% endif %}</small>
+                </p>
+            </div>
+            <div class="card-footer bg-transparent">
+                <div class="btn-group-vertical btn-group-sm d-flex" role="group">
+                    <a href="{{ url_for('create_story', event_id=event.id) }}" class="btn btn-success w-100">
+                        <i class="fas fa-plus"></i> Add Post
+                    </a>
+                    <a href="{{ url_for('manage_event_competition', event_id=event.id) }}" class="btn btn-info w-100">
+                        Competition Tables
+                    </a>
+                    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-primary w-100">
+                        View Event
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info text-center">
+    <h4>No upcoming events</h4>
+    <p class="mb-0">Check back soon for new events to contribute to!</p>
+</div>
+{% endif %}
+
+{% if past_events %}
+<h3 class="mb-3 mt-5">Recent Past Events</h3>
+<p class="text-muted">You can still add posts to these recent events:</p>
+
+<div class="row mb-section">
+    {% for event in past_events %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100" style="opacity: 0.9;">
+            <div style="position: relative;">
+                {% if event.event_photo %}
+                <img src="{{ event.event_photo | image_url }}" alt="{{ event.title }}" 
+                     style="width: 100%; height: 200px; object-fit: cover;">
+                {% else %}
+                <div style="width: 100%; height: 200px; background: linear-gradient(135deg, var(--brass-dark), var(--dark-card)); display: flex; align-items: center; justify-content: center;">
+                    <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 120px; opacity: 0.7;">
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ event.title }}</h5>
+                <p class="text-muted mb-2">
+                    <small>📅 {{ event.event_date.strftime('%B %d, %Y at %I:%M %p') }}</small><br>
+                    <small>📍 {{ event.location or 'Location TBA' }}</small>
+                </p>
+                <p class="text-muted">
+                    <small>{{ event.stories|length }} {% if event.stories|length == 1 %}post{% else %}posts{% endif %}</small>
+                </p>
+            </div>
+            <div class="card-footer bg-transparent">
+                <div class="btn-group-vertical btn-group-sm d-flex" role="group">
+                    <a href="{{ url_for('create_story', event_id=event.id) }}" class="btn btn-success w-100">
+                        <i class="fas fa-plus"></i> Add Post
+                    </a>
+                    <a href="{{ url_for('manage_event_competition', event_id=event.id) }}" class="btn btn-info w-100">
+                        Competition Tables
+                    </a>
+                    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-primary w-100">
+                        View Event
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

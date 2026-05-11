@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Edit News - Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <a href="{{ url_for('manage_news') }}" class="btn btn-secondary">&larr; Back to News Management</a>
+    <div class="d-flex" style="gap:0.5rem;">
+        <form method="POST" action="{{ url_for('update_news_facebook', news_id=item.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-primary" style="background-color:#1877F2; border-color:#1877F2;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="vertical-align:middle; margin-right:4px;"><path d="M24 12.073C24 5.404 18.629 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.883v2.258h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+                {% if item.facebook_post_id %}Re-share to Facebook{% else %}Publish to Facebook{% endif %}
+            </button>
+        </form>
+        {% if item.facebook_post_id %}
+        <form method="POST" action="{{ url_for('update_news_facebook', news_id=item.id) }}" class="d-inline">
+            <input type="hidden" name="force_new" value="1">
+            <button type="submit" class="btn btn-outline-primary" style="color:#1877F2; border-color:#1877F2;" title="Create a new Facebook post (keeps the existing one)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="vertical-align:middle; margin-right:4px;"><path d="M24 12.073C24 5.404 18.629 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.883v2.258h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+                New Post
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-warning text-dark">
+        <h4 class="mb-0">Edit News Item</h4>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="title">Title *</label>
+                <input type="text" class="form-control" id="title" name="title" value="{{ item.title }}" required>
+            </div>
+            <div class="form-group">
+                <label for="subtitle">Subtitle</label>
+                <input type="text" class="form-control" id="subtitle" name="subtitle" value="{{ item.subtitle or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="published_at">Publish Date/Time</label>
+                <input type="datetime-local" class="form-control" id="published_at" name="published_at" value="{{ item.published_at.strftime('%Y-%m-%dT%H:%M') }}">
+            </div>
+            <div class="form-group">
+                <label for="content">Content *</label>
+                <textarea class="form-control" id="content" name="content" rows="10" required>{{ item.content }}</textarea>
+            </div>
+            <div class="form-group">
+                <label>Replace Feature Photo</label>
+                <div class="d-flex align-items-center mb-2" style="gap: 0.5rem;">
+                    <span class="text-muted" style="font-size: 0.9rem;">Upload a new file:</span>
+                </div>
+                <input type="file" class="form-control-file" id="news_photo" name="news_photo" accept="image/*">
+                <input type="hidden" id="news_photo_url" name="news_photo_url">
+                {% if item.news_photo %}
+                <div class="mt-2">
+                    <p class="text-muted mb-1" style="font-size:0.85rem;">Current photo:</p>
+                    <img src="{{ item.news_photo | image_url }}" alt="Current photo" style="max-width: 220px; border-radius: 8px;">
+                </div>
+                {% endif %}
+                <div class="mt-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-toggle="modal" data-target="#galleryPickerModal">
+                        &#128247; Or choose from gallery
+                    </button>
+                </div>
+                <div id="gallery-picker-preview" class="mt-2" style="display:none;">
+                    <p class="text-muted mb-1" style="font-size:0.85rem;">Selected from gallery:</p>
+                    <img id="gallery-picker-thumb" src="" alt="Selected" style="max-width: 180px; border-radius: 6px; border: 2px solid var(--brass-gold);">
+                    <button type="button" class="btn btn-link btn-sm text-danger p-0 ml-2" id="gallery-picker-clear">Remove</button>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-success">Save Changes</button>
+                <button type="submit" name="share_to_facebook" value="1" class="btn btn-primary" style="background-color:#1877F2; border-color:#1877F2;">Save &amp; Publish to Facebook</button>
+        </form>
+    </div>
+</div>
+
+<!-- Gallery Picker Modal -->
+<div class="modal fade" id="galleryPickerModal" tabindex="-1" role="dialog" aria-labelledby="galleryPickerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="galleryPickerModalLabel">Choose from Gallery</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+      </div>
+      <div class="modal-body">
+        <div id="gallery-picker-grid" class="row" style="max-height: 65vh; overflow-y: auto;">
+          <div class="col-12 text-center text-muted py-4" id="gallery-picker-loading">Loading photos...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+    var loaded = false;
+    $('#galleryPickerModal').on('show.bs.modal', function () {
+        if (loaded) return;
+        loaded = true;
+        fetch('/admin/gallery/photos/json')
+            .then(function(r){ return r.json(); })
+            .then(function(photos) {
+                var grid = document.getElementById('gallery-picker-grid');
+                if (!photos.length) {
+                    grid.innerHTML = '<div class="col-12 text-center text-muted py-4">No gallery photos found.</div>';
+                    return;
+                }
+                grid.innerHTML = '';
+                photos.forEach(function(p) {
+                    var col = document.createElement('div');
+                    col.className = 'col-6 col-md-3 col-lg-2 mb-3';
+                    col.innerHTML = '<div class="gallery-pick-item" style="cursor:pointer;" data-url="' + p.url + '" title="' + (p.caption || '') + '">' +
+                        '<img src="' + p.url + '" class="img-fluid rounded" style="height: 110px; width: 100%; object-fit: cover;">' +
+                        (p.caption ? '<p class="text-muted mt-1 mb-0" style="font-size:0.75rem; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">' + p.caption + '</p>' : '') +
+                        '</div>';
+                    col.querySelector('.gallery-pick-item').addEventListener('click', function() {
+                        var url = this.dataset.url;
+                        document.getElementById('news_photo_url').value = url;
+                        document.getElementById('news_photo').value = '';
+                        document.getElementById('gallery-picker-thumb').src = url;
+                        document.getElementById('gallery-picker-preview').style.display = '';
+                        $('#galleryPickerModal').modal('hide');
+                    });
+                    grid.appendChild(col);
+                });
+            })
+            .catch(function() {
+                document.getElementById('gallery-picker-grid').innerHTML = '<div class="col-12 text-center text-danger py-4">Failed to load gallery photos.</div>';
+            });
+    });
+    document.getElementById('gallery-picker-clear').addEventListener('click', function() {
+        document.getElementById('news_photo_url').value = '';
+        document.getElementById('gallery-picker-preview').style.display = 'none';
+        document.getElementById('gallery-picker-thumb').src = '';
+    });
+})();
+</script>
+{% endblock %}

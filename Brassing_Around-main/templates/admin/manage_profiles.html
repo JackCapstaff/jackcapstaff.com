@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Profiles - Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12 d-flex justify-content-between align-items-center">
+        <h1 style="color: var(--brass-gold);">Manage Our People Profiles</h1>
+        <a href="{{ url_for('create_profile') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Create New Profile
+        </a>
+    </div>
+</div>
+
+{% if profiles %}
+<div class="row">
+    {% for profile in profiles %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+              {% if profile.card_photo or profile.photo %}
+              <img src="{{ (profile.card_photo or profile.photo) | image_url }}" 
+                 class="card-img-top" alt="{{ profile.name }}" 
+                 style="height: 300px; object-fit: cover;">
+            {% else %}
+            <div class="card-img-top d-flex align-items-center justify-content-center" 
+                 style="height: 300px; background: linear-gradient(135deg, var(--brass-dark), var(--dark-card));">
+                <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" 
+                     alt="Brassing Around" style="max-width: 150px; opacity: 0.6;">
+            </div>
+            {% endif %}
+            <div class="card-body">
+                <h5 class="card-title">{{ profile.name }}</h5>
+                <p class="text-muted mb-2">
+                    <small>Display Order: {{ profile.display_order }}</small>
+                </p>
+                <p class="text-muted mb-2">
+                    <small>Card Photo: {{ 'Yes' if profile.card_photo else 'Fallback to bio page photo' }}</small><br>
+                    <small>Bio Page Photo: {{ 'Yes' if profile.photo else 'No' }}</small>
+                </p>
+                {% if profile.short_bio %}
+                <p class="card-text text-info mb-2">
+                    <small><strong>Short Bio:</strong> {{ profile.short_bio }}</small>
+                </p>
+                {% endif %}
+                <p class="card-text" style="max-height: 100px; overflow: hidden;">
+                    <small><strong>Full Bio:</strong> {{ profile.bio[:150] }}{% if profile.bio|length > 150 %}...{% endif %}</small>
+                </p>
+            </div>
+            <div class="card-footer d-flex justify-content-between">
+                <a href="{{ url_for('edit_profile', profile_id=profile.id) }}" 
+                   class="btn btn-sm btn-outline-primary">Edit</a>
+                <button class="btn btn-sm btn-outline-danger" 
+                        onclick="deleteProfile({{ profile.id }}, '{{ profile.name }}')">Delete</button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info text-center mx-auto" style="max-width: 600px;">
+    <p class="mb-3">No profiles created yet.</p>
+    <a href="{{ url_for('create_profile') }}" class="btn btn-primary">Create First Profile</a>
+</div>
+{% endif %}
+
+<div class="mt-4">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Dashboard
+    </a>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteProfile(profileId, profileName) {
+    if (confirm(`Are you sure you want to delete the profile for "${profileName}"? This action cannot be undone.`)) {
+        fetch(`/admin/profile/${profileId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            }
+        })
+        .catch(error => {
+            alert('Error deleting profile');
+            console.error('Error:', error);
+        });
+    }
+}
+</script>
+{% endblock %}

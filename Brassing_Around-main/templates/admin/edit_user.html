@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Edit User - Admin{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(90deg, var(--brass-dark) 0%, var(--brass-gold) 100%); color: var(--dark-bg);">
+                <h2 class="mb-0">Edit User: {{ user.username }}</h2>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="form-group">
+                        <label for="username">Username *</label>
+                        <input type="text" class="form-control" id="username" name="username" 
+                               value="{{ user.username }}" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="email">Email *</label>
+                        <input type="email" class="form-control" id="email" name="email" 
+                               value="{{ user.email }}" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="role">Role *</label>
+                        <select class="form-control" id="role" name="role" required>
+                            <option value="user" {% if user.role == 'user' and not user.is_admin %}selected{% endif %}>User (View & Comment)</option>
+                            <option value="contributor" {% if user.role == 'contributor' %}selected{% endif %}>Contributor (Can Add Posts)</option>
+                            <option value="admin" {% if user.role == 'admin' or user.is_admin %}selected{% endif %}>Admin (Full Access)</option>
+                        </select>
+                        <small class="form-text text-muted">
+                            User: Can view and comment<br>
+                            Contributor: Can create and edit posts<br>
+                            Admin: Full access to everything
+                        </small>
+                    </div>
+                    
+                    <hr>
+                    
+                    <h5>Optional: Reset Password</h5>
+                    <div class="form-group">
+                        <label for="new_password">New Password</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password">
+                        <small class="form-text text-muted">Leave blank to keep current password</small>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{{ url_for('manage_users') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">User Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <h3 class="mb-0" style="color: var(--brass-gold);">{{ user.events|length }}</h3>
+                        <small>Events Created</small>
+                    </div>
+                    <div class="col-md-4">
+                        <h3 class="mb-0" style="color: var(--brass-gold);">{{ user.stories|length }}</h3>
+                        <small>Posts Shared</small>
+                    </div>
+                    <div class="col-md-4">
+                        <h3 class="mb-0" style="color: var(--brass-gold);">{{ user.comments|length }}</h3>
+                        <small>Comments Posted</small>
+                    </div>
+                </div>
+                <hr>
+                <p class="mb-1"><strong>Joined:</strong> {{ user.created_at | to_london('%B %d, %Y') }}</p>
+                {% if user.updated_at %}
+                <p class="mb-0"><strong>Last Updated:</strong> {{ user.updated_at | to_london('%B %d, %Y at %I:%M %p') }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

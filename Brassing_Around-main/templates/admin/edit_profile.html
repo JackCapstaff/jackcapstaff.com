@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Profile - Admin{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0" style="color: var(--dark-bg);">Edit Profile: {{ profile.name }}</h2>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="name">Name *</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ profile.name }}" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="short_bio">Short Bio (for card display) *</label>
+                        <input type="text" class="form-control" id="short_bio" name="short_bio" 
+                               value="{{ profile.short_bio or '' }}"
+                               placeholder="One sentence that appears on the people card (e.g., 'Lead trumpet player')" required>
+                        <small class="form-text text-muted">Keep this to one sentence. If left blank, the full bio will be truncated for the card.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bio">Full Bio (for detail page) *</label>
+                        <div id="bio-editor" style="background: #fff; color: #000; min-height: 220px;"></div>
+                        <input type="hidden" id="bio" name="bio" required>
+                        <small class="form-text text-muted">Use formatting tools for bold, underline, italics, headings, lists, links, and sizes.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="card_photo">Card Photo</label>
+                        {% if profile.card_photo %}
+                        <div class="mb-2">
+                            <p class="text-muted mb-2"><small>Current card photo:</small></p>
+                            <img src="{{ profile.card_photo | image_url }}" 
+                                 alt="{{ profile.name }} card photo" class="img-thumbnail" 
+                                 style="max-width: 200px; max-height: 200px;">
+                        </div>
+                        {% endif %}
+                        <input type="file" class="form-control-file" id="card_photo" name="card_photo" 
+                               accept="image/png,image/jpeg,image/jpg,image/gif">
+                        <small class="form-text text-muted">
+                            {% if profile.card_photo %}Upload a new image to replace the current card photo.{% else %}If left blank, the bio page photo will be used on the card.{% endif %}
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="photo">Bio Page Cover Photo</label>
+                        {% if profile.photo %}
+                        <div class="mb-2">
+                            <p class="text-muted mb-2"><small>Current bio page photo:</small></p>
+                            <img src="{{ profile.photo | image_url }}" 
+                                 alt="{{ profile.name }}" class="img-thumbnail" 
+                                 style="max-width: 200px; max-height: 200px;">
+                        </div>
+                        {% endif %}
+                        <input type="file" class="form-control-file" id="photo" name="photo" 
+                               accept="image/png,image/jpeg,image/jpg,image/gif">
+                        <small class="form-text text-muted">
+                            {% if profile.photo %}Upload a new image to replace the current bio page photo.{% endif %}
+                            Recommended: larger image for the full profile page.
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="display_order">Display Order</label>
+                        <input type="number" class="form-control" id="display_order" name="display_order" 
+                               value="{{ profile.display_order }}" min="0" max="999">
+                        <small class="form-text text-muted">Higher numbers appear first. Use this to feature certain profiles at the top.</small>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <div>
+                            <a href="{{ url_for('manage_profiles') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="button" class="btn btn-danger" onclick="deleteProfile({{ profile.id }}, '{{ profile.name }}')">Delete Profile</button>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script>
+const bioQuill = new Quill('#bio-editor', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'align': [] }],
+            ['blockquote', 'link'],
+            ['clean']
+        ]
+    }
+});
+
+bioQuill.clipboard.dangerouslyPasteHTML({{ (profile.bio or '')|tojson }});
+
+document.querySelector('form').addEventListener('submit', function(e) {
+    const bioInput = document.getElementById('bio');
+    const html = bioQuill.root.innerHTML.trim();
+    const plainText = bioQuill.getText().trim();
+
+    if (!plainText) {
+        e.preventDefault();
+        alert('Bio cannot be empty.');
+        return;
+    }
+
+    bioInput.value = html;
+});
+
+function deleteProfile(profileId, profileName) {
+    if (confirm(`Are you sure you want to delete the profile for "${profileName}"? This action cannot be undone.`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/profile/${profileId}/delete`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

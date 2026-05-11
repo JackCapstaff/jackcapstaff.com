@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Brassing Around{% endblock %}
+
+{% block extra_css %}
+<style>
+    .brand-nowrap {
+        white-space: nowrap;
+    }
+
+    .jumbotron {
+        position: relative;
+        background: linear-gradient(135deg, var(--brass-dark) 0%, #000000 100%);
+        color: white;
+        overflow: hidden;
+        border-radius: 15px;
+        min-height: 450px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    
+    .jumbotron::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        {% if settings.homepage_bg_image %}
+        background-image: url('{{ settings.homepage_bg_image | image_url }}');
+        background-size: cover;
+        background-position: center;
+        opacity: 0.35;
+        {% endif %}
+        z-index: 0;
+    }
+    
+    .jumbotron > * {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .jumbotron h1 {
+        text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+    }
+    
+    .jumbotron .lead,
+    .jumbotron p {
+        text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+    }
+    
+    .carousel-item {
+        height: clamp(300px, 48vw, 420px);
+        background: var(--dark-card);
+        border-radius: 15px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .carousel-item::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.65) 100%);
+        pointer-events: none;
+        z-index: 1;
+    }
+    
+    .carousel-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.42;
+    }
+    
+    .carousel-caption {
+        background: rgba(10, 10, 10, 0.68);
+        backdrop-filter: blur(10px);
+        border-radius: 12px;
+        padding: 2rem;
+        bottom: 2rem;
+        left: 10%;
+        right: 10%;
+        z-index: 2;
+    }
+    
+    .carousel-caption h3 {
+        color: var(--brass-gold);
+        font-family: 'Playfair Display', serif;
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .carousel-caption p {
+        color: var(--text-muted);
+        font-size: 1.1rem;
+    }
+    
+    .carousel-control-prev-icon,
+    .carousel-control-next-icon {
+        background-color: var(--brass-gold);
+        border-radius: 50%;
+        padding: 1.5rem;
+    }
+    
+    .event-placeholder {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, var(--brass-dark) 0%, var(--dark-card) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8rem;
+        color: var(--brass-gold);
+        opacity: 0.4;
+    }
+
+    @media (max-width: 991.98px) {
+        .carousel-item {
+            height: 340px;
+        }
+
+        .carousel-caption {
+            left: 7%;
+            right: 7%;
+            bottom: 1.25rem;
+            padding: 1.25rem 1.25rem 1rem;
+            background: rgba(10, 10, 10, 0.72);
+        }
+
+        .carousel-caption h3 {
+            font-size: 2rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .carousel-caption p {
+            font-size: 1rem;
+            line-height: 1.45;
+        }
+
+        .preview-text {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .jumbotron {
+            min-height: 380px;
+            border-radius: 12px;
+        }
+
+        .jumbotron .display-3 {
+            font-size: 2rem;
+        }
+
+        .jumbotron .lead {
+            font-size: 1rem;
+        }
+
+        .jumbotron p {
+            font-size: 0.95rem;
+        }
+
+        .jumbotron .btn-lg {
+            width: 100%;
+            margin: 0.35rem 0 !important;
+        }
+
+        .carousel-item {
+            height: 310px;
+            border-radius: 12px;
+        }
+
+        .carousel-item img {
+            opacity: 0.44;
+        }
+
+        .carousel-caption {
+            left: 0.75rem;
+            right: 0.75rem;
+            bottom: 0.75rem;
+            padding: 0.9rem;
+            border-radius: 10px;
+            backdrop-filter: blur(4px);
+            background: rgba(10, 10, 10, 0.78);
+        }
+
+        .carousel-caption h3 {
+            font-size: 1.4rem;
+            margin-bottom: 0.35rem;
+            line-height: 1.2;
+        }
+
+        .carousel-caption p {
+            font-size: 0.92rem;
+            margin-bottom: 0.45rem;
+        }
+
+        .carousel-caption .btn {
+            padding: 0.45rem 0.9rem;
+            font-size: 0.8rem;
+            letter-spacing: 0.2px;
+        }
+
+        .carousel-control-prev-icon,
+        .carousel-control-next-icon {
+            padding: 1rem;
+        }
+
+        .event-placeholder {
+            font-size: 4.2rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-3">Welcome to <span class="brand-nowrap">Brassing Around</span>!</h1>
+    <p class="lead">Bringing the joy of brass music to communities everywhere</p>
+    <hr class="my-4">
+    <p>Join us for unforgettable musical experiences and community celebrations</p>
+    <div class="mt-4">
+        <a href="{{ url_for('events_page') }}" class="btn btn-primary btn-lg mx-2">View All Events</a>
+        <a href="{{ url_for('concerts') }}" class="btn btn-secondary btn-lg mx-2">Upcoming Concerts</a>
+    </div>
+</div>
+
+<h2 class="section-title">Latest Highlights</h2>
+
+{% if carousel_items %}
+<div id="upcomingEventsCarousel" class="carousel slide mb-5" data-ride="carousel" data-interval="5000">
+    <ol class="carousel-indicators">
+        {% for entry in carousel_items %}
+        <li data-target="#upcomingEventsCarousel" data-slide-to="{{ loop.index0 }}" {% if loop.first %}class="active"{% endif %}></li>
+        {% endfor %}
+    </ol>
+    
+    <div class="carousel-inner">
+        {% for entry in carousel_items %}
+        {% set item = entry.item %}
+        <div class="carousel-item {% if loop.first %}active{% endif %}">
+            {% if entry.kind == 'event' and item.event_photo %}
+            <img src="{{ item.event_photo | image_url }}" alt="{{ item.title }}">
+            {% elif entry.kind == 'programme' and item.photo %}
+            <img src="{{ item.photo | image_url }}" alt="{{ item.title }}">
+            {% elif entry.kind == 'news' and item.news_photo %}
+            <img src="{{ item.news_photo | image_url }}" alt="{{ item.title }}">
+            {% else %}
+            <div class="event-placeholder">
+                <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 200px; opacity: 0.7;">
+            </div>
+            {% endif %}
+            <div class="carousel-caption">
+                <h3>{{ item.title }}</h3>
+                <p class="mb-2">
+                    {% if entry.kind == 'event' %}
+                    <strong>📅 {{ item.event_date.strftime('%B %d, %Y at %I:%M %p') }}</strong><br>
+                    {% elif entry.kind == 'programme' %}
+                    <strong>📅 {{ item.entry_date.strftime('%B %d, %Y at %I:%M %p') }}</strong><br>
+                    {% elif entry.kind == 'news' %}
+                    <strong>📰 {{ item.published_at | to_london('%B %d, %Y at %I:%M %p') }}</strong><br>
+                    {% endif %}
+                    {% if entry.kind != 'news' %}
+                    <strong>📍 {{ item.location or 'Location TBA' }}</strong>
+                    {% else %}
+                    <strong>Latest Brassing Around Update</strong>
+                    {% endif %}
+                </p>
+                {% if entry.kind == 'event' %}
+                <a href="{{ url_for('view_event', event_id=item.id) }}" class="btn btn-primary">Learn More</a>
+                {% elif entry.kind == 'programme' %}
+                <a href="{{ url_for('programme_detail', entry_id=item.id) }}" class="btn btn-primary">Learn More</a>
+                {% elif entry.kind == 'news' %}
+                <a href="{{ url_for('news_detail', news_id=item.id) }}" class="btn btn-primary">Read News</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <a class="carousel-control-prev" href="#upcomingEventsCarousel" role="button" data-slide="prev">
+        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+        <span class="sr-only">Previous</span>
+    </a>
+    <a class="carousel-control-next" href="#upcomingEventsCarousel" role="button" data-slide="next">
+        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+        <span class="sr-only">Next</span>
+    </a>
+</div>
+{% else %}
+<div class="alert alert-info text-center mx-auto" style="max-width: 600px;">
+    <h4>No highlights at the moment</h4>
+    <p class="mb-0">Check back soon for exciting events, concerts, and news updates!</p>
+</div>
+{% endif %}
+
+<h2 class="section-title mt-section">Explore Brassing Around</h2>
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card text-center h-100 clickable-card">
+            <a class="card-stretched-link" href="{{ url_for('our_people') }}" aria-label="Open Our People"></a>
+            <div class="card-body d-flex flex-column">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🎵</div>
+                <h5 class="card-title">Get Involved</h5>
+                <p class="card-text flex-grow-1">Create an account to comment on posts, react to updates, and take part in audience picks.</p>
+                <p class="text-muted mt-auto mb-0"><small>Read More...</small></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card text-center h-100 clickable-card">
+            <a class="card-stretched-link" href="{{ url_for('concerts') }}" aria-label="Open Concerts and Initiatives"></a>
+            <div class="card-body d-flex flex-column">
+                <div style="margin-bottom: 1.5rem;">
+                    <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 80px;">
+                </div>
+                <h5 class="card-title">Concerts & Initiatives</h5>
+                <p class="card-text flex-grow-1">Discover our upcoming concerts and community music initiatives.</p>
+                <p class="text-muted mt-auto mb-0"><small>Read More...</small></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card text-center h-100 clickable-card">
+            <a class="card-stretched-link" href="{{ url_for('archive') }}" aria-label="Open Concert Archive"></a>
+            <div class="card-body d-flex flex-column">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">📚</div>
+                <h5 class="card-title">Concert Archive</h5>
+                <p class="card-text flex-grow-1">Relive the memories from our past performances and events.</p>
+                <p class="text-muted mt-auto mb-0"><small>Read More...</small></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

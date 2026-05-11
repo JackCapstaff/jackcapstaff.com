@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Contact Us - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card mb-4">
+            <div class="card-header text-white" style="background: var(--brass-gold, #c4a052); color: #1a1a1a !important;">
+                <h3 class="mb-0" style="color: #1a1a1a;">📬 Contact Us</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">Have a question, suggestion, or just want to say hello? Fill in the form below and we'll get back to you.</p>
+
+                <form method="POST">
+                    <div class="form-group">
+                        <label for="name">Your Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               value="{{ name }}" required placeholder="Jane Smith">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Your Email <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" id="email" name="email"
+                               value="{{ email }}" required placeholder="jane@example.com">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="message">Message <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="message" name="message"
+                                  rows="6" required placeholder="Your message…">{{ message }}</textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-success btn-block">Send Message</button>
+                </form>
+
+                <hr class="mt-4">
+                <p class="text-muted text-center mb-1" style="font-size: 0.9rem;">You can also find us on:</p>
+                <div class="text-center" style="display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap;">
+                    <a href="https://www.facebook.com/p/Brassing-Around-100090460548038/" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">
+                        Facebook
+                    </a>
+                    <a href="https://www.instagram.com/brassingaround" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">
+                        Instagram
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

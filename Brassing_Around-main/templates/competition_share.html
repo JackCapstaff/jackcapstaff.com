@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Competition Update - {{ event.title }} - Brassing Around{% endblock %}
+
+{% block head_meta %}
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="Brassing Around">
+    <meta property="og:title" content="Competition Update | {{ event.title }}">
+    <meta property="og:description" content="{{ preview_text }}">
+    <meta property="og:url" content="{{ share_url }}">
+    {% if og_image_url %}
+    <meta property="og:image" content="{{ og_image_url }}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary btn-sm">&larr; Back to Event</a>
+    <a href="{{ share_url }}" class="btn btn-outline-secondary btn-sm" target="_blank">Competition Share Link</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h2 class="mb-0">Competition Update: {{ event.title }}</h2>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            <strong>📅 {{ event.event_date.strftime('%B %d, %Y at %I:%M %p') }}</strong><br>
+            <strong>📍 {{ event.location or 'Location TBA' }}</strong>
+        </p>
+
+        {% if show_competing_table %}
+        <h4>Competing Bands</h4>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead><tr><th>Programme Order</th><th>Band</th></tr></thead>
+                <tbody>
+                    {% for entry in competition_programme %}
+                    <tr><td>{{ entry.programme_order or '-' }}</td><td>{{ entry.band_name }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if show_draw_table %}
+        <h4>Draw Order</h4>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead><tr><th>Programme Order</th><th>Band</th><th>Draw Order</th></tr></thead>
+                <tbody>
+                    {% for entry in competition_draw_public %}
+                    <tr><td>{{ entry.programme_order or '-' }}</td><td>{{ entry.band_name }}</td><td>{{ entry.draw_order }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if show_results_table %}
+        <h4>Results</h4>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead><tr><th>Programme Order</th><th>Band</th><th>Draw Order</th><th>Result</th></tr></thead>
+                <tbody>
+                    {% for entry in competition_results_public %}
+                    <tr><td>{{ entry.programme_order or '-' }}</td><td>{{ entry.band_name }}</td><td>{{ entry.draw_order or '-' }}</td><td>{{ entry.result }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if fb_comments %}
+<div class="card mt-2 mb-4">
+    <div class="card-header d-flex align-items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#1877F2" viewBox="0 0 24 24" class="mr-2"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.883v2.271h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+        <strong>Facebook Comments</strong>
+        <span class="badge badge-secondary ml-2">{{ fb_comments|length }}</span>
+    </div>
+    <div class="list-group list-group-flush">
+        {% for comment in fb_comments %}
+        <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+                <strong>{{ comment.author }}</strong>
+                <small class="text-muted">{{ comment.created_time }}</small>
+            </div>
+            <p class="mb-0 mt-1">{{ comment.message }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

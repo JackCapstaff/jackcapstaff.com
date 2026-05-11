@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}{{ item.title }} - News{% endblock %}
+
+{% block head_meta %}
+{% if item.news_photo %}
+<meta property="og:image" content="{{ item.news_photo | og_image_url }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{ item.title }}">
+{% endif %}
+<meta property="og:title" content="{{ item.title }}">
+<meta property="og:type" content="article">
+{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex" style="gap: 0.5rem; align-items: center;">
+    <a href="{{ url_for('news_page') }}" class="btn btn-secondary btn-sm">&larr; Back to News</a>
+    {% if current_user.is_authenticated and current_user.has_admin_access() %}
+    <a href="{{ url_for('edit_news', news_id=item.id) }}" class="btn btn-warning btn-sm">&#9998; Edit</a>
+    {% endif %}
+</div>
+
+<div class="card">
+    {% if item.news_photo %}
+    <img src="{{ item.news_photo | image_url }}" alt="{{ item.title }}" class="card-img-top" style="max-height: 420px; object-fit: cover;">
+    {% endif %}
+    <div class="card-body">
+        <p class="text-muted mb-2"><small>📰 {{ item.published_at | to_london('%B %d, %Y at %I:%M %p') }} | By {{ item.creator.username }}</small></p>
+        <h1 class="mb-2">{{ item.title }}</h1>
+        {% if item.subtitle %}
+        <p class="lead mb-4"><em>{{ item.subtitle }}</em></p>
+        {% endif %}
+        <div class="preserve-breaks">{{ item.content | safe_richtext | safe }}</div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Concert Archive - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Concert Archive 📚</h1>
+    <p class="lead">Relive the memories from past concerts and initiatives</p>
+    <hr class="my-4">
+    <p class="centered-content">
+        Take a journey through our musical history and explore the wonderful moments 
+        we've shared with communities everywhere.
+    </p>
+</div>
+
+<div class="card mb-5 search-card" style="background: linear-gradient(135deg, var(--dark-card) 0%, #2a2a2a 100%); border: 2px solid var(--brass-dark);">
+    <div class="card-body">
+        <h4 class="mb-3" style="color: var(--brass-gold);">Search Archive</h4>
+        <form action="{{ url_for('archive') }}" method="GET">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="archive-search-query">Keyword</label>
+                    <input type="text" class="form-control" id="archive-search-query" name="q" value="{{ q or '' }}" placeholder="Title, location, review...">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="archive-date-from">From Date</label>
+                    <input type="date" class="form-control" id="archive-date-from" name="date_from" value="{{ date_from or '' }}">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="archive-date-to">To Date</label>
+                    <input type="date" class="form-control" id="archive-date-to" name="date_to" value="{{ date_to or '' }}">
+                </div>
+            </div>
+            <div class="d-flex justify-content-end" style="gap: 0.5rem;">
+                <a href="{{ url_for('archive') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+                <button type="submit" class="btn btn-sm btn-primary">Search</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if current_user.is_authenticated and current_user.has_admin_access() %}
+<div class="mb-4 text-right">
+    <a href="{{ url_for('create_programme', section='archive', entry_type='concert') }}" class="btn btn-secondary">Add Archive Entry</a>
+</div>
+{% endif %}
+
+{% if entries %}
+<div class="row">
+    {% for entry in entries %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 clickable-card" style="opacity: 0.9;">
+            <a class="card-stretched-link" href="{{ url_for('programme_detail', entry_id=entry.id) }}" aria-label="Open archive write-up for {{ entry.title }}"></a>
+            {% if entry.photo %}
+            <img src="{{ entry.photo | image_url }}" class="card-img-top" style="height: 200px; object-fit: cover; filter: grayscale(20%);" alt="{{ entry.title }}">
+            {% else %}
+            <div style="height: 200px; background: linear-gradient(135deg, var(--brass-dark) 0%, #0a0a0a 100%); display: flex; align-items: center; justify-content: center; opacity: 0.4;">
+                <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" alt="Brassing Around" style="max-width: 120px; opacity: 0.5; filter: grayscale(100%);">
+            </div>
+            {% endif %}
+            <div class="card-body">
+                <div class="mb-2">
+                    {% if entry.entry_type == 'initiative' %}
+                    <span class="badge badge-info">Initiative</span>
+                    {% else %}
+                    <span class="badge badge-secondary">Concert</span>
+                    {% endif %}
+                </div>
+                <h5 class="card-title">{{ entry.title }}</h5>
+                <p class="text-muted mb-2">
+                    <small>📅 {{ entry.entry_date.strftime('%B %d, %Y') }}</small><br>
+                    <small>📍 {{ entry.location or 'Location TBA' }}</small>
+                </p>
+                <p class="card-text preview-text">{{ entry.review | preview_text(180) }}</p>
+            </div>
+            <div class="card-footer card-actions">
+                <small class="text-muted">Read More...</small>
+                {% if current_user.is_authenticated and current_user.has_admin_access() %}
+                <a href="{{ url_for('edit_programme', entry_id=entry.id) }}" class="btn btn-sm btn-outline-warning float-right">Quick Edit</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info text-center mx-auto" style="max-width: 600px;">
+    <h4>Archive Coming Soon</h4>
+    <p class="mb-0">Add curated archive entries to build a history of past concerts and initiatives.</p>
+</div>
+{% endif %}
+
+<div class="text-center mt-section">
+    <a href="{{ url_for('concerts') }}" class="btn btn-primary btn-lg">View Current Promotions</a>
+</div>
+{% endblock %}

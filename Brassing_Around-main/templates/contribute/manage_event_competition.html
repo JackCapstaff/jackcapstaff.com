@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Competition Tables - {{ event.title }}{% endblock %}
+
+{% block content %}
+<div class="mb-4 d-flex justify-content-between align-items-center">
+    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary">&larr; Back to Event</a>
+    <div class="text-right">
+        <h3 class="mb-1">Competition Tables: {{ event.title }}</h3>
+        {% if event.competition_facebook_post_id %}
+        <span class="badge badge-success">Facebook: Shared</span>
+        {% else %}
+        <span class="badge badge-secondary">Facebook: Not Shared</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="alert alert-info">
+    Add competing bands first, then fill in draw order and results as they become available.
+    Public view auto-sorts by draw order and then by results.
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" id="competition-form">
+            <div class="mb-3 p-3 rounded" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(196, 160, 82, 0.25);">
+                <label for="competition-csv" class="mb-2 d-block"><strong>Import Competition CSV</strong></label>
+                <input type="file" class="form-control-file" id="competition-csv" accept=".csv,text/csv">
+                <small class="form-text text-muted">Use columns: Programme Order, Band Name, Conductor, Draw Order, Result. Header row is optional.</small>
+                <a href="{{ url_for('static', filename='csv/competition_template.csv') }}" class="btn btn-sm btn-outline-info mt-2" download>Download Template CSV</a>
+                <a href="{{ url_for('export_event_competition_csv', event_id=event.id) }}" class="btn btn-sm btn-outline-light mt-2 ml-2">Download Existing Table CSV</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped" id="competition-table">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th style="width: 140px;">Programme Order</th>
+                            <th>Band</th>
+                            <th>Conductor</th>
+                            <th style="width: 130px;">Draw Order</th>
+                            <th style="width: 100px;">Result</th>
+                            <th style="width: 200px;">Post Links</th>
+                            <th style="width: 90px;">Row</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in entries %}
+                        <tr>
+                            <td>
+                                <input type="hidden" name="entry_id" value="{{ entry.id }}">
+                                <input type="number" class="form-control form-control-sm" name="programme_order" min="1" value="{{ entry.programme_order or '' }}">
+                            </td>
+                            <td><input type="text" class="form-control form-control-sm" name="band_name" required value="{{ entry.band_name }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="conductor" value="{{ entry.conductor or '' }}"></td>
+                            <td><input type="number" class="form-control form-control-sm" name="draw_order" min="1" value="{{ entry.draw_order or '' }}"></td>
+                            <td><input type="number" class="form-control form-control-sm" name="result" min="1" value="{{ entry.result or '' }}"></td>
+                            <td>
+                                <a href="{{ url_for('create_story', event_id=event.id, competition_entry_id=entry.id, prefill_title=entry.band_name ~ (' (Conductor: ' ~ entry.conductor ~ ')' if entry.conductor else '') ~ ' - ') }}" class="btn btn-sm btn-outline-success mb-1">+ Create Post</a>
+                                {% if entry_story_links.get(entry.id) %}
+                                <a href="{{ url_for('view_event', event_id=event.id) }}#story-{{ entry_story_links[entry.id]['latest_story_id'] }}" class="btn btn-sm btn-outline-info mb-1">
+                                    View Latest ({{ entry_story_links[entry.id]['count'] }})
+                                </a>
+                                {% endif %}
+                            </td>
+                            <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">Remove</button></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mb-3">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addRow()">+ Add Band Row</button>
+            </div>
+
+            <button type="submit" class="btn btn-success">Save Competition Tables</button>
+            <button type="submit" class="btn btn-info" formaction="{{ url_for('update_competition_facebook', event_id=event.id) }}" formnovalidate>Publish Competition to Facebook</button>
+            <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function addRow(programmeOrder = '', bandName = '', conductor = '', drawOrder = '', result = '') {
+    const tbody = document.querySelector('#competition-table tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>
+            <input type="hidden" name="entry_id" value="">
+            <input type="number" class="form-control form-control-sm" name="programme_order" min="1" value="${programmeOrder}">
+        </td>
+        <td><input type="text" class="form-control form-control-sm" name="band_name" required value="${bandName}"></td>
+        <td><input type="text" class="form-control form-control-sm" name="conductor" value="${conductor}"></td>
+        <td><input type="number" class="form-control form-control-sm" name="draw_order" min="1" value="${drawOrder}"></td>
+        <td><input type="number" class="form-control form-control-sm" name="result" min="1" value="${result}"></td>
+        <td><small class="text-muted">Save row first to create linked posts.</small></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">Remove</button></td>
+    `;
+    tbody.appendChild(tr);
+}
+
+function removeRow(button) {
+    button.closest('tr').remove();
+}
+
+function parseCsvRows(csvText) {
+    const rows = [];
+    let current = '';
+    let row = [];
+    let inQuotes = false;
+
+    for (let index = 0; index < csvText.length; index++) {
+        const char = csvText[index];
+        const nextChar = csvText[index + 1];
+
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                current += '"';
+                index++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+
+        if (char === ',' && !inQuotes) {
+            row.push(current.trim());
+            current = '';
+            continue;
+        }
+
+        if ((char === '\n' || char === '\r') && !inQuotes) {
+            if (char === '\r' && nextChar === '\n') {
+                index++;
+            }
+            row.push(current.trim());
+            current = '';
+            if (row.some(cell => cell !== '')) {
+                rows.push(row);
+            }
+            row = [];
+            continue;
+        }
+
+        current += char;
+    }
+
+    if (current !== '' || row.length) {
+        row.push(current.trim());
+        if (row.some(cell => cell !== '')) {
+            rows.push(row);
+        }
+    }
+
+    return rows;
+}
+
+function importCompetitionCsv(csvText) {
+    const rows = parseCsvRows(csvText);
+    if (!rows.length) {
+        alert('The CSV file appears to be empty.');
+        return;
+    }
+
+    const firstRow = rows[0].map(value => value.toLowerCase());
+    const hasHeader = firstRow.includes('band') || firstRow.includes('band name');
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+    const tbody = document.querySelector('#competition-table tbody');
+    tbody.innerHTML = '';
+
+    dataRows.forEach(columns => {
+        const programmeOrder = columns[0] || '';
+        const bandName = columns[1] || '';
+        const conductor = columns[2] || '';
+        const drawOrder = columns[3] || '';
+        const result = columns[4] || '';
+        if (!programmeOrder && !bandName && !conductor && !drawOrder && !result) {
+            return;
+        }
+        addRow(programmeOrder, bandName, conductor, drawOrder, result);
+    });
+
+    if (!tbody.children.length) {
+        addRow();
+        alert('No valid competition rows were found in the CSV.');
+    }
+}
+
+document.getElementById('competition-csv').addEventListener('change', function(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(loadEvent) {
+        importCompetitionCsv(loadEvent.target.result || '');
+    };
+    reader.readAsText(file);
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelectorAll('#competition-table tbody tr').length === 0) {
+        addRow();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Search Results - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Search Results</h1>
+    {% if query or date_from or date_to %}
+    <p class="lead">
+        {% if query %}Searching for: <strong>"{{ query }}"</strong>{% endif %}
+        {% if date_from or date_to %}
+            {% if query %} | {% endif %}
+            Date range: 
+            {% if date_from %}<strong>{{ date_from }}</strong>{% else %}Any{% endif %} 
+            to 
+            {% if date_to %}<strong>{{ date_to }}</strong>{% else %}Any{% endif %}
+        {% endif %}
+    </p>
+    {% else %}
+    <p class="lead">Enter search criteria to find events and posts</p>
+    {% endif %}
+</div>
+
+<!-- Search Form -->
+<div class="card mb-5" style="background: linear-gradient(135deg, var(--dark-card) 0%, #2a2a2a 100%); border: 2px solid var(--brass-dark);">
+    <div class="card-body">
+        <h4 class="mb-3" style="color: var(--brass-gold);">
+            <i class="fas fa-search"></i> Search Events & Posts
+        </h4>
+        <form action="{{ url_for('search_events') }}" method="GET">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="search-query" class="form-label">Search by keyword</label>
+                    <input type="text" class="form-control" id="search-query" name="q" 
+                           value="{{ query }}" placeholder="Event name, band name, location, description...">
+                    <small class="form-text text-muted">Search events, posts, and descriptions</small>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="date-from" class="form-label">From Date</label>
+                    <input type="date" class="form-control" id="date-from" name="date_from" value="{{ date_from }}">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="date-to" class="form-label">To Date</label>
+                    <input type="date" class="form-control" id="date-to" name="date_to" value="{{ date_to }}">
+                </div>
+            </div>
+            <div class="d-flex justify-content-between">
+                <a href="{{ url_for('events_page') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to All Events
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Search
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Search Results -->
+{% if query or date_from or date_to %}
+    {% if band_matches %}
+    <h2 class="section-title mb-4">Band Post Matches</h2>
+    <div class="row mb-5">
+        {% for match in band_matches %}
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title mb-1">{{ match.entry.band_name }}</h5>
+                    <p class="text-muted mb-2"><small>Event: {{ match.event.title }}</small></p>
+                    <p class="mb-2"><strong>{{ match.stories|length }} linked post{% if match.stories|length != 1 %}s{% endif %}</strong></p>
+                    <ul class="mb-0 pl-3">
+                        {% for story in match.stories[:5] %}
+                        <li>
+                            <a href="{{ url_for('view_event', event_id=match.event.id) }}#story-{{ story.id }}">{{ story.title }}</a>
+                            <small class="text-muted">({{ story.timestamp | to_london('%Y-%m-%d') if story.timestamp else '-' }})</small>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% if match.stories|length > 5 %}
+                    <small class="text-muted">Showing 5 of {{ match.stories|length }} posts.</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if results %}
+    <h2 class="section-title mb-4">Found {{ results|length }} event{% if results|length != 1 %}s{% endif %}</h2>
+    <div class="row">
+        {% for event in results %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100" style="transition: all 0.3s ease;">
+                <div style="position: relative;">
+                    {% if event.event_photo %}
+                    <img src="{{ event.event_photo | image_url }}" 
+                         alt="{{ event.title }}" 
+                         style="width: 100%; height: 250px; object-fit: cover; border-radius: 12px 12px 0 0;">
+                    {% else %}
+                    <div style="width: 100%; height: 250px; background: linear-gradient(135deg, var(--brass-dark) 0%, var(--dark-card) 100%); display: flex; align-items: center; justify-content: center; border-radius: 12px 12px 0 0;">
+                        <img src="{{ url_for('static', filename='BA_Logo.jpg') }}" 
+                             alt="Brassing Around" style="max-width: 120px; opacity: 0.7;">
+                    </div>
+                    {% endif %}
+                    <div style="position: absolute; top: 1rem; right: 1rem; background: var(--brass-gold); color: var(--dark-bg); padding: 0.5rem 1rem; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 12px rgba(196, 160, 82, 0.4);">
+                        {{ event.event_date.strftime('%b %d, %Y') }}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ event.title }}</h5>
+                    <p class="text-muted mb-2">
+                        <small>📅 {{ event.event_date.strftime('%B %d, %Y at %I:%M %p') }}</small><br>
+                        <small>📍 {{ event.location or 'Location TBA' }}</small>
+                    </p>
+                    <p class="card-text preview-text">{{ event.description | preview_text(120) }}</p>
+                    {% if event.stories %}
+                    <p class="text-muted">
+                        <small><strong>{{ event.stories|length }} post{% if event.stories|length != 1 %}s{% endif %}</strong></small>
+                    </p>
+                    {% endif %}
+                </div>
+                <div class="card-footer text-center">
+                    <a href="{{ url_for('view_event', event_id=event.id) }}" class="btn btn-outline-primary btn-sm">
+                        View Event Details
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center mx-auto" style="max-width: 600px;">
+        <h4 class="mb-3">No Results Found</h4>
+        <p class="mb-3">We couldn't find any events matching your search criteria.</p>
+        <a href="{{ url_for('events_page') }}" class="btn btn-primary">View All Events</a>
+    </div>
+    {% endif %}
+{% endif %}
+
+<style>
+    .section-title {
+        color: var(--brass-gold);
+        font-family: 'Playfair Display', serif;
+        border-bottom: 3px solid var(--brass-gold);
+        padding-bottom: 0.5rem;
+        display: inline-block;
+    }
+    
+    .card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 12px 32px rgba(196, 160, 82, 0.3);
+    }
+</style>
+{% endblock %}

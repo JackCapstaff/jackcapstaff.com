@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Concert or Archive Entry - Brassing Around{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('manage_programmes') }}" class="btn btn-secondary btn-sm">&larr; Back to Concerts & Archive</a>
+</div>
+
+<div class="card">
+    <div class="card-header bg-warning">
+        <h3 class="mb-0">Edit Concert / Initiative Entry</h3>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">
+            {% if entry.facebook_post_id %}
+            <span class="badge badge-success">Facebook: Shared</span>
+            This entry already has a Facebook post linked.
+            {% else %}
+            <span class="badge badge-secondary">Facebook: Not Shared</span>
+            Publish manually when you want this concert, initiative, or archive entry on Facebook.
+            {% endif %}
+        </p>
+
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="title">Title *</label>
+                <input type="text" class="form-control" id="title" name="title" value="{{ entry.title }}" required>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="entry_type">Type *</label>
+                        <select class="form-control" id="entry_type" name="entry_type">
+                            <option value="concert" {% if entry.entry_type == 'concert' %}selected{% endif %}>Concert</option>
+                            <option value="initiative" {% if entry.entry_type == 'initiative' %}selected{% endif %}>Initiative</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="section">Display Section *</label>
+                        <select class="form-control" id="section" name="section">
+                            <option value="promotion" {% if entry.section == 'promotion' %}selected{% endif %}>Concerts & Initiatives page</option>
+                            <option value="archive" {% if entry.section == 'archive' %}selected{% endif %}>Archive page</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="entry_date">Date *</label>
+                        <input type="date" class="form-control" id="entry_date" name="entry_date" value="{{ entry.entry_date.strftime('%Y-%m-%d') }}" required>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="location">Location</label>
+                <input type="text" class="form-control" id="location" name="location" value="{{ entry.location or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="review">Text / Review *</label>
+                <div id="review-editor" style="background: #fff; color: #000; min-height: 220px;"></div>
+                <input type="hidden" id="review" name="review" required>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="tickets_info_url">Tickets / Info Link</label>
+                        <input type="text" class="form-control" id="tickets_info_url" name="tickets_info_url" value="{{ entry.tickets_info_url or '' }}" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="livestream_url">Livestream Link</label>
+                        <input type="text" class="form-control" id="livestream_url" name="livestream_url" value="{{ entry.livestream_url or '' }}" placeholder="https://...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="youtube_url">YouTube Video Links</label>
+                <textarea class="form-control" id="youtube_url" name="youtube_url" rows="3" placeholder="https://www.youtube.com/watch?v=...">{{ entry.youtube_embed_url or '' }}</textarea>
+                <small class="form-text text-muted">Paste one YouTube URL per line. Supports watch, shorts, youtu.be, or embed links.</small>
+            </div>
+
+            <div class="form-group">
+                <label>Concert Programme (optional)</label>
+                <div class="mb-3 p-3 rounded" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(196, 160, 82, 0.25);">
+                    <label for="programme-csv" class="mb-2 d-block"><strong>Import Programme CSV</strong></label>
+                    <input type="file" class="form-control-file" id="programme-csv" accept=".csv,text/csv">
+                    <small class="form-text text-muted">Use columns: Work, Composer, Arranger. Header row is optional.</small>
+                    <a href="{{ url_for('static', filename='csv/programme_template.csv') }}" class="btn btn-sm btn-outline-info mt-2" download>Download Template CSV</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm" id="programme-works-table">
+                        <thead>
+                            <tr>
+                                <th>Work</th>
+                                <th>Composer</th>
+                                <th>Arranger</th>
+                                <th style="width: 90px;">Row</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="addProgrammeWorkRow()">+ Add Work</button>
+            </div>
+
+            <div class="form-group">
+                <label for="photo">Photo</label>
+                {% if entry.photo %}
+                <div class="mb-2">
+                    <img src="{{ entry.photo | image_url }}" alt="Current entry photo" style="max-width: 300px; border-radius: 8px;">
+                </div>
+                {% endif %}
+                <input type="file" class="form-control-file" id="photo" name="photo" accept="image/*">
+            </div>
+
+            <button type="submit" class="btn btn-warning">Save Changes</button>
+            <button type="submit" name="share_to_facebook" value="1" class="btn btn-primary" style="background-color:#1877F2; border-color:#1877F2;">Save &amp; Publish to Facebook</button>
+            <a href="{{ url_for('manage_programmes') }}" class="btn btn-secondary">Cancel</a>
+            <button type="button" class="btn btn-info" onclick='copyProgramme({{ entry.id }}, {{ entry.title|tojson }})'>Copy Entry</button>
+            <button type="button" class="btn btn-danger" onclick='deleteProgramme({{ entry.id }}, {{ entry.title|tojson }})'>Delete Entry</button>
+        </form>
+
+        <form method="POST" action="{{ url_for('update_programme_facebook', entry_id=entry.id) }}" class="mt-3">
+            <button type="submit" class="btn btn-info">Publish to Facebook</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script>
+const programmeQuill = new Quill('#review-editor', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'align': [] }],
+            ['blockquote', 'link'],
+            ['clean']
+        ]
+    }
+});
+
+programmeQuill.clipboard.dangerouslyPasteHTML({{ (entry.review or '')|tojson }});
+
+document.querySelector('form').addEventListener('submit', function(e) {
+    const reviewInput = document.getElementById('review');
+    const html = programmeQuill.root.innerHTML.trim();
+    const plain = programmeQuill.getText().trim();
+
+    if (!plain) {
+        e.preventDefault();
+        alert('Text / Review cannot be empty.');
+        return;
+    }
+
+    reviewInput.value = html;
+});
+
+function addProgrammeWorkRow(work = '', composer = '', arranger = '') {
+    const tbody = document.querySelector('#programme-works-table tbody');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" name="work_title" class="form-control form-control-sm" value="${work}"></td>
+        <td><input type="text" name="work_composer" class="form-control form-control-sm" value="${composer}"></td>
+        <td><input type="text" name="work_arranger" class="form-control form-control-sm" value="${arranger}"></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeProgrammeWorkRow(this)">Remove</button></td>
+    `;
+    tbody.appendChild(row);
+}
+
+function removeProgrammeWorkRow(button) {
+    button.closest('tr').remove();
+}
+
+function parseCsvRows(csvText) {
+    const rows = [];
+    let current = '';
+    let row = [];
+    let inQuotes = false;
+
+    for (let index = 0; index < csvText.length; index++) {
+        const char = csvText[index];
+        const nextChar = csvText[index + 1];
+
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                current += '"';
+                index++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+
+        if (char === ',' && !inQuotes) {
+            row.push(current.trim());
+            current = '';
+            continue;
+        }
+
+        if ((char === '\n' || char === '\r') && !inQuotes) {
+            if (char === '\r' && nextChar === '\n') {
+                index++;
+            }
+            row.push(current.trim());
+            current = '';
+            if (row.some(cell => cell !== '')) {
+                rows.push(row);
+            }
+            row = [];
+            continue;
+        }
+
+        current += char;
+    }
+
+    if (current !== '' || row.length) {
+        row.push(current.trim());
+        if (row.some(cell => cell !== '')) {
+            rows.push(row);
+        }
+    }
+
+    return rows;
+}
+
+function importProgrammeCsv(csvText) {
+    const rows = parseCsvRows(csvText);
+    if (!rows.length) {
+        alert('The CSV file appears to be empty.');
+        return;
+    }
+
+    const firstRow = rows[0].map(value => value.toLowerCase());
+    const hasHeader = firstRow.includes('work') || firstRow.includes('title');
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+    const tbody = document.querySelector('#programme-works-table tbody');
+    tbody.innerHTML = '';
+
+    dataRows.forEach(columns => {
+        const work = columns[0] || '';
+        const composer = columns[1] || '';
+        const arranger = columns[2] || '';
+        if (!work && !composer && !arranger) {
+            return;
+        }
+        addProgrammeWorkRow(work, composer, arranger);
+    });
+
+    if (!tbody.children.length) {
+        addProgrammeWorkRow();
+        alert('No valid programme rows were found in the CSV.');
+    }
+}
+
+document.getElementById('programme-csv').addEventListener('change', function(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(loadEvent) {
+        importProgrammeCsv(loadEvent.target.result || '');
+    };
+    reader.readAsText(file);
+});
+
+const existingWorks = {{ entry.programme_works|sort(attribute='display_order')|map(attribute='work_title')|list|tojson }};
+const existingComposers = {{ entry.programme_works|sort(attribute='display_order')|map(attribute='composer')|list|tojson }};
+const existingArrangers = {{ entry.programme_works|sort(attribute='display_order')|map(attribute='arranger')|list|tojson }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (existingWorks.length === 0) {
+        addProgrammeWorkRow();
+        return;
+    }
+
+    for (let i = 0; i < existingWorks.length; i++) {
+        addProgrammeWorkRow(existingWorks[i] || '', existingComposers[i] || '', existingArrangers[i] || '');
+    }
+});
+
+function deleteProgramme(entryId, entryTitle) {
+    if (confirm(`Are you sure you want to delete "${entryTitle}"? This action cannot be undone.`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/programme/${entryId}/delete`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function copyProgramme(entryId, entryTitle) {
+    if (confirm(`Create a copy of "${entryTitle}" and open it for editing?`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/programme/${entryId}/duplicate`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,452 @@
+Allocation spec (proposed)
+0) Inputs & normalization
+
+Works sheet
+
+Required: Title
+
+Flexible headers:
+
+Duration → minutes. Accepts 390, 6:30, hh:mm, mm:ss, Excel times.
+
+Difficulty → numeric weight (default 1.0 if missing or blank).
+
+Instrumentation detection (any positive value / non-blank truthy):
+
+Percussion/Timpani → Percs
+
+Piano/Celesta/Keyboard → Piano
+
+Harp → Harp
+
+Brass section present → Brass (any of Horn/Trumpet/Trombone/Tuba > 0)
+
+Canonical columns (created during load):
+
+duration_norm (minutes), difficulty_norm (≥ 0.1)
+
+Section flags are inferred per work: needs.Percs|Piano|Harp|Brass (booleans)
+
+Rehearsals sheet
+
+Required: Rehearsal (1,2,3,…)
+
+Optional: Date, Start Time, End Time, Break
+
+Times parsed to minutes; capacity = (End–Start) – Break.
+
+Mixed Break formats supported: 15, "15", "00:15".
+
+Optional Y/N flags: Percs, Piano, Harp, Brass.
+
+Normalized truthy: Y/YES/TRUE/T/1 (case-insensitive).
+
+Granularity G minutes (default 5). All allocated minutes are multiples of G.
+
+Each rehearsal capacity is snapped to a multiple of G; any remainder < G is recorded as “unschedulable remainder”.
+
+1) Global requirement per work (across the whole run)
+
+Weight per work:
+
+𝑤
+𝑖
+=
+duration_norm
+𝑖
+×
+difficulty_norm
+𝑖
+w
+i
+	​
+
+=duration_norm
+i
+	​
+
+×difficulty_norm
+i
+	​
+
+
+Let total available tokens be 
+𝑇
+=
+⌊
+∑
+𝑟
+capacity
+𝑟
+𝐺
+⌋
+T=⌊
+G
+∑
+r
+	​
+
+capacity
+r
+	​
+
+	​
+
+⌋.
+
+Proportional tokens: 
+𝑡
+𝑖
+=
+𝑇
+⋅
+𝑤
+𝑖
+∑
+𝑗
+𝑤
+𝑗
+t
+i
+	​
+
+=T⋅
+∑
+j
+	​
+
+w
+j
+	​
+
+w
+i
+	​
+
+	​
+
+.
+
+Use largest remainder to round tokens to integers that sum to exactly 
+𝑇
+T.
+
+Required minutes: 
+req
+𝑖
+=
+𝑡
+𝑖
+⋅
+𝐺
+req
+i
+	​
+
+=t
+i
+	​
+
+⋅G.
+
+Rationale: guarantees the global requirement can be realized in G-sized chunks (no impossible leftover).
+
+2) First & last rehearsals
+
+Both must contain the entire repertoire (every work appears) if feasible.
+
+Allocation in each of first and last rehearsals:
+
+Baseline: give everyone at least G minutes if capacity allows (capacity ≥ n·G).
+
+If not enough room: guarantee across first+last combined that every work gets ≥ G at least once (rotate baseline between the two).
+
+Distribute remaining capacity proportionally to 
+𝑤
+𝑖
+w
+i
+	​
+
+.
+
+Round to multiples of G and reconcile to the rehearsal’s snapped capacity.
+
+Outcome: “everything is included” on bookend rehearsals, and time is sensibly scaled.
+
+3) Middle rehearsals (all between first and last)
+
+We allocate the remaining requirement (
+rem
+𝑖
+=
+req
+𝑖
+−
+first
+𝑖
+−
+last
+𝑖
+rem
+i
+	​
+
+=req
+i
+	​
+
+−first
+i
+	​
+
+−last
+i
+	​
+
+) across middle rehearsals with three goals:
+
+Coverage on specialist nights: the right music shows up when extra players are there.
+
+Full utilization: use 100% of middle-night capacity (subject to G rounding).
+
+Healthy chunks & spread: no tiny slivers, no huge lumps; multiple smaller touches preferred.
+
+3.1 Per‑appearance bounds (min/max) per work
+
+Min per slot for work i:
+
+min
+𝑖
+=
+⌈
+max
+⁡
+(
+𝐺
+,
+𝛼
+⋅
+duration_norm
+𝑖
+)
+𝐺
+⌉
+⋅
+𝐺
+,
+𝛼
+=
+0.25
+min
+i
+	​
+
+=⌈
+G
+max(G,α⋅duration_norm
+i
+	​
+
+)
+	​
+
+⌉⋅G,α=0.25
+
+Max per slot for work i:
+
+max
+𝑖
+=
+⌈
+𝛽
+⋅
+duration_norm
+𝑖
+𝐺
+⌉
+⋅
+𝐺
+,
+𝛽
+=
+2.0
+max
+i
+	​
+
+=⌈
+G
+β⋅duration_norm
+i
+	​
+
+	​
+
+⌉⋅G,β=2.0
+
+Feasibility bump: if even spreading 
+⌈
+rem
+𝑖
+#
+mids
+⌉
+⌈
+#mids
+rem
+i
+	​
+
+	​
+
+⌉ exceeds 
+max
+𝑖
+max
+i
+	​
+
+, raise 
+max
+𝑖
+max
+i
+	​
+
+ to that value so the plan remains feasible.
+
+These guardrails implement your point (2) and encourage your point (3).
+
+3.2 Specialist‑night coverage (hard preference)
+
+For each middle rehearsal r with any Y flags:
+
+Priority fill: first try to place each work that needs any of those flagged sections, giving it at least 
+min
+⁡
+(
+min
+𝑖
+,
+rem
+𝑖
+)
+min(min
+i
+	​
+
+,rem
+i
+	​
+
+) on that rehearsal.
+
+If the rehearsal is full, displace a G‑chunk from a non‑requiring work on r into another middle night with capacity, then place the requiring work on r.
+
+Guarantee (if globally feasible): for each requiring work and each required section, it appears on at least one Y middle rehearsal for that section.
+
+If infeasible (capacity too tight), record a warning with the unmet minutes for that coverage.
+
+This satisfies “include the repertoire they are involved in” without unrealistically forcing every requiring work onto every Y night.
+
+3.3 Spread the rest (tokenized, even spacing, with Y bias)
+
+Convert each remaining 
+rem
+𝑖
+rem
+i
+	​
+
+ to tokens of size G.
+
+For each work i, compute ideal positions across the ordered middle rehearsals (even spacing).
+
+Score each candidate placement (rehearsal r) as:
+
+Base weight: capacity of r, multiplied by a Y‑bonus if r matches required sections the work needs.
+(Default multiplier MULT_Y = 3.0; multiplicative across multiple matched sections.)
+
+Spread penalty: subtract 
+𝜆
+⋅
+distance
+λ⋅distance from the nearest already‑placed token for i. (λ = 1.0)
+
+Recency bonus: small positive term to avoid stacking tokens on adjacent nights. (0.6)
+
+Greedily place tokens to the highest scoring feasible slot (respects min_i, max_i, and rehearsal capacity). Fall back to next best if blocked.
+
+This implements your point (3) preference: 3×5 over 1×15.
+
+3.4 Final fill to 100%
+
+After all works meet (or try to meet) their remaining requirement, there may still be capacity left (because of rounding or conservative bounds).
+
+Extra allowance per work: up to 
+𝜖
+⋅
+req
+𝑖
+ϵ⋅req
+i
+	​
+
+ additional minutes to use spare capacity (default 
+𝜖
+=
+10
+%
+ϵ=10%).
+Distribute extras by the same Y‑aware scoring, still respecting max_i.
+
+If capacity remains after extras (rare), keep filling by relaxing max_i gradually in G steps until:
+
+capacity hits 0, or
+
+all slots are saturated; any leftover < G per rehearsal is the “unschedulable remainder”.
+
+Guarantees your point (1): all rehearsal time gets used (modulo the < G remainders).
+
+4) Output & guarantees
+
+Per-rehearsal minutes per work (columns Rehearsal k), plus a summary block per rehearsal:
+
+Capacity (snapped), Used, Remaining (ideally 0 except <G).
+
+Per-work Required Minutes equals sum across rehearsals within ([ \text{req}_i, \text{req}_i + \epsilon\cdot\text{req}_i ]`.
+
+Warnings:
+
+If a work cannot meet its required minutes due to global capacity, report unmet minutes.
+
+If a requiring work could not be scheduled on any Y night for a needed section, report the shortfall.
+
+If a rehearsal has an unschedulable remainder < G, record it (informational).
+
+5) Tunable parameters (with suggested defaults)
+
+G granularity (minutes): 5
+
+Specialist night multiplier MULT_Y: 3.0
+
+Min per appearance factor α: 0.25
+
+Max per appearance factor β: 2.0 (can be 3.0 if you want easier full utilization)
+
+Spread penalty λ: 1.0
+
+Recency bonus: 0.6
+
+Extra fill allowance ε: 10%
+
+All of these will live at the top of the file so you can tweak behavior quickly.
+
+6) Edge‑case behavior (explicit)
+
+If either first or last rehearsal cannot include all works with at least G, we ensure that across first+last combined every work appears at least once; the proportional split still fills each to capacity.
+
+If there are no Y nights for a section that some works require, those works are scheduled normally on non‑Y nights (with a warning).
+
+If a rehearsal’s capacity is not a multiple of G, we snap down to the nearest multiple; the shaved remainder is reported.

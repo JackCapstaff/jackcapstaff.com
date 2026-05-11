@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Manage News - Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Manage News</h1>
+    <a href="{{ url_for('create_news') }}" class="btn btn-success">➕ Create News Item</a>
+</div>
+
+{% if items %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="thead-dark">
+            <tr>
+                <th>Title</th>
+                <th>Published</th>
+                <th>Created By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>
+                    <strong>{{ item.title }}</strong>
+                    {% if item.subtitle %}
+                    <div><small class="text-muted">{{ item.subtitle }}</small></div>
+                    {% endif %}
+                </td>
+                <td>{{ item.published_at | to_london('%b %d, %Y %I:%M %p') }}</td>
+                <td>{{ item.creator.username }}</td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <a href="{{ url_for('news_detail', news_id=item.id) }}" class="btn btn-success" target="_blank">Preview</a>
+                        <a href="{{ url_for('edit_news', news_id=item.id) }}" class="btn btn-warning">Edit</a>
+                        <form method="POST" action="{{ url_for('delete_news', news_id=item.id) }}" style="display: inline;">
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this news item?');">Delete</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No news items yet. Create your first one.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Our People - Brassing Around{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-card-media {
+        height: 350px;
+        padding: 1rem;
+        background: linear-gradient(135deg, rgba(196, 160, 82, 0.15), rgba(20, 20, 20, 0.95));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-bottom: 1px solid rgba(196, 160, 82, 0.2);
+    }
+
+    .profile-card-image {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        object-position: center;
+        border-radius: 10px;
+    }
+
+    .profile-card-placeholder img {
+        max-width: 150px;
+        opacity: 0.7;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">Our People</h1>
+    <p class="lead">Meet the passionate musicians and volunteers who make Brassing Around special</p>
+    <hr class="my-4">
+    <p class="centered-content">
+        Brassing Around is powered by a dedicated community of brass musicians, volunteers, 
+        and music lovers who share a passion for bringing joy through music to communities everywhere.
+    </p>
+</div>
+
+{% if profiles %}
+<h2 class="section-title">Meet Our Team</h2>
+<div class="row">
+    {% for profile in profiles %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 clickable-card">
+            <a class="card-stretched-link" href="{{ url_for('profile_detail', profile_id=profile.id) }}" aria-label="Read full profile for {{ profile.name }}"></a>
+                  {% if profile.card_photo or profile.photo %}
+              <div class="profile-card-media">
+                      <img src="{{ (profile.card_photo or profile.photo) | image_url }}"
+                     class="profile-card-image" alt="{{ profile.name }}">
+              </div>
+              {% else %}
+              <div class="profile-card-media profile-card-placeholder">
+                 <img src="{{ url_for('static', filename='BA_Logo.jpg') }}"
+                     alt="Brassing Around">
+            </div>
+            {% endif %}
+            <div class="card-body">
+                <h5 class="card-title">{{ profile.name }}</h5>
+                <p class="card-text preview-text">{{ profile.short_bio or (profile.bio | striptags | preview_text(180)) }}</p>
+            </div>
+            <div class="card-footer card-actions">
+                <small class="text-muted">Read More...</small>
+                {% if current_user.is_authenticated and current_user.has_admin_access() %}
+                <a href="{{ url_for('edit_profile', profile_id=profile.id) }}" class="btn btn-sm btn-outline-warning float-right">Quick Edit</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info text-center mx-auto" style="max-width: 600px;">
+    <p class="mb-0">Our team profiles will be added soon. Check back later!</p>
+</div>
+{% endif %}
+
+<div class="card mt-section" style="background: linear-gradient(135deg, var(--brass-dark) 0%, var(--dark-card) 100%); border: 2px solid var(--brass-gold);">
+    <div class="card-body text-center py-5">
+        <h3 class="mb-3" style="color: var(--brass-gold);">Want to Join In?</h3>
+        <p class="lead mb-4">Create an account to comment, react, and follow event conversations as they happen.</p>
+        {% if not current_user.is_authenticated %}
+        <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">Create Free Account</a>
+        {% else %}
+        <p class="text-muted">You're already part of the community!</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
