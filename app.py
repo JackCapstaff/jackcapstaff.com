@@ -3,7 +3,7 @@ import json
 import csv
 import os
 import smtplib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from urllib.parse import urljoin, urlparse
 import uuid
