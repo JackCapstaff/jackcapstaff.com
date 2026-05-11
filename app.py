@@ -274,6 +274,11 @@ def schedule():
     if rehearsal_schedule_url:
         return redirect(rehearsal_schedule_url)
 
+    # If the scheduler app is mounted but no published schedule JSON is found,
+    # still route users into the scheduler app instead of falling back here.
+    if rehearsal_schedule_app is not None:
+        return redirect(f'{REHEARSAL_SCHEDULE_PREFIX}/my')
+
     flash('The rehearsal schedule app is not available yet.', 'warning')
     return render_template('Schedule.html', upcoming_events=load_schedule_events())
 
