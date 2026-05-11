@@ -1,7 +1,4 @@
 :root {
-  --primary: #2563eb;
-  --border: #e5e7eb;
-:root {
   --bg: #f4efe8;
   --surface: #ffffff;
   --surface-alt: #f8fafc;
@@ -14,37 +11,35 @@
   --shadow: 0 12px 30px rgba(36, 48, 63, 0.08);
 }
 
-html {
+.scheduler-main {
   background: var(--bg);
 }
 
-body {
+.scheduler-main,
+.scheduler-main input,
+.scheduler-main select,
+.scheduler-main textarea {
   font-family: "Source Sans Pro", "Open Sans", sans-serif;
-  margin: 0;
-  padding: 0;
-  background:
-    radial-gradient(circle at top left, rgba(196, 155, 102, 0.14), transparent 32%),
-    linear-gradient(180deg, #f7f2ea 0%, #eef1f5 46%, #edf0f4 100%);
   color: var(--ink);
   line-height: 1.6;
-  min-height: 100vh;
 }
 
-h1, h2, h3, h4, h5, h6 {
+.scheduler-main .wrapper.style5 {
+  background:
+    radial-gradient(circle at top left, rgba(196, 155, 102, 0.12), transparent 32%),
+    linear-gradient(180deg, #f7f2ea 0%, #eef1f5 46%, #edf0f4 100%);
+}
+
+.scheduler-main h1,
+.scheduler-main h2,
+.scheduler-main h3,
+.scheduler-main h4,
+.scheduler-main h5,
+.scheduler-main h6 {
   font-family: "Cormorant Garamond", serif;
   color: var(--primary);
   letter-spacing: 0.02em;
   line-height: 1.1;
-}
-
-#page-wrapper {
-  min-height: 100vh;
-}
-
-.wrap {
-  max-width: 1800px;
-  margin: 0 auto;
-  padding: 18px;
 }
 
 .scheduler-topbar {
@@ -72,19 +67,19 @@ h1, h2, h3, h4, h5, h6 {
   backdrop-filter: blur(6px);
 }
 
-table {
+.scheduler-main table {
   width: 100%;
   border-collapse: collapse;
 }
 
-th,
-td {
+.scheduler-main th,
+.scheduler-main td {
   border-bottom: 1px solid var(--border);
   padding: 8px;
   vertical-align: top;
 }
 
-th {
+.scheduler-main th {
   text-align: left;
   font-weight: 700;
   background: #f6f3ee;
@@ -140,9 +135,9 @@ th {
   flex: 1 1 420px;
 }
 
-input,
-select,
-textarea {
+.scheduler-main input,
+.scheduler-main select,
+.scheduler-main textarea {
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -153,12 +148,38 @@ textarea {
   color: var(--ink);
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+.scheduler-main input:focus,
+.scheduler-main select:focus,
+.scheduler-main textarea:focus {
   outline: none;
   border-color: rgba(196, 155, 102, 0.85);
   box-shadow: 0 0 0 3px rgba(196, 155, 102, 0.15);
+}
+
+.scheduler-auth-card {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.scheduler-field {
+  margin-bottom: 12px;
+}
+
+.scheduler-help-link {
+  margin-top: 8px;
+}
+
+.scheduler-actions {
+  margin-top: 16px;
+}
+
+.scheduler-actions li {
+  padding: 0;
+}
+
+.scheduler-error {
+  color: #b00020;
+  margin-bottom: 10px;
 }
 
 .grid {
@@ -225,10 +246,6 @@ textarea:focus {
 }
 
 @media (max-width: 768px) {
-  .wrap {
-    padding: 12px;
-  }
-
   .card {
     padding: 14px;
     border-radius: 14px;
@@ -239,6 +256,8 @@ textarea:focus {
     justify-content: center;
   }
 }
+
+.table-wrap {
   border-radius: 8px;
   margin: 15px 0;
   display: flex;
@@ -342,19 +361,6 @@ textarea:focus {
   font-size: 0.9rem;
   color: #666;
 }
-
-.btn {
-  padding: 8px 16px;
-  border-radius: 6px;
-  background: var(--primary);
-  color: white;
-  border: none;
-  cursor: pointer;
-  font-weight: 500;
-  margin-right: 5px;
-}
-
-.btn:hover { opacity: 0.9; }
 
 /* ======================== */
 /* Timeline Editor Styles   */
