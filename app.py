@@ -148,7 +148,6 @@ app.NewsItem = NewsItem
 app.Event = Event
 app.PageContent = PageContent
 app.ContactMessage = ContactMessage
-app.upload_media_image = upload_media_image
 
 
 # Import and register admin blueprint
@@ -231,6 +230,9 @@ def upload_media_image(file_storage, prefix='content'):
     out_path = os.path.join(UPLOADS_DIR, unique_name)
     file_storage.save(out_path)
     return f'/assets/uploads/{unique_name}'
+
+
+app.upload_media_image = upload_media_image
 
 
 def _is_safe_redirect_target(target):
