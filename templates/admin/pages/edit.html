@@ -31,14 +31,14 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="image_url" class="form-label">Image</label>
+                        <label for="image_url" class="form-label">Image URL or Path</label>
                         {% if content.image_url %}
                             <div class="mb-2">
-                                <img src="{{ content.image_url }}" alt="Image" style="max-width: 200px; max-height: 200px; border-radius: 5px;">
+                                <img src="{{ media_url(content.image_url) }}" alt="Image" style="max-width: 200px; max-height: 200px; border-radius: 5px;">
                             </div>
                         {% endif %}
-                        <input type="file" class="form-control" id="image_url" name="image_url" accept="image/*">
-                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB)</small>
+                        <input type="text" class="form-control" id="image_url" name="image_url" value="{{ content.image_url or '' }}" placeholder="/images/pic01.jpg or https://...">
+                        <small class="text-muted">Use a full URL or local path like /images/example.jpg</small>
                     </div>
                     
                     <div class="mb-3">

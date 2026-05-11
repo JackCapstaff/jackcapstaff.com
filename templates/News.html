@@ -8,6 +8,12 @@
 		<header>
 			<h2>NEWS</h2>
 			<p>&nbsp;</p>
+			{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}
+				<ul class="actions" style="justify-content: center; margin-top: 1rem;">
+					<li><a href="{{ url_for('admin.create_news') }}" class="button primary small">Add News Story</a></li>
+					<li><a href="{{ url_for('admin.manage_news') }}" class="button small">Manage News</a></li>
+				</ul>
+			{% endif %}
 		</header>
 
 		<section class="wrapper style5">
@@ -16,6 +22,11 @@
 					<div class="posts">
 						{% for item in news_items.items %}
 							<article>
+								{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}
+									<ul class="actions" style="justify-content: flex-end; margin-bottom: 0.5rem;">
+										<li><a href="{{ url_for('admin.edit_news', news_id=item.id) }}" class="button small">Edit News Story</a></li>
+									</ul>
+								{% endif %}
 								{% if item.featured_image %}
 									<a href="{{ url_for('news_detail', slug=item.slug) }}" class="image">
 										<img src="{{ media_url(item.featured_image) }}" alt="{{ item.title }}" />

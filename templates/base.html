@@ -36,7 +36,7 @@
 									<li><a href="{{ url_for('news') }}">News</a></li>
 									<li><a href="{{ url_for('contact') }}">Contact</a></li>
 									{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}
-										<li><a href="{{ url_for('admin.dashboard') }}">Admin</a></li>
+										<li><a href="{{ url_for('admin.dashboard') if current_user.is_admin() else url_for('admin.manage_pages') }}">Admin</a></li>
 										<li><a href="{{ url_for('logout') }}">Logout</a></li>
 									{% elif current_user.is_authenticated %}
 										<li><a href="{{ url_for('logout') }}">Logout</a></li>

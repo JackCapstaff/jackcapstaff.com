@@ -8,6 +8,12 @@
 		<header>
 			<h2>BIOGRAPHY</h2>
 			<p>&nbsp;</p>
+			{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}
+				<ul class="actions" style="justify-content: center; margin-top: 1rem;">
+					<li><a href="{{ url_for('admin.create_page_content', page='biography', section='biography-main') }}" class="button small">Add Biography Block</a></li>
+					<li><a href="{{ url_for('admin.manage_pages') }}" class="button small">Manage Page Blocks</a></li>
+				</ul>
+			{% endif %}
 		</header>
 
 		<!-- Dynamic Content from Database -->
@@ -15,6 +21,11 @@
 			{% if block.published %}
 				<section class="wrapper style5">
 					<div class="inner">
+						{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}
+							<ul class="actions" style="justify-content: flex-end; margin-bottom: 1rem;">
+								<li><a href="{{ url_for('admin.edit_page_content', content_id=block.id) }}" class="button small">Edit This Block</a></li>
+							</ul>
+						{% endif %}
 						{% if block.title %}<h4>{{ block.title }}</h4>{% endif %}
 						{% if block.content %}{{ block.content|safe }}{% endif %}
 						{% if block.image_url %}

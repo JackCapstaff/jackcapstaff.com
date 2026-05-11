@@ -8,6 +8,12 @@
 		<header>
 			<h2>{{ news_item.title }}</h2>
 			{% if news_item.subtitle %}<p>{{ news_item.subtitle }}</p>{% endif %}
+			{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}
+				<ul class="actions" style="justify-content: center; margin-top: 1rem;">
+					<li><a href="{{ url_for('admin.edit_news', news_id=news_item.id) }}" class="button small">Edit This News Story</a></li>
+					<li><a href="{{ url_for('admin.create_news') }}" class="button small">Add News Story</a></li>
+				</ul>
+			{% endif %}
 			<div style="font-size: 0.9em; color: #666; margin-top: 1rem;">
 				{{ news_item.published_at.strftime('%B %d, %Y') }}
 				{% if news_item.author %} by {{ news_item.author.name or news_item.author.username }}{% endif %}

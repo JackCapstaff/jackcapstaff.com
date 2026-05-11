@@ -14,38 +14,38 @@
                         <label for="page" class="form-label">Page *</label>
                         <select class="form-select" id="page" name="page" required>
                             <option value="">-- Select page --</option>
-                            <option value="home">Home</option>
-                            <option value="biography">Biography</option>
-                            <option value="schedule">Schedule</option>
-                            <option value="media">Media</option>
+                            <option value="home" {% if default_page == 'home' %}selected{% endif %}>Home</option>
+                            <option value="biography" {% if default_page == 'biography' %}selected{% endif %}>Biography</option>
+                            <option value="schedule" {% if default_page == 'schedule' %}selected{% endif %}>Schedule</option>
+                            <option value="media" {% if default_page == 'media' %}selected{% endif %}>Media</option>
                         </select>
                     </div>
                     
                     <div class="mb-3">
                         <label for="section" class="form-label">Section *</label>
-                        <input type="text" class="form-control" id="section" name="section" placeholder="e.g., hero, about, featured" required>
+                        <input type="text" class="form-control" id="section" name="section" placeholder="e.g., hero, about, featured" value="{{ default_section or '' }}" required>
                         <small class="text-muted">Unique identifier for this content block</small>
                     </div>
                     
                     <div class="mb-3">
                         <label for="title" class="form-label">Title</label>
-                        <input type="text" class="form-control" id="title" name="title" placeholder="Optional section title">
+                        <input type="text" class="form-control" id="title" name="title" placeholder="Optional section title" value="{{ default_title or '' }}">
                     </div>
                     
                     <div class="mb-3">
                         <label for="content" class="form-label">Content</label>
-                        <textarea class="form-control" id="content" name="content" placeholder="Content for this section (HTML allowed)"></textarea>
+                        <textarea class="form-control" id="content" name="content" placeholder="Content for this section (HTML allowed)">{{ default_content or '' }}</textarea>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="image_url" class="form-label">Image</label>
-                        <input type="file" class="form-control" id="image_url" name="image_url" accept="image/*">
-                        <small class="text-muted">PNG, JPG, GIF, or WebP (max 25MB)</small>
+                        <label for="image_url" class="form-label">Image URL or Path</label>
+                        <input type="text" class="form-control" id="image_url" name="image_url" value="{{ default_image_url or '' }}" placeholder="/images/pic01.jpg or https://...">
+                        <small class="text-muted">Use a full URL or local path like /images/example.jpg</small>
                     </div>
                     
                     <div class="mb-3">
                         <label for="order" class="form-label">Display Order</label>
-                        <input type="number" class="form-control" id="order" name="order" value="0" min="0">
+                        <input type="number" class="form-control" id="order" name="order" value="{{ default_order if default_order is not none else 0 }}" min="0">
                         <small class="text-muted">Lower numbers appear first</small>
                     </div>
                     

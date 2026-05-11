@@ -334,12 +334,27 @@ def manage_pages():
 def create_page_content():
     db, _, _, _, PageContent, _ = _models()
 
+    default_page = (request.args.get("page") or "").strip().lower()
+    default_section = (request.args.get("section") or "").strip()
+    default_title = (request.args.get("title") or "").strip()
+    default_content = (request.args.get("content") or "").strip()
+    default_order = request.args.get("order", 0, type=int)
+    default_image_url = (request.args.get("image_url") or "").strip()
+
     if request.method == "POST":
         page_name = (request.form.get("page") or "").strip().lower()
         section = (request.form.get("section") or "").strip()
         if not page_name or not section:
             flash("Page and section are required.", "warning")
-            return render_template("admin/pages/create.html")
+            return render_template(
+                "admin/pages/create.html",
+                default_page=page_name,
+                default_section=section,
+                default_title=(request.form.get("title") or "").strip(),
+                default_content=(request.form.get("content") or "").strip(),
+                default_image_url=(request.form.get("image_url") or "").strip(),
+                default_order=request.form.get("order", type=int) or 0,
+            )
 
         image_url = (request.form.get("image_url") or "").strip() or None
 
@@ -358,7 +373,15 @@ def create_page_content():
         flash("Page content created.", "success")
         return redirect(url_for("admin.manage_pages"))
 
-    return render_template("admin/pages/create.html")
+    return render_template(
+        "admin/pages/create.html",
+        default_page=default_page,
+        default_section=default_section,
+        default_title=default_title,
+        default_content=default_content,
+        default_image_url=default_image_url,
+        default_order=default_order,
+    )
 
 
 @admin_bp.route("/pages/<int:content_id>/edit", methods=["GET", "POST"])
