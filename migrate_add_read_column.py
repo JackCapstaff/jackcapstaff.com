@@ -1,73 +1,97 @@
 #!/usr/bin/env python
 """
-Database migration: Add 'read' column to contact_message table
+Database initialization script - creates all tables and adds missing columns
+Designed to run as Heroku release phase before web server starts
 """
 
-import os
+import sys
 from app import app, db
 
-def migrate():
-    """Add missing 'read' column to contact_message table"""
-    
+def init_database():
+    """Initialize database - create tables and add missing columns"""
     with app.app_context():
-        # Get the database connection
-        connection = db.engine.connect()
+        print("=" * 80)
+        print("DATABASE INITIALIZATION")
+        print("=" * 80)
         
         try:
-            # Check if we're using PostgreSQL (Heroku) or SQLite
-            dialect_name = db.engine.dialect.name
+            # Get database info
+            dialect = db.engine.dialect.name
+            print(f"\n🔍 Database Type: {dialect}")
             
-            if dialect_name == 'postgresql':
-                # PostgreSQL
-                check_query = """
-                    SELECT EXISTS (
-                        SELECT 1 FROM information_schema.columns 
+            # Create all tables from models if they don't exist
+            print("\n📝 Creating tables from models...")
+            db.create_all()
+            print("   ✓ All tables created/verified")
+            
+            # Add missing columns to existing tables
+            connection = db.engine.connect()
+            
+            try:
+                if dialect == 'postgresql':
+                    print("\n🔧 PostgreSQL specific setup...")
+                    
+                    # Check if 'read' column exists on contact_message table
+                    query = """
+                        SELECT column_name 
+                        FROM information_schema.columns 
                         WHERE table_name = 'contact_message' 
                         AND column_name = 'read'
-                    );
-                """
-                result = connection.execute(db.text(check_query)).fetchone()
-                column_exists = result[0] if result else False
-                
-                if not column_exists:
-                    print("Adding 'read' column to contact_message table (PostgreSQL)...")
-                    add_query = """
-                        ALTER TABLE contact_message 
-                        ADD COLUMN read BOOLEAN DEFAULT FALSE NOT NULL;
                     """
-                    connection.execute(db.text(add_query))
-                    connection.commit()
-                    print("✓ Column added successfully!")
-                else:
-                    print("✓ Column 'read' already exists in contact_message table")
+                    result = connection.execute(db.text(query)).fetchall()
                     
-            elif dialect_name == 'sqlite':
-                # SQLite
-                check_query = "PRAGMA table_info(contact_message);"
-                result = connection.execute(db.text(check_query)).fetchall()
-                column_names = [row[1] for row in result]
+                    if not result:
+                        print("   Adding 'read' column to contact_message...")
+                        try:
+                            connection.execute(db.text("""
+                                ALTER TABLE contact_message 
+                                ADD COLUMN read BOOLEAN DEFAULT FALSE
+                            """))
+                            connection.commit()
+                            print("   ✓ 'read' column added")
+                        except Exception as e:
+                            print(f"   ⚠️  Could not add column: {e}")
+                            connection.rollback()
+                    else:
+                        print("   ✓ 'read' column already exists")
                 
-                if 'read' not in column_names:
-                    print("Adding 'read' column to contact_message table (SQLite)...")
-                    add_query = """
-                        ALTER TABLE contact_message 
-                        ADD COLUMN read BOOLEAN DEFAULT 0 NOT NULL;
-                    """
-                    connection.execute(db.text(add_query))
-                    connection.commit()
-                    print("✓ Column added successfully!")
-                else:
-                    print("✓ Column 'read' already exists in contact_message table")
-            else:
-                print(f"Unknown database dialect: {dialect_name}")
-                
+                elif dialect == 'sqlite':
+                    print("\n🔧 SQLite specific setup...")
+                    
+                    # Check if 'read' column exists
+                    query = "PRAGMA table_info(contact_message);"
+                    result = connection.execute(db.text(query)).fetchall()
+                    columns = [row[1] for row in result]
+                    
+                    if 'read' not in columns:
+                        print("   Adding 'read' column to contact_message...")
+                        try:
+                            connection.execute(db.text("""
+                                ALTER TABLE contact_message 
+                                ADD COLUMN read BOOLEAN DEFAULT 0
+                            """))
+                            connection.commit()
+                            print("   ✓ 'read' column added")
+                        except Exception as e:
+                            print(f"   ⚠️  Could not add column: {e}")
+                            connection.rollback()
+                    else:
+                        print("   ✓ 'read' column already exists")
+            
+            finally:
+                connection.close()
+            
+            print("\n" + "=" * 80)
+            print("✅ DATABASE INITIALIZATION COMPLETE - SAFE TO START WEB SERVER")
+            print("=" * 80)
+            return True
+            
         except Exception as e:
-            print(f"✗ Migration error: {e}")
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+            print(f"\n❌ DATABASE INITIALIZATION FAILED")
+            print(f"Error: {e}")
+            print("=" * 80)
+            return False
 
 if __name__ == '__main__':
-    migrate()
-    print("\nMigration complete!")
+    success = init_database()
+    sys.exit(0 if success else 1)
