@@ -4,3 +4,13 @@
 _notes/
 /bower_components/
 /node_modules/
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+
+# Local editor settings inside vendored rehearsal scheduler
+Rehearsal Schedule/rehearsal_schedule/.vscode/
+
+# Temporary schedule files
+Rehearsal Schedule/rehearsal_schedule/site/data/schedules/*.tmp.*
