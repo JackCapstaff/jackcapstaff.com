@@ -252,6 +252,155 @@ BREVO_FROM_NAME = os.environ.get("BREVO_FROM_NAME", "Rehearsal Schedule").strip(
 BREVO_PRIMARY_TO = os.environ.get("BREVO_PRIMARY_TO", BREVO_FROM_EMAIL).strip()
 AUDIT_LOG_LIMIT = 500
 
+
+def _outlook_calendar_config():
+    tenant_id = (os.environ.get("OUTLOOK_GRAPH_TENANT_ID") or "").strip()
+    client_id = (os.environ.get("OUTLOOK_GRAPH_CLIENT_ID") or "").strip()
+    client_secret = (os.environ.get("OUTLOOK_GRAPH_CLIENT_SECRET") or "").strip()
+    refresh_token = (os.environ.get("OUTLOOK_GRAPH_REFRESH_TOKEN") or "").strip()
+    user_principal_name = (os.environ.get("OUTLOOK_GRAPH_USER_PRINCIPAL_NAME") or "").strip()
+    calendar_id = (os.environ.get("OUTLOOK_GRAPH_CALENDAR_ID") or "").strip()
+    timezone_name = (os.environ.get("OUTLOOK_GRAPH_TIMEZONE") or "Europe/London").strip() or "Europe/London"
+
+    if not (tenant_id and client_id and client_secret and refresh_token and user_principal_name):
+        return None
+
+    return {
+        "tenant_id": tenant_id,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "user_principal_name": user_principal_name,
+        "calendar_id": calendar_id,
+        "timezone": timezone_name,
+    }
+
+
+def _graph_access_token(config: dict) -> Optional[str]:
+    token_url = f"https://login.microsoftonline.com/{config['tenant_id']}/oauth2/v2.0/token"
+    payload = {
+        "client_id": config["client_id"],
+        "client_secret": config["client_secret"],
+        "grant_type": "refresh_token",
+        "refresh_token": config["refresh_token"],
+        "scope": "https://graph.microsoft.com/Calendars.Read.Shared offline_access",
+    }
+
+    try:
+        response = requests.post(token_url, data=payload, timeout=20)
+        response.raise_for_status()
+        return (response.json() or {}).get("access_token")
+    except Exception:
+        app.logger.exception("Graph token request failed in rehearsal scheduler")
+        return None
+
+
+def _outlook_events_for_dashboard() -> List[dict]:
+    config = _outlook_calendar_config()
+    if not config:
+        return []
+
+    access_token = _graph_access_token(config)
+    if not access_token:
+        return []
+
+    start_dt = _dt.datetime.utcnow().replace(microsecond=0)
+    end_dt = start_dt + _dt.timedelta(days=365)
+
+    base_user = config["user_principal_name"]
+    calendar_id = config.get("calendar_id") or ""
+    if calendar_id:
+        endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendars/{calendar_id}/calendarView"
+    else:
+        endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendarView"
+
+    params = {
+        "startDateTime": start_dt.isoformat() + "Z",
+        "endDateTime": end_dt.isoformat() + "Z",
+        "$select": "id,subject,start,end,location,bodyPreview,sensitivity,isAllDay,isCancelled",
+        "$orderby": "start/dateTime",
+        "$top": "200",
+    }
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+        "Prefer": f"outlook.timezone=\"{config['timezone']}\"",
+    }
+
+    output = []
+    next_url = endpoint
+    try:
+        while next_url:
+            response = requests.get(next_url, headers=headers, params=params, timeout=20)
+            response.raise_for_status()
+            payload = response.json() or {}
+
+            for row in payload.get("value", []):
+                if row.get("isCancelled"):
+                    continue
+
+                start_info = row.get("start") or {}
+                start_raw = (start_info.get("dateTime") or "").strip()
+                if not start_raw:
+                    continue
+
+                # Keep date handling resilient across ISO forms with/without timezone offsets.
+                try:
+                    dt_value = _dt.datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+                    if dt_value.tzinfo is not None:
+                        dt_value = dt_value.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+                except Exception:
+                    try:
+                        dt_value = pd.to_datetime(start_raw).to_pydatetime()
+                        if dt_value.tzinfo is not None:
+                            dt_value = dt_value.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+                    except Exception:
+                        continue
+
+                sensitivity = (row.get("sensitivity") or "").strip().lower()
+                is_private = sensitivity == "private"
+                subject = (row.get("subject") or "").strip() or "Outlook event"
+                location = ((row.get("location") or {}).get("displayName") or "").strip()
+                body_preview = (row.get("bodyPreview") or "").strip()
+
+                if is_private:
+                    subject = "Private appointment"
+                    location = ""
+                    body_preview = ""
+
+                source_id = (row.get("id") or "").strip()
+                synthetic_id = source_id or uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"{subject}|{dt_value.isoformat()}|{location}",
+                ).hex
+
+                output.append({
+                    "type": "concert",
+                    "id": f"outlook_{synthetic_id}",
+                    "concert_id": f"outlook_{synthetic_id}",
+                    "ensemble_id": "outlook-calendar",
+                    "ensemble_name": "Outlook Calendar",
+                    "title": subject,
+                    "date": dt_value.date().isoformat(),
+                    "time": "" if row.get("isAllDay") else dt_value.strftime("%H:%M"),
+                    "venue": location,
+                    "uniform": "",
+                    "programme": "",
+                    "other_info": body_preview,
+                    "schedule_id": None,
+                    "status": "scheduled",
+                    "is_private": is_private,
+                })
+
+            next_url = payload.get("@odata.nextLink")
+            params = None
+    except Exception:
+        app.logger.exception("Graph calendar fetch failed in rehearsal scheduler")
+        return []
+
+    output.sort(key=lambda item: (item.get("date") or "", item.get("time") or ""))
+    return output
+
 # Custom Jinja filter for UK date format with ordinal suffix
 @app.template_filter('uk_date_format')
 def uk_date_format(date_value):
@@ -5737,6 +5886,12 @@ def api_member_rehearsals():
                         "schedule_id": concert.get("schedule_id")
                     })
     
+    # Merge Outlook events into dashboard calendar/events stream.
+    outlook_events = _outlook_events_for_dashboard()
+    if outlook_events:
+        concerts_list.extend(outlook_events)
+        print(f"Added {len(outlook_events)} Outlook events to dashboard feed")
+
     # Combine concerts and rehearsals, sort by date
     all_events = []
     for rehearsal in rehearsals_list:
