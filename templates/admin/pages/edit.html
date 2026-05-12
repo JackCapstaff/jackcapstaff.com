@@ -40,6 +40,17 @@
                         <input type="text" class="form-control" id="image_url" name="image_url" value="{{ content.image_url or '' }}" placeholder="/images/pic01.jpg or https://...">
                         <small class="text-muted">Use a full URL or local path like /images/example.jpg</small>
                     </div>
+
+                    <div class="mb-3">
+                        <label for="youtube_embed_url" class="form-label">YouTube URL</label>
+                        {% if content.youtube_embed_url %}
+                            <div class="mb-2 ratio ratio-16x9" style="max-width: 520px;">
+                                <iframe src="{{ content.youtube_embed_url }}" title="YouTube preview" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="border: 0; border-radius: 5px;"></iframe>
+                            </div>
+                        {% endif %}
+                        <input type="url" class="form-control" id="youtube_embed_url" name="youtube_embed_url" value="{{ content.youtube_embed_url or '' }}" placeholder="https://www.youtube.com/watch?v=...">
+                        <small class="text-muted">Paste a YouTube watch, short, or embed URL and it will render as a video embed.</small>
+                    </div>
                     
                     <div class="mb-3">
                         <label for="order" class="form-label">Display Order</label>

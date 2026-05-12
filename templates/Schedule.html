@@ -13,7 +13,8 @@
 		<section class="wrapper style5">
 			<div class="inner">
 				{% if upcoming_events %}
-					<h3>Upcoming Events</h3>
+					<h3>Upcoming Outlook Appointments</h3>
+					<p style="margin-top: -0.5rem; color: #666;">Private appointments are shown without subject, location, or description.</p>
 					<table style="width: 100%; margin-bottom: 2rem;">
 						<thead style="border-bottom: 2px solid #ccc;">
 							<tr>
@@ -26,14 +27,19 @@
 						<tbody>
 							{% for event in upcoming_events %}
 								<tr style="border-bottom: 1px solid #eee;">
-									<td style="padding: 0.75rem; font-weight: 500;">{{ event.title }}</td>
-									<td style="padding: 0.75rem; white-space: nowrap;">
-										{{ event.event_date.strftime('%B %d, %Y') }}
-										{% if event.event_date.hour > 0 %}
-											<br><small>{{ event.event_date.strftime('%H:%M') }}</small>
+									<td style="padding: 0.75rem; font-weight: 500;">
+										{{ event.subject }}
+										{% if event.is_private %}
+											<br><small style="color: #999;">Private</small>
 										{% endif %}
 									</td>
-									<td style="padding: 0.75rem;">{{ event.location or 'TBA' }}</td>
+									<td style="padding: 0.75rem; white-space: nowrap;">
+										{{ event.date_label }}
+										{% if event.time_label %}
+											<br><small>{{ event.time_label }}</small>
+										{% endif %}
+									</td>
+									<td style="padding: 0.75rem;">{{ event.location or ('Private' if event.is_private else 'TBA') }}</td>
 									<td style="padding: 0.75rem;">
 										{% if event.tickets_url %}
 											<a href="{{ event.tickets_url }}" target="_blank" class="button small">Tickets</a>

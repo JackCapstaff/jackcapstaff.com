@@ -136,6 +136,7 @@ def init_models(db):
         title = db.Column(db.String(255))
         content = db.Column(db.Text)
         image_url = db.Column(db.String(512))
+        youtube_embed_url = db.Column(db.String(512))
         order = db.Column(db.Integer, default=0)
         published = db.Column(db.Boolean, default=True)
         

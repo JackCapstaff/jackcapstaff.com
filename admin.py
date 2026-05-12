@@ -366,6 +366,7 @@ def create_page_content():
     default_content = (request.args.get("content") or "").strip()
     default_order = request.args.get("order", 0, type=int)
     default_image_url = (request.args.get("image_url") or "").strip()
+    default_youtube_embed_url = (request.args.get("youtube_embed_url") or "").strip()
 
     if request.method == "POST":
         page_name = (request.form.get("page") or "").strip().lower()
@@ -379,10 +380,12 @@ def create_page_content():
                 default_title=(request.form.get("title") or "").strip(),
                 default_content=(request.form.get("content") or "").strip(),
                 default_image_url=(request.form.get("image_url") or "").strip(),
+                default_youtube_embed_url=(request.form.get("youtube_embed_url") or "").strip(),
                 default_order=request.form.get("order", type=int) or 0,
             )
 
         image_url = (request.form.get("image_url") or "").strip() or None
+        youtube_embed_url = (request.form.get("youtube_embed_url") or "").strip() or None
 
         item = PageContent(
             page=page_name,
@@ -390,6 +393,7 @@ def create_page_content():
             title=(request.form.get("title") or "").strip() or None,
             content=(request.form.get("content") or "").strip() or None,
             image_url=image_url,
+            youtube_embed_url=youtube_embed_url,
             order=request.form.get("order", type=int) or 0,
             published=request.form.get("published") == "on",
             author_id=current_user.id,
@@ -406,6 +410,7 @@ def create_page_content():
         default_title=default_title,
         default_content=default_content,
         default_image_url=default_image_url,
+        default_youtube_embed_url=default_youtube_embed_url,
         default_order=default_order,
     )
 
@@ -420,6 +425,7 @@ def edit_page_content(content_id):
         content.title = (request.form.get("title") or "").strip() or None
         content.content = (request.form.get("content") or "").strip() or None
         content.image_url = (request.form.get("image_url") or "").strip() or content.image_url
+        content.youtube_embed_url = (request.form.get("youtube_embed_url") or "").strip() or content.youtube_embed_url
         content.order = request.form.get("order", type=int) or 0
         content.published = request.form.get("published") == "on"
 
@@ -560,6 +566,7 @@ def save_page_content():
         page = (data.get("page") or "").strip()
         section = (data.get("section") or "").strip()
         content = (data.get("content") or "").strip()
+        youtube_embed_url = (data.get("youtube_embed_url") or "").strip()
 
         if not page or not section:
             return jsonify({"error": "Page and section are required"}), 400
@@ -572,11 +579,14 @@ def save_page_content():
                 page=page,
                 section=section,
                 content=content,
+                youtube_embed_url=youtube_embed_url or None,
                 author_id=current_user.id,
             )
             db.session.add(pc)
         else:
             pc.content = content
+            if "youtube_embed_url" in data:
+                pc.youtube_embed_url = youtube_embed_url or None
             pc.updated_at = datetime.utcnow()
 
         db.session.commit()
@@ -617,6 +627,7 @@ def get_page_content(page, section):
             "title": pc.title,
             "content": pc.content,
             "image_url": pc.image_url,
+            "youtube_embed_url": pc.youtube_embed_url,
             "published": pc.published,
             "updated_at": pc.updated_at.isoformat() if pc.updated_at else None,
         }), 200

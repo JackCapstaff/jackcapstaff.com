@@ -2,38 +2,112 @@
 
 {% block page_title %}Jack Capstaff - Media{% endblock %}
 
+{% block extra_head %}
+<style>
+    .media-hero-actions {
+        display: flex;
+        gap: 0.75rem;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin: 1.5rem 0 0;
+    }
+
+    .media-grid {
+        display: grid;
+        gap: 2rem;
+    }
+
+    .media-card {
+        display: grid;
+        gap: 1.5rem;
+        align-items: start;
+    }
+
+    .media-card__figure,
+    .media-card__embed {
+        margin: 0;
+    }
+
+    .media-card__figure img {
+        width: 100%;
+        display: block;
+        border-radius: 8px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    }
+
+    .media-card__embed iframe {
+        width: 100%;
+        min-height: 320px;
+        border: 0;
+        border-radius: 8px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    }
+
+    .media-card__copy p:last-child {
+        margin-bottom: 0;
+    }
+
+    @media (min-width: 900px) {
+        .media-card {
+            grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+        }
+    }
+</style>
+{% endblock %}
+
 {% block main_content %}
 	<!-- Main -->
 	<article id="main">
 		<header>
 			<h2>MEDIA</h2>
-			<p>&nbsp;</p>
+			<p>Photos, performance clips, and featured media can all live here.</p>
+			{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}
+				<div class="media-hero-actions">
+					<a href="{{ url_for('admin.create_page_content', page='media', section='media-feature') }}" class="button small">Add Media Block</a>
+					<a href="{{ url_for('admin.manage_pages') }}" class="button small">Manage Page Blocks</a>
+				</div>
+			{% endif %}
 		</header>
 
-		<!-- Dynamic Content from Database -->
-		{% for block in media_content %}
-			{% if block.published %}
-				<section class="wrapper style5">
-					<div class="inner">
-						{% if block.title %}<h3>{{ block.title }}</h3>{% endif %}
-						{% if block.image_url %}
-							<div style="margin-bottom: 2rem;">
-								<img src="{{ media_url(block.image_url) }}" alt="{{ block.title }}" style="max-width: 100%; border-radius: 4px;">
+		<div class="media-grid">
+			{% for block in media_content %}
+				{% if block.published %}
+					<section class="wrapper style5">
+						<div class="inner media-card">
+							<div class="media-card__copy">
+								{% if block.title %}<h3>{{ block.title }}</h3>{% endif %}
+								{% if block.content %}
+									<div>
+										{{ block.content|safe }}
+									</div>
+								{% endif %}
 							</div>
-						{% endif %}
-						{% if block.content %}
-							{{ block.content|safe }}
-						{% endif %}
-					</div>
-				</section>
-			{% endif %}
-		{% endfor %}
+
+							<div>
+								{% if block.image_url %}
+									<figure class="media-card__figure" {% if block.youtube_embed_url or normalize_youtube_embed_url(block.content) %}style="margin-bottom: 1rem;"{% endif %}>
+										<img src="{{ media_url(block.image_url) }}" alt="{{ block.title or 'Media image' }}">
+									</figure>
+								{% endif %}
+
+								{% set video_src = block.youtube_embed_url or normalize_youtube_embed_url(block.content) %}
+								{% if video_src %}
+									<div class="media-card__embed">
+										<iframe src="{{ video_src }}" title="{{ block.title or 'YouTube video' }}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+									</div>
+								{% endif %}
+							</div>
+						</div>
+					</section>
+				{% endif %}
+			{% endfor %}
+		</div>
 
 		<!-- Fallback if no media content -->
 		{% if not media_content or not media_content|selectattr('published')|list %}
 			<section class="wrapper style5">
 				<div class="inner">
-					<p style="text-align: center; color: #666;">No media content available yet. Please check back soon!</p>
+					<p style="text-align: center; color: #666;">No media content available yet. Add a block with a photo, a YouTube link, or both.</p>
 				</div>
 			</section>
 		{% endif %}

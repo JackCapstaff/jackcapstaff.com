@@ -51,8 +51,8 @@
 									<thead>
 										<tr>
 											<th>Event</th>
-											
 											<th>Date</th>
+											<th>Location</th>
 										</tr>
 									</thead>
 									<tbody>
@@ -102,11 +102,19 @@
 							header: true,
 							complete: function(results) {
 								console.log('CSV parsed:', results);
-								const events = results.data.filter(event => {
-									// Exclude events where 'Private' is TRUE (case-insensitive)
-										return event['Start Date'] && !(event['Private'] && event['Private'].toUpperCase() === 'TRUE');
-								});
-								console.log('Filtered events:', events);
+								const events = results.data
+									.filter(event => event['Start Date'])
+									.map(event => {
+										const isPrivate = (event['Private'] || '').toString().trim().toUpperCase() === 'TRUE';
+										return {
+											...event,
+											isPrivate,
+											displaySubject: isPrivate ? 'Private appointment' : (event['Subject'] || 'Untitled event'),
+											displayLocation: isPrivate ? '' : (event['Location'] || ''),
+											displayDescription: isPrivate ? '' : (event['Description'] || '')
+										};
+									});
+								console.log('Loaded events:', events);
 
 								const tbody = document.querySelector('table tbody');
 								tbody.innerHTML = '';
@@ -126,8 +134,9 @@
 
 										const tr = document.createElement('tr');
 										tr.innerHTML = `
-											<td>${event['Subject']}</td>
+											<td>${event.displaySubject}${event.isPrivate ? '<br><small style="color:#999;">Private</small>' : ''}</td>
 											<td>${formattedDate}</td>
+											<td>${event.displayLocation || (event.isPrivate ? 'Private' : '')}</td>
 										`;
 										tbody.appendChild(tr);
 									} catch (dateError) {

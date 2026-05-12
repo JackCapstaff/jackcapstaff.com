@@ -2,10 +2,11 @@ import importlib.util
 import json
 import csv
 import os
+import re
 import smtplib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 import uuid
 
 import requests
@@ -16,6 +17,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from sqlalchemy import inspect, text
 
 try:
     import cloudinary
@@ -176,6 +178,7 @@ def inject_globals():
         'site_title': app.config['SITE_TITLE'],
         'current_year': datetime.utcnow().year,
         'media_url': normalize_media_url,
+        'normalize_youtube_embed_url': normalize_youtube_embed_url,
     }
 
 
@@ -198,6 +201,63 @@ def normalize_media_url(value):
         return value
 
     return f'/images/{value.lstrip("/")}'
+
+
+def normalize_youtube_embed_url(raw_url):
+    url = (raw_url or '').strip()
+    if not url:
+        return None
+
+    if not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*://', url):
+        url = f'https://{url}'
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {'http', 'https'} or not parsed.netloc:
+        return None
+
+    host = parsed.netloc.lower()
+    if host.startswith('www.'):
+        host = host[4:]
+
+    video_id = None
+    if host in {'youtube.com', 'm.youtube.com'}:
+        if parsed.path == '/watch':
+            video_id = parse_qs(parsed.query).get('v', [None])[0]
+        elif parsed.path.startswith('/shorts/'):
+            video_id = parsed.path.split('/shorts/', 1)[1].split('/', 1)[0]
+        elif parsed.path.startswith('/embed/'):
+            video_id = parsed.path.split('/embed/', 1)[1].split('/', 1)[0]
+    elif host == 'youtu.be':
+        video_id = parsed.path.lstrip('/').split('/', 1)[0]
+
+    if not video_id or not re.fullmatch(r'[A-Za-z0-9_-]{11}', video_id):
+        return None
+
+    return f'https://www.youtube.com/embed/{video_id}'
+
+
+def ensure_optional_columns():
+    """Apply lightweight schema upgrades for legacy databases."""
+    required_columns = {
+        'page_content': {
+            'youtube_embed_url': 'VARCHAR(512)',
+        },
+    }
+
+    for table_name, columns in required_columns.items():
+        try:
+            with db.engine.connect() as conn:
+                existing_columns = {column['name'] for column in inspect(conn).get_columns(table_name)}
+        except Exception:
+            continue
+
+        missing_columns = [column_name for column_name in columns if column_name not in existing_columns]
+        if not missing_columns:
+            continue
+
+        with db.engine.begin() as conn:
+            for column_name in missing_columns:
+                conn.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {columns[column_name]}'))
 
 
 def _allowed_image_file(filename):
@@ -469,7 +529,145 @@ def send_password_reset_email(user_email, reset_url):
     return True, 'sent'
 
 
+def _outlook_calendar_config():
+    tenant_id = (os.environ.get('OUTLOOK_GRAPH_TENANT_ID') or '').strip()
+    client_id = (os.environ.get('OUTLOOK_GRAPH_CLIENT_ID') or '').strip()
+    client_secret = (os.environ.get('OUTLOOK_GRAPH_CLIENT_SECRET') or '').strip()
+    refresh_token = (os.environ.get('OUTLOOK_GRAPH_REFRESH_TOKEN') or '').strip()
+    user_principal_name = (os.environ.get('OUTLOOK_GRAPH_USER_PRINCIPAL_NAME') or '').strip()
+    calendar_id = (os.environ.get('OUTLOOK_GRAPH_CALENDAR_ID') or '').strip()
+    timezone = (os.environ.get('OUTLOOK_GRAPH_TIMEZONE') or 'UTC').strip() or 'UTC'
+
+    if not (tenant_id and client_id and client_secret and refresh_token and user_principal_name):
+        return None
+
+    return {
+        'tenant_id': tenant_id,
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'refresh_token': refresh_token,
+        'user_principal_name': user_principal_name,
+        'calendar_id': calendar_id,
+        'timezone': timezone,
+    }
+
+
+def _graph_access_token(config: dict) -> str | None:
+    token_url = f"https://login.microsoftonline.com/{config['tenant_id']}/oauth2/v2.0/token"
+    payload = {
+        'client_id': config['client_id'],
+        'client_secret': config['client_secret'],
+        'grant_type': 'refresh_token',
+        'refresh_token': config['refresh_token'],
+        'scope': 'https://graph.microsoft.com/Calendars.Read.Shared offline_access',
+    }
+
+    try:
+        response = requests.post(token_url, data=payload, timeout=20)
+        response.raise_for_status()
+        token_data = response.json()
+        return token_data.get('access_token')
+    except Exception:
+        app.logger.exception('Microsoft Graph token request failed')
+        return None
+
+
+def _graph_calendar_events(config: dict) -> list[dict]:
+    access_token = _graph_access_token(config)
+    if not access_token:
+        return []
+
+    start_dt = datetime.utcnow().replace(microsecond=0)
+    end_dt = start_dt + timedelta(days=365)
+    base_user = config['user_principal_name']
+    calendar_id = config.get('calendar_id') or ''
+
+    if calendar_id:
+        endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendars/{calendar_id}/calendarView"
+    else:
+        endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendarView"
+
+    params = {
+        'startDateTime': start_dt.isoformat() + 'Z',
+        'endDateTime': end_dt.isoformat() + 'Z',
+        '$select': 'subject,start,end,location,bodyPreview,sensitivity,isAllDay,isCancelled,showAs,webLink,isOnlineMeeting,onlineMeetingUrl',
+        '$orderby': 'start/dateTime',
+        '$top': '200',
+    }
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json',
+        'Prefer': f'outlook.timezone="{config["timezone"]}"',
+    }
+
+    events = []
+    next_url = endpoint
+
+    try:
+        while next_url:
+            response = requests.get(next_url, headers=headers, params=params, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+            for row in payload.get('value', []):
+                if row.get('isCancelled'):
+                    continue
+
+                start_info = row.get('start') or {}
+                end_info = row.get('end') or {}
+                start_raw = (start_info.get('dateTime') or '').strip()
+                end_raw = (end_info.get('dateTime') or '').strip()
+
+                try:
+                    if start_raw:
+                        parsed_dt = datetime.fromisoformat(start_raw.replace('Z', '+00:00'))
+                        if parsed_dt.tzinfo is not None:
+                            parsed_dt = parsed_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                        start_dt_value = parsed_dt
+                    else:
+                        start_dt_value = datetime.min
+                except ValueError:
+                    start_dt_value = datetime.min
+
+                sensitivity = (row.get('sensitivity') or '').strip().lower()
+                is_private = sensitivity == 'private'
+                subject = (row.get('subject') or '').strip()
+                location = ((row.get('location') or {}).get('displayName') or '').strip()
+                description = (row.get('bodyPreview') or '').strip()
+
+                if is_private:
+                    subject = 'Private appointment'
+                    location = ''
+                    description = ''
+
+                events.append({
+                    'subject': subject or 'Untitled event',
+                    'start_dt': start_dt_value,
+                    'date_label': start_dt_value.strftime('%d %b %Y') if start_dt_value != datetime.min else '',
+                    'time_label': start_dt_value.strftime('%H:%M') if start_dt_value != datetime.min else '',
+                    'location': location,
+                    'description': description,
+                    'is_private': is_private,
+                    'is_all_day': bool(row.get('isAllDay')),
+                    'end_label': end_raw,
+                })
+
+            next_url = payload.get('@odata.nextLink')
+            params = None
+    except Exception:
+        app.logger.exception('Microsoft Graph calendar fetch failed')
+        return []
+
+    events.sort(key=lambda item: item['start_dt'])
+    return events
+
+
 def load_schedule_events():
+    graph_config = _outlook_calendar_config()
+    if graph_config:
+        graph_events = _graph_calendar_events(graph_config)
+        if graph_events:
+            return graph_events
+
     csv_path = os.path.join(BASE_DIR, 'events.csv')
     events = []
 
@@ -479,8 +677,11 @@ def load_schedule_events():
     with open(csv_path, newline='', encoding='utf-8-sig') as csv_file:
         reader = csv.DictReader(csv_file)
         for row in reader:
-            if (row.get('Private') or '').strip().upper() == 'TRUE':
-                continue
+            is_private = (row.get('Private') or '').strip().upper() == 'TRUE'
+            raw_subject = (row.get('Subject') or '').strip()
+            subject = 'Private appointment' if is_private else raw_subject
+            location = '' if is_private else (row.get('Location') or '').strip()
+            description = '' if is_private else (row.get('Description') or '').strip()
 
             start_date = (row.get('Start Date') or '').strip()
             start_time = (row.get('Start Time') or '').strip()
@@ -493,12 +694,13 @@ def load_schedule_events():
                     start_dt = datetime.min
 
             events.append({
-                'subject': (row.get('Subject') or '').strip(),
+                'subject': subject or 'Untitled event',
                 'start_dt': start_dt,
                 'date_label': start_dt.strftime('%d %b %Y') if start_dt != datetime.min else start_date,
                 'time_label': start_dt.strftime('%H:%M') if start_dt != datetime.min and start_time else '',
-                'location': (row.get('Location') or '').strip(),
-                'description': (row.get('Description') or '').strip(),
+                'location': location,
+                'description': description,
+                'is_private': is_private,
             })
 
     events.sort(key=lambda item: item['start_dt'])
@@ -531,9 +733,7 @@ def biography():
 @app.route('/Schedule.html')
 def schedule():
     public_calendar_url = f'{REHEARSAL_SCHEDULE_PREFIX}/my'
-    upcoming_events = Event.query.filter_by(published=True).filter(
-        Event.event_date >= datetime.utcnow()
-    ).order_by(Event.event_date).all()
+    upcoming_events = load_schedule_events()
 
     if rehearsal_schedule_app is not None:
         return redirect(public_calendar_url)
@@ -732,6 +932,7 @@ def reset_password(token):
 
 with app.app_context():
     db.create_all()
+    ensure_optional_columns()
 
 
 if __name__ == '__main__':

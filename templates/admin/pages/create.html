@@ -42,6 +42,12 @@
                         <input type="text" class="form-control" id="image_url" name="image_url" value="{{ default_image_url or '' }}" placeholder="/images/pic01.jpg or https://...">
                         <small class="text-muted">Use a full URL or local path like /images/example.jpg</small>
                     </div>
+
+                    <div class="mb-3">
+                        <label for="youtube_embed_url" class="form-label">YouTube URL</label>
+                        <input type="url" class="form-control" id="youtube_embed_url" name="youtube_embed_url" value="{{ default_youtube_embed_url or '' }}" placeholder="https://www.youtube.com/watch?v=...">
+                        <small class="text-muted">Paste a YouTube watch, short, or embed URL and it will render as a video embed.</small>
+                    </div>
                     
                     <div class="mb-3">
                         <label for="order" class="form-label">Display Order</label>
@@ -78,6 +84,8 @@
                 <p><strong>Page:</strong> Which page this content appears on.</p>
                 <p><strong>Section:</strong> Unique name for this block (e.g., 'hero', 'featured-works').</p>
                 <p><strong>Title & Content:</strong> What users see on the page.</p>
+                <p><strong>Image URL:</strong> Add a photo or artwork for the block.</p>
+                <p><strong>YouTube URL:</strong> Paste a YouTube link to embed a video directly on the media page.</p>
                 <p><strong>Order:</strong> 0 displays first, 1 second, etc.</p>
             </div>
         </div>
