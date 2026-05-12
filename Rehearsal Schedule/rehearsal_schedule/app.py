@@ -5173,7 +5173,27 @@ def admin_add_concert(ensemble_id):
     }
 
     try:
-        add_concert_to_ensemble(ensemble_id, concert_data)
+        concert = add_concert_to_ensemble(ensemble_id, concert_data)
+        
+        # Sync to Outlook calendar if configured
+        config = _outlook_calendar_config()
+        if config and concert.get("status") == "scheduled":
+            access_token = _graph_access_token(config)
+            if access_token:
+                event_title = f"{ensemble.get('name')} - {concert.get('title', 'Concert')}"
+                outlook_event_id = _outlook_event_write(
+                    config, access_token,
+                    event_title,
+                    concert.get("date", ""),
+                    concert.get("time", ""),
+                    concert.get("venue", ""),
+                    concert.get("programme", "")
+                )
+                if outlook_event_id:
+                    concert["outlook_event_id"] = outlook_event_id
+                    update_concert(ensemble_id, concert.get("id"), concert)
+                    app.logger.info(f"Synced concert to Outlook: {event_title}")
+        
         return redirect(url_for("admin_view_concerts", ensemble_id=ensemble_id))
     except Exception as e:
         abort(400)
@@ -5239,7 +5259,43 @@ def admin_edit_concert(ensemble_id, concert_id):
     }
 
     try:
-        update_concert(ensemble_id, concert_id, concert_data)
+        concert = update_concert(ensemble_id, concert_id, concert_data)
+        
+        # Sync to Outlook calendar if configured
+        config = _outlook_calendar_config()
+        if config and concert.get("outlook_event_id") and concert.get("status") == "scheduled":
+            access_token = _graph_access_token(config)
+            if access_token:
+                event_title = f"{ensemble.get('name')} - {concert.get('title', 'Concert')}"
+                success = _outlook_event_update(
+                    config, access_token,
+                    concert.get("outlook_event_id"),
+                    event_title,
+                    concert.get("date", ""),
+                    concert.get("time", ""),
+                    concert.get("venue", ""),
+                    concert.get("programme", "")
+                )
+                if success:
+                    app.logger.info(f"Updated Outlook event for concert: {event_title}")
+        elif config and concert.get("status") == "scheduled" and not concert.get("outlook_event_id"):
+            # Concert is scheduled but no Outlook event - create one now
+            access_token = _graph_access_token(config)
+            if access_token:
+                event_title = f"{ensemble.get('name')} - {concert.get('title', 'Concert')}"
+                outlook_event_id = _outlook_event_write(
+                    config, access_token,
+                    event_title,
+                    concert.get("date", ""),
+                    concert.get("time", ""),
+                    concert.get("venue", ""),
+                    concert.get("programme", "")
+                )
+                if outlook_event_id:
+                    concert["outlook_event_id"] = outlook_event_id
+                    update_concert(ensemble_id, concert.get("id"), concert)
+                    app.logger.info(f"Created Outlook event for concert: {event_title}")
+        
         return redirect(url_for("admin_view_concerts", ensemble_id=ensemble_id))
     except Exception as e:
         abort(400)
@@ -5251,6 +5307,24 @@ def admin_delete_concert(ensemble_id, concert_id):
     r = admin_required_or_403()
     if r: return r
 
+    ensemble = get_ensemble_by_id(ensemble_id)
+    if not ensemble:
+        abort(404)
+    
+    # Get the concert before deleting to access the Outlook event ID
+    concert = next((c for c in ensemble.get("concerts", []) if c.get("id") == concert_id), None)
+    outlook_event_id = concert.get("outlook_event_id") if concert else None
+    
+    # Delete from Outlook if it exists
+    if outlook_event_id:
+        config = _outlook_calendar_config()
+        if config:
+            access_token = _graph_access_token(config)
+            if access_token:
+                success = _outlook_event_delete(config, access_token, outlook_event_id)
+                if success:
+                    app.logger.info(f"Deleted Outlook event {outlook_event_id} for concert")
+    
     if delete_concert(ensemble_id, concert_id):
         return redirect(url_for("admin_view_concerts", ensemble_id=ensemble_id))
     else:
@@ -5651,6 +5725,149 @@ def api_cleanup_duplicate_concerts():
         "removed_count": removed_count,
         "message": f"Removed {removed_count} duplicate auto-generated concerts"
     })
+
+
+def _outlook_event_write(config: dict, access_token: str, event_title: str, event_date: str,
+                        event_time: str = "", event_venue: str = "", event_body: str = "") -> Optional[str]:
+    """Create a calendar event in Outlook and return the event ID, or None on failure."""
+    try:
+        # Parse date and optionally merge with time
+        dt_date = pd.to_datetime(event_date).date()
+        
+        if event_time:
+            try:
+                time_obj = pd.to_datetime(event_time).time()
+                dt_value = _dt.datetime.combine(dt_date, time_obj)
+            except Exception:
+                dt_value = _dt.datetime.combine(dt_date, _dt.time(20, 0))  # Default 20:00
+        else:
+            dt_value = _dt.datetime.combine(dt_date, _dt.time(20, 0))
+        
+        # Create event body
+        start_dt = dt_value.isoformat()
+        end_dt = (dt_value + _dt.timedelta(hours=2)).isoformat()
+        
+        event_payload = {
+            "subject": event_title,
+            "start": {
+                "dateTime": start_dt,
+                "timeZone": config.get("timezone", "Europe/London"),
+            },
+            "end": {
+                "dateTime": end_dt,
+                "timeZone": config.get("timezone", "Europe/London"),
+            },
+        }
+        
+        if event_venue:
+            event_payload["location"] = {"displayName": event_venue}
+        
+        if event_body:
+            event_payload["bodyPreview"] = event_body
+        
+        base_user = config["user_principal_name"]
+        calendar_id = config.get("calendar_id") or ""
+        if calendar_id:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendars/{calendar_id}/events"
+        else:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/events"
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        
+        response = requests.post(endpoint, json=event_payload, headers=headers, timeout=20)
+        response.raise_for_status()
+        result = response.json() or {}
+        event_id = result.get("id")
+        if event_id:
+            app.logger.info(f"Created Outlook event {event_id}: {event_title}")
+        return event_id
+    except Exception:
+        app.logger.exception(f"Failed to create Outlook event: {event_title}")
+        return None
+
+
+def _outlook_event_update(config: dict, access_token: str, event_id: str, event_title: str,
+                         event_date: str, event_time: str = "", event_venue: str = "", event_body: str = "") -> bool:
+    """Update a calendar event in Outlook and return True on success."""
+    try:
+        # Parse date and optionally merge with time
+        dt_date = pd.to_datetime(event_date).date()
+        
+        if event_time:
+            try:
+                time_obj = pd.to_datetime(event_time).time()
+                dt_value = _dt.datetime.combine(dt_date, time_obj)
+            except Exception:
+                dt_value = _dt.datetime.combine(dt_date, _dt.time(20, 0))
+        else:
+            dt_value = _dt.datetime.combine(dt_date, _dt.time(20, 0))
+        
+        start_dt = dt_value.isoformat()
+        end_dt = (dt_value + _dt.timedelta(hours=2)).isoformat()
+        
+        event_payload = {
+            "subject": event_title,
+            "start": {
+                "dateTime": start_dt,
+                "timeZone": config.get("timezone", "Europe/London"),
+            },
+            "end": {
+                "dateTime": end_dt,
+                "timeZone": config.get("timezone", "Europe/London"),
+            },
+        }
+        
+        if event_venue:
+            event_payload["location"] = {"displayName": event_venue}
+        
+        if event_body:
+            event_payload["bodyPreview"] = event_body
+        
+        base_user = config["user_principal_name"]
+        calendar_id = config.get("calendar_id") or ""
+        if calendar_id:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendars/{calendar_id}/events/{event_id}"
+        else:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/events/{event_id}"
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        
+        response = requests.patch(endpoint, json=event_payload, headers=headers, timeout=20)
+        response.raise_for_status()
+        app.logger.info(f"Updated Outlook event {event_id}: {event_title}")
+        return True
+    except Exception:
+        app.logger.exception(f"Failed to update Outlook event: {event_id}")
+        return False
+
+
+def _outlook_event_delete(config: dict, access_token: str, event_id: str) -> bool:
+    """Delete a calendar event from Outlook and return True on success."""
+    try:
+        base_user = config["user_principal_name"]
+        calendar_id = config.get("calendar_id") or ""
+        if calendar_id:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendars/{calendar_id}/events/{event_id}"
+        else:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/events/{event_id}"
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+        }
+        
+        response = requests.delete(endpoint, headers=headers, timeout=20)
+        response.raise_for_status()
+        app.logger.info(f"Deleted Outlook event {event_id}")
+        return True
+    except Exception:
+        app.logger.exception(f"Failed to delete Outlook event: {event_id}")
+        return False
 
 
 @app.get("/api/member/rehearsals")
