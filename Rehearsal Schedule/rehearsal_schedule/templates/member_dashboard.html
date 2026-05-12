@@ -706,7 +706,10 @@ function renderMonth(date) {
         
         // Show concerts first (green)
         dayConcerts.forEach(concert => {
-            const truncatedName = concert.ensemble_name.length > 15 ? concert.ensemble_name.substring(0, 15) + '...' : concert.ensemble_name;
+            const rawLabel = (concert.ensemble_id === 'outlook-calendar')
+                ? (concert.title || 'Outlook event')
+                : (concert.ensemble_name || concert.title || 'Concert');
+            const truncatedName = rawLabel.length > 22 ? rawLabel.substring(0, 22) + '...' : rawLabel;
             const concertId = concert.concert_id || concert.id || '';
             html += `<button class="calendar-concert" onclick="showConcertDetails('${concertId.replace(/'/g, "\\'")}')" title="Click to view details">
                 🎵 ${truncatedName}
