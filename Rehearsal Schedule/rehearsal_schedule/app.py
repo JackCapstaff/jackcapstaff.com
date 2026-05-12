@@ -5727,10 +5727,63 @@ def api_cleanup_duplicate_concerts():
     })
 
 
-def _outlook_event_write(config: dict, access_token: str, event_title: str, event_date: str,
-                        event_time: str = "", event_venue: str = "", event_body: str = "") -> Optional[str]:
-    """Create a calendar event in Outlook and return the event ID, or None on failure."""
+def _outlook_event_find_by_date_and_title(config: dict, access_token: str, event_title: str, event_date: str) -> Optional[str]:
+    """Search for an existing event with matching date and title. Returns event ID or None."""
     try:
+        # Parse the date to search window (full day)
+        dt_date = pd.to_datetime(event_date).date()
+        start_dt = _dt.datetime.combine(dt_date, _dt.time(0, 0)).isoformat() + "Z"
+        end_dt = _dt.datetime.combine(dt_date, _dt.time(23, 59)).isoformat() + "Z"
+        
+        base_user = config["user_principal_name"]
+        calendar_id = config.get("calendar_id") or ""
+        if calendar_id:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendars/{calendar_id}/calendarView"
+        else:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendarView"
+        
+        params = {
+            "startDateTime": start_dt,
+            "endDateTime": end_dt,
+            "$select": "id,subject",
+            "$top": "100",
+        }
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+        
+        response = requests.get(endpoint, headers=headers, params=params, timeout=20)
+        response.raise_for_status()
+        payload = response.json() or {}
+        
+        # Search for exact or partial title match on the same date
+        for row in payload.get("value", []):
+            subject = (row.get("subject") or "").strip()
+            if event_title.lower() in subject.lower() or subject.lower() in event_title.lower():
+                event_id = row.get("id")
+                if event_id:
+                    app.logger.info(f"Found existing Outlook event {event_id} on {event_date}: {subject}")
+                    return event_id
+        
+        return None
+    except Exception:
+        app.logger.exception(f"Failed to search for existing Outlook event")
+        return None
+
+
+def _outlook_event_write(config: dict, access_token: str, event_title: str, event_date: str,
+                        event_time: str = "", event_venue: str = "", event_body: str = "", skip_duplicate_check: bool = False) -> Optional[str]:
+    """Create a calendar event in Outlook and return the event ID, or None on failure.
+    If skip_duplicate_check is False, will search for existing event with same date/title first."""
+    try:
+        # Check for existing event to avoid duplicates (unless explicitly skipped)
+        if not skip_duplicate_check:
+            existing_id = _outlook_event_find_by_date_and_title(config, access_token, event_title, event_date)
+            if existing_id:
+                app.logger.info(f"Skipping duplicate: event {existing_id} already exists on {event_date}")
+                return existing_id
+        
         # Parse date and optionally merge with time
         dt_date = pd.to_datetime(event_date).date()
         
