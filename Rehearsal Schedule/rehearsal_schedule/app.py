@@ -5109,6 +5109,69 @@ def admin_membership_remove():
 
 
 # ----------------------------
+# API: Check for Outlook Events
+# ----------------------------
+
+@app.get("/api/admin/check-outlook-events")
+def api_check_outlook_events():
+    """Check for existing Outlook calendar events on a specific date."""
+    r = admin_required_or_403()
+    if r: return r
+    
+    selected_date = request.args.get("date", "").strip()
+    if not selected_date:
+        return {"events": []}, 400
+    
+    config = _outlook_calendar_config()
+    if not config:
+        return {"events": []}, 200  # No Outlook configured
+    
+    access_token = _graph_access_token(config)
+    if not access_token:
+        return {"events": []}, 200  # Failed to get token
+    
+    try:
+        # Parse the date and create search window
+        dt_date = pd.to_datetime(selected_date).date()
+        start_dt = _dt.datetime.combine(dt_date, _dt.time(0, 0)).isoformat() + "Z"
+        end_dt = _dt.datetime.combine(dt_date, _dt.time(23, 59)).isoformat() + "Z"
+        
+        base_user = config["user_principal_name"]
+        calendar_id = config.get("calendar_id") or ""
+        if calendar_id:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendars/{calendar_id}/calendarView"
+        else:
+            endpoint = f"https://graph.microsoft.com/v1.0/users/{base_user}/calendarView"
+        
+        params = {
+            "startDateTime": start_dt,
+            "endDateTime": end_dt,
+            "$select": "id,subject",
+            "$top": "100",
+        }
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+        
+        response = requests.get(endpoint, headers=headers, params=params, timeout=20)
+        response.raise_for_status()
+        payload = response.json() or {}
+        
+        # Filter out cancelled events
+        events = [
+            {"id": event.get("id"), "subject": event.get("subject", "Untitled")}
+            for event in payload.get("value", [])
+            if event.get("id") and event.get("subject")
+        ]
+        
+        return {"events": events}, 200
+    except Exception as e:
+        app.logger.exception(f"Failed to check Outlook events: {e}")
+        return {"events": []}, 200
+
+
+# ----------------------------
 # Concert Management Routes (Admin)
 # ----------------------------
 
@@ -5175,27 +5238,39 @@ def admin_add_concert(ensemble_id):
     try:
         concert = add_concert_to_ensemble(ensemble_id, concert_data)
         
+        # Check if user selected an existing Outlook event to link to
+        selected_outlook_event_id = request.form.get("selected_outlook_event_id", "").strip()
+        
         # Sync to Outlook calendar if configured
         config = _outlook_calendar_config()
         if config and concert.get("status") == "scheduled":
             access_token = _graph_access_token(config)
             if access_token:
                 event_title = f"{ensemble.get('name')} - {concert.get('title', 'Concert')}"
-                outlook_event_id = _outlook_event_write(
-                    config, access_token,
-                    event_title,
-                    concert.get("date", ""),
-                    concert.get("time", ""),
-                    concert.get("venue", ""),
-                    concert.get("programme", "")
-                )
-                if outlook_event_id:
-                    concert["outlook_event_id"] = outlook_event_id
-                    update_concert(ensemble_id, concert.get("id"), concert)
-                    app.logger.info(f"Synced concert to Outlook: {event_title}")
+                
+                if selected_outlook_event_id:
+                    # Link to existing event
+                    concert["outlook_event_id"] = selected_outlook_event_id
+                    app.logger.info(f"Linked concert to existing Outlook event: {selected_outlook_event_id}")
+                else:
+                    # Create new event with dedup check
+                    outlook_event_id = _outlook_event_write(
+                        config, access_token,
+                        event_title,
+                        concert.get("date", ""),
+                        concert.get("time", ""),
+                        concert.get("venue", ""),
+                        concert.get("programme", "")
+                    )
+                    if outlook_event_id:
+                        concert["outlook_event_id"] = outlook_event_id
+                        app.logger.info(f"Created new Outlook event: {outlook_event_id}")
+                
+                update_concert(ensemble_id, concert.get("id"), concert)
         
         return redirect(url_for("admin_view_concerts", ensemble_id=ensemble_id))
     except Exception as e:
+        app.logger.exception(f"Failed to add concert: {e}")
         abort(400)
 
 
@@ -5261,43 +5336,63 @@ def admin_edit_concert(ensemble_id, concert_id):
     try:
         concert = update_concert(ensemble_id, concert_id, concert_data)
         
+        # Check if user selected an existing Outlook event to link to
+        selected_outlook_event_id = request.form.get("selected_outlook_event_id", "").strip()
+        
         # Sync to Outlook calendar if configured
         config = _outlook_calendar_config()
-        if config and concert.get("outlook_event_id") and concert.get("status") == "scheduled":
+        if config and concert.get("status") == "scheduled":
             access_token = _graph_access_token(config)
             if access_token:
                 event_title = f"{ensemble.get('name')} - {concert.get('title', 'Concert')}"
-                success = _outlook_event_update(
-                    config, access_token,
-                    concert.get("outlook_event_id"),
-                    event_title,
-                    concert.get("date", ""),
-                    concert.get("time", ""),
-                    concert.get("venue", ""),
-                    concert.get("programme", "")
-                )
-                if success:
-                    app.logger.info(f"Updated Outlook event for concert: {event_title}")
-        elif config and concert.get("status") == "scheduled" and not concert.get("outlook_event_id"):
-            # Concert is scheduled but no Outlook event - create one now
-            access_token = _graph_access_token(config)
-            if access_token:
-                event_title = f"{ensemble.get('name')} - {concert.get('title', 'Concert')}"
-                outlook_event_id = _outlook_event_write(
-                    config, access_token,
-                    event_title,
-                    concert.get("date", ""),
-                    concert.get("time", ""),
-                    concert.get("venue", ""),
-                    concert.get("programme", "")
-                )
-                if outlook_event_id:
-                    concert["outlook_event_id"] = outlook_event_id
-                    update_concert(ensemble_id, concert.get("id"), concert)
-                    app.logger.info(f"Created Outlook event for concert: {event_title}")
+                
+                if selected_outlook_event_id:
+                    # User selected an existing event to link to
+                    concert["outlook_event_id"] = selected_outlook_event_id
+                    update_concert(ensemble_id, concert_id, concert)
+                    app.logger.info(f"Linked concert to existing Outlook event: {selected_outlook_event_id}")
+                elif concert.get("outlook_event_id"):
+                    # Update existing linked event
+                    success = _outlook_event_update(
+                        config, access_token,
+                        concert.get("outlook_event_id"),
+                        event_title,
+                        concert.get("date", ""),
+                        concert.get("time", ""),
+                        concert.get("venue", ""),
+                        concert.get("programme", "")
+                    )
+                    if success:
+                        app.logger.info(f"Updated Outlook event for concert: {event_title}")
+                else:
+                    # Concert is scheduled but no Outlook event - create one now
+                    outlook_event_id = _outlook_event_write(
+                        config, access_token,
+                        event_title,
+                        concert.get("date", ""),
+                        concert.get("time", ""),
+                        concert.get("venue", ""),
+                        concert.get("programme", "")
+                    )
+                    if outlook_event_id:
+                        concert["outlook_event_id"] = outlook_event_id
+                        update_concert(ensemble_id, concert_id, concert)
+                        app.logger.info(f"Created Outlook event for concert: {event_title}")
+        
+        # Apply venue to all events if requested
+        apply_to_all = request.form.get("apply_venue_to_all", "").lower() == "on"
+        if apply_to_all and concert_data.get("venue"):
+            all_concerts = get_ensemble_concerts(ensemble_id)
+            venue = concert_data.get("venue")
+            for c in all_concerts:
+                if c.get("id") != concert_id:  # Don't re-update the one we just edited
+                    c["venue"] = venue
+                    update_concert(ensemble_id, c.get("id"), c)
+            app.logger.info(f"Applied venue '{venue}' to all concerts in ensemble {ensemble_id}")
         
         return redirect(url_for("admin_view_concerts", ensemble_id=ensemble_id))
     except Exception as e:
+        app.logger.exception(f"Failed to edit concert: {e}")
         abort(400)
 
 
