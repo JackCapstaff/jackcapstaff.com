@@ -5845,7 +5845,7 @@ def api_member_rehearsals():
     # Build concerts list (for standalone display, separate from rehearsals)
     concerts_list = []
     if public_mode:
-        print("Public viewer: omitting concert details from API")
+        print("Public viewer: omitting ensemble concert details from API")
     
     if not public_mode:
         for ensemble in ensembles:
@@ -5891,6 +5891,8 @@ def api_member_rehearsals():
     if outlook_events:
         concerts_list.extend(outlook_events)
         print(f"Added {len(outlook_events)} Outlook events to dashboard feed")
+    elif public_mode:
+        print("No Outlook events added for public dashboard feed")
 
     # Combine concerts and rehearsals, sort by date
     all_events = []
