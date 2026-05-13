@@ -90,7 +90,7 @@
 									</figure>
 								{% endif %}
 
-								{% set video_src = block.youtube_embed_url or normalize_youtube_embed_url(block.content) %}
+								{% set video_src = normalize_youtube_embed_url(block.youtube_embed_url) or normalize_youtube_embed_url(block.content) %}
 								{% if video_src %}
 									{% set origin = request.url_root.rstrip('/') %}
 									{% set sep = '&' if '?' in video_src else '?' %}
