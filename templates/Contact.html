@@ -14,6 +14,12 @@
 			<div class="inner">
 				<h3>Contact Form</h3>
 				<form method="POST" action="{{ url_for('contact') }}">
+					<input type="hidden" name="contact_form_token" value="{{ contact_form_token }}" />
+					<input type="hidden" name="contact_rendered_at" value="{{ contact_rendered_at }}" />
+					<div style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
+						<label for="website">Website</label>
+						<input type="text" name="website" id="website" tabindex="-1" autocomplete="off" />
+					</div>
 					<div class="fields">
 						<div class="field half">
 							<label for="demo-name">Name</label>

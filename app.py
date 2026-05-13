@@ -11,7 +11,7 @@ import uuid
 
 import requests
 
-from flask import Flask, flash, redirect, render_template, request, url_for, abort, send_from_directory
+from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, send_from_directory
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
@@ -728,7 +728,7 @@ def biography():
     return render_template('Biography.html', biography_content=biography_content)
 
 
-@app.route('/schedule')
+
 @app.route('/Schedule')
 @app.route('/Schedule.html')
 def schedule():
@@ -770,15 +770,55 @@ def news_detail(slug):
 @app.route('/Contact')
 @app.route('/Contact.html', methods=['GET', 'POST'])
 def contact():
+    def _prepare_contact_form_context():
+        token = uuid.uuid4().hex
+        rendered_at = int(datetime.now(timezone.utc).timestamp())
+        session['contact_form_token'] = token
+        session['contact_form_rendered_at'] = rendered_at
+        return {
+            'contact_form_token': token,
+            'contact_rendered_at': rendered_at,
+        }
+
     if request.method == 'POST':
         name = request.form.get('demo-name', '').strip()
         email = request.form.get('demo-email', '').strip()
         message = request.form.get('demo-message', '').strip()
         send_copy = request.form.get('demo-copy') == 'on'
 
+        # Lightweight bot checks: hidden honeypot + timing/token validation.
+        website = request.form.get('website', '').strip()
+        posted_token = request.form.get('contact_form_token', '').strip()
+        posted_rendered_at_raw = request.form.get('contact_rendered_at', '').strip()
+        session_token = session.get('contact_form_token', '')
+        session_rendered_at = int(session.get('contact_form_rendered_at') or 0)
+
+        try:
+            posted_rendered_at = int(posted_rendered_at_raw)
+        except (TypeError, ValueError):
+            posted_rendered_at = 0
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        form_age = now_ts - posted_rendered_at if posted_rendered_at else -1
+
+        invalid_bot_submission = (
+            bool(website)
+            or not posted_token
+            or posted_token != session_token
+            or posted_rendered_at <= 0
+            or posted_rendered_at != session_rendered_at
+            or form_age < 3
+            or form_age > 60 * 60 * 4
+        )
+
+        if invalid_bot_submission:
+            app.logger.warning('Blocked suspected bot contact submission from %s', request.remote_addr)
+            flash('Your message has been sent successfully.', 'success')
+            return redirect(url_for('contact'))
+
         if not name or not email or not message:
             flash('Please complete the contact form.', 'warning')
-            return render_template('Contact.html')
+            return render_template('Contact.html', **_prepare_contact_form_context())
 
         db.session.add(ContactMessage(name=name, email=email, message=message))
         db.session.commit()
@@ -790,7 +830,7 @@ def contact():
             flash(f'Your message was saved, but email could not be sent: {detail}', 'warning')
         return redirect(url_for('contact'))
 
-    return render_template('Contact.html')
+    return render_template('Contact.html', **_prepare_contact_form_context())
 
 
 @app.route('/images/<path:filename>')

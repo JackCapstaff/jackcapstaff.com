@@ -394,6 +394,50 @@
     background-color: #f8f9fa;
     font-style: italic;
 }
+
+/* List view contrast/accessibility fixes */
+#listView .accordion-item {
+    background: #ffffff;
+    border: 1px solid #dbe1ea;
+}
+
+#listView .accordion-button {
+    background: #f7f9fc;
+    color: #111827;
+}
+
+#listView .accordion-button:not(.collapsed) {
+    background: #eaf2ff;
+    color: #0f172a;
+}
+
+#listView .accordion-body {
+    background: #ffffff;
+    color: #111827;
+}
+
+#listView .rehearsal-item,
+#listView .rehearsal-item * {
+    color: #111827;
+}
+
+#listView .text-muted {
+    color: #4b5563 !important;
+}
+
+#listView .accordion-button.concert-header {
+    background: #198754;
+    color: #ffffff;
+}
+
+#listView .accordion-button.concert-header strong {
+    color: #ffffff;
+}
+
+#listView .accordion-button.sectional-header {
+    background: #fff3cd;
+    color: #664d03;
+}
 </style>
 
 <!-- Concert Details Modal -->
