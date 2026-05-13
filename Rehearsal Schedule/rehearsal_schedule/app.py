@@ -18,6 +18,7 @@ import io
 import threading
 import csv
 from flask import Flask, render_template, request, redirect, url_for, jsonify, abort, send_file, session, Response
+from flask_caching import Cache
 from werkzeug.security import generate_password_hash, check_password_hash
 from markupsafe import Markup
 import html as _html
@@ -194,6 +195,11 @@ if FlaskInstrumentor is not None:
         pass
 app.secret_key = os.environ.get("SECRET_KEY", "dev-change-me")  # set in Azure App Settings
 
+# Cache configuration (15 minutes for Outlook calendar data)
+app.config['CACHE_TYPE'] = 'simple'
+app.config['CACHE_DEFAULT_TIMEOUT'] = 900  # 15 minutes
+cache = Cache(app)
+
 
 @app.post('/internal/process_due_notifications')
 def internal_process_due_notifications():
@@ -295,6 +301,7 @@ def _graph_access_token(config: dict) -> Optional[str]:
         return None
 
 
+@cache.cached(timeout=900, key_prefix='outlook_events_dashboard')
 def _outlook_events_for_dashboard() -> List[dict]:
     config = _outlook_calendar_config()
     if not config:

@@ -14,6 +14,7 @@ import requests
 from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, send_from_directory
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
+from flask_caching import Cache
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
@@ -46,6 +47,12 @@ app = Flask(__name__, template_folder='templates', static_folder='assets', stati
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-secret-key-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = resolve_database_url()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Cache configuration (15 minutes for Outlook calendar data)
+app.config['CACHE_TYPE'] = 'simple'
+app.config['CACHE_DEFAULT_TIMEOUT'] = 900  # 15 minutes
+cache = Cache(app)
+
 app.config['SMTP_HOST'] = os.environ.get('SMTP_HOST', '').strip()
 app.config['SMTP_PORT'] = int(os.environ.get('SMTP_PORT', '587'))
 app.config['SMTP_USERNAME'] = os.environ.get('SMTP_USERNAME', '').strip()
@@ -661,6 +668,7 @@ def _graph_calendar_events(config: dict) -> list[dict]:
     return events
 
 
+@cache.cached(timeout=900, key_prefix='schedule_events')
 def load_schedule_events():
     graph_config = _outlook_calendar_config()
     if graph_config:
