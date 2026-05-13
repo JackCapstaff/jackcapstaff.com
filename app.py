@@ -245,6 +245,26 @@ def normalize_youtube_embed_url(raw_url):
     return f'https://www.youtube.com/embed/{video_id}'
 
 
+def infer_media_playlist_name(block):
+    """Infer playlist grouping name from explicit markers or title conventions."""
+    content = (getattr(block, 'content', '') or '').strip()
+    title = (getattr(block, 'title', '') or '').strip()
+
+    if content.lower().startswith('playlist:'):
+        first_line = content.splitlines()[0]
+        _, _, name = first_line.partition(':')
+        name = name.strip()
+        if name:
+            return name
+
+    if ' - ' in title:
+        suffix = title.rsplit(' - ', 1)[1].strip()
+        if 1 < len(suffix) <= 60:
+            return suffix
+
+    return None
+
+
 def ensure_optional_columns():
     """Apply lightweight schema upgrades for legacy databases."""
     required_columns = {
@@ -766,7 +786,24 @@ def schedule():
 @app.route('/Media.html')
 def media():
     media_content = PageContent.query.filter_by(page='media', published=True).order_by(PageContent.order).all()
-    return render_template('Media.html', media_content=media_content)
+    playlist_groups = {}
+    ungrouped_media = []
+
+    for block in media_content:
+        video_src = normalize_youtube_embed_url(block.youtube_embed_url) or normalize_youtube_embed_url(block.content)
+        playlist_name = infer_media_playlist_name(block) if video_src else None
+
+        if playlist_name:
+            playlist_groups.setdefault(playlist_name, []).append(block)
+        else:
+            ungrouped_media.append(block)
+
+    return render_template(
+        'Media.html',
+        media_content=media_content,
+        playlist_groups=playlist_groups,
+        ungrouped_media=ungrouped_media,
+    )
 
 
 @app.route('/News')

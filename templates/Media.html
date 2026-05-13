@@ -17,6 +17,52 @@
         gap: 2rem;
     }
 
+	.media-playlists {
+		display: grid;
+		gap: 1rem;
+	}
+
+	.media-playlist {
+		border: 1px solid rgba(20, 20, 20, 0.12);
+		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.9);
+		overflow: hidden;
+	}
+
+	.media-playlist summary {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		cursor: pointer;
+		font-weight: 700;
+		padding: 1rem 1.25rem;
+		list-style: none;
+	}
+
+	.media-playlist summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.media-playlist__count {
+		font-size: 0.85rem;
+		color: #444;
+	}
+
+	.media-playlist__items {
+		border-top: 1px solid rgba(20, 20, 20, 0.08);
+		padding: 1.25rem;
+		display: grid;
+		gap: 1rem;
+	}
+
+	.media-playlist__video iframe {
+		width: 100%;
+		min-height: 280px;
+		border: 0;
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+	}
+
     .media-card {
         display: grid;
         gap: 1.5rem;
@@ -70,7 +116,47 @@
 		</header>
 
 		<div class="media-grid">
-			{% for block in media_content %}
+			{% if playlist_groups %}
+				<section class="wrapper style5">
+					<div class="inner">
+						<h3>Playlists</h3>
+						<div class="media-playlists">
+							{% for playlist_name, playlist_blocks in playlist_groups.items() %}
+								<details class="media-playlist" {% if loop.first %}open{% endif %}>
+									<summary>
+										<span>{{ playlist_name }}</span>
+										<span class="media-playlist__count">{{ playlist_blocks|length }} video{% if playlist_blocks|length != 1 %}s{% endif %}</span>
+									</summary>
+									<div class="media-playlist__items">
+										{% for block in playlist_blocks %}
+											{% set video_src = normalize_youtube_embed_url(block.youtube_embed_url) or normalize_youtube_embed_url(block.content) %}
+											{% if video_src %}
+												{% set origin = request.url_root.rstrip('/') %}
+												{% set sep = '&' if '?' in video_src else '?' %}
+												{% set video_src_with_params = video_src ~ sep ~ 'rel=0&playsinline=1&origin=' ~ (origin|urlencode) %}
+												<div class="media-playlist__video">
+													{% if block.title %}<h4>{{ block.title }}</h4>{% endif %}
+													<iframe
+														width="560"
+														height="315"
+														src="{{ video_src_with_params }}"
+														title="YouTube video player"
+														frameborder="0"
+														allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+														allowfullscreen>
+													</iframe>
+												</div>
+											{% endif %}
+										{% endfor %}
+									</div>
+								</details>
+							{% endfor %}
+						</div>
+					</div>
+				</section>
+			{% endif %}
+
+			{% for block in ungrouped_media %}
 				{% if block.published %}
 					<section class="wrapper style5">
 						<div class="inner media-card">
