@@ -93,7 +93,19 @@
 								{% set video_src = block.youtube_embed_url or normalize_youtube_embed_url(block.content) %}
 								{% if video_src %}
 									<div class="media-card__embed">
-										<iframe src="{{ video_src }}" title="{{ block.title or 'YouTube video' }}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen referrerpolicy="no-referrer"></iframe>
+										
+										<iframe
+											width="560"
+											height="315"
+											src="{{ video_src }}"
+											title="YouTube video player"
+											frameborder="0"
+											allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+											allowfullscreen
+											referrerpolicy="strict-origin-when-cross-origin">
+										</iframe>
+									
+									
 									</div>
 								{% endif %}
 							</div>
