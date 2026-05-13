@@ -159,6 +159,22 @@ def init_models(db):
         read = db.Column(db.Boolean, default=False)
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
+    class Testimonial(db.Model):
+        """Testimonials and reviews from collaborators, orchestras, and clients"""
+        id = db.Column(db.Integer, primary_key=True)
+        author = db.Column(db.String(255), nullable=False)  # Person/organisation name
+        role = db.Column(db.String(255))  # e.g., "Conductor", "Festival Director", "Orchestra Manager"
+        quote = db.Column(db.Text, nullable=False)  # The testimonial text
+        organisation = db.Column(db.String(255))  # Optional: orchestra, band, festival name
+        image_url = db.Column(db.String(512))  # Optional: headshot or logo
+        order = db.Column(db.Integer, default=0)  # Display order in carousel
+        published = db.Column(db.Boolean, default=True)
+        
+        author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+        
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
     
     return {
         'User': User,
@@ -166,4 +182,5 @@ def init_models(db):
         'Event': Event,
         'PageContent': PageContent,
         'ContactMessage': ContactMessage,
+        'Testimonial': Testimonial,
     }

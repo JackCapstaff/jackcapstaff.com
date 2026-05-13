@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block page_title %}Admin - Manage Testimonials{% endblock %}
+
+{% block main_content %}
+<article id="main">
+	<header>
+		<h2>Manage Testimonials</h2>
+		<p>Add, edit, and manage testimonials from collaborators and organisations</p>
+	</header>
+
+	<section class="wrapper style5">
+		<div class="inner">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+				<h3>Testimonials ({{ testimonials.total }})</h3>
+				<a href="{{ url_for('admin_testimonial_add') }}" class="button primary">+ Add Testimonial</a>
+			</div>
+
+			{% if testimonials.items %}
+			<table style="width: 100%; border-collapse: collapse;">
+				<thead>
+					<tr style="border-bottom: 2px solid #ddd;">
+						<th style="text-align: left; padding: 0.75rem;">Author</th>
+						<th style="text-align: left; padding: 0.75rem;">Role/Org</th>
+						<th style="text-align: left; padding: 0.75rem;">Quote</th>
+						<th style="text-align: center; padding: 0.75rem;">Published</th>
+						<th style="text-align: center; padding: 0.75rem;">Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for testimonial in testimonials.items %}
+					<tr style="border-bottom: 1px solid #eee;">
+						<td style="padding: 0.75rem; font-weight: bold;">{{ testimonial.author }}</td>
+						<td style="padding: 0.75rem;">
+							{% if testimonial.role %}{{ testimonial.role }}{% if testimonial.organisation %}<br>{% endif %}{% endif %}
+							{% if testimonial.organisation %}<em>{{ testimonial.organisation }}</em>{% endif %}
+						</td>
+						<td style="padding: 0.75rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
+							{{ testimonial.quote[:100] }}...
+						</td>
+						<td style="padding: 0.75rem; text-align: center;">
+							{% if testimonial.published %}
+								<span style="color: green;">✓ Yes</span>
+							{% else %}
+								<span style="color: red;">✗ No</span>
+							{% endif %}
+						</td>
+						<td style="padding: 0.75rem; text-align: center;">
+							<a href="{{ url_for('admin_testimonial_edit', testimonial_id=testimonial.id) }}" class="button small" style="margin: 0 0.25rem;">Edit</a>
+							<form method="POST" action="{{ url_for('admin_testimonial_delete', testimonial_id=testimonial.id) }}" style="display: inline;">
+								<button type="submit" class="button small" style="margin: 0 0.25rem; background-color: #dc3545;" onclick="return confirm('Delete this testimonial?');">Delete</button>
+							</form>
+						</td>
+					</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+
+			<!-- Pagination -->
+			{% if testimonials.pages > 1 %}
+			<div style="text-align: center; margin-top: 2rem;">
+				{% if testimonials.has_prev %}
+					<a href="{{ url_for('admin_testimonials', page=testimonials.prev_num) }}" class="button small">← Previous</a>
+				{% endif %}
+				<span style="margin: 0 1rem;">Page {{ testimonials.page }} of {{ testimonials.pages }}</span>
+				{% if testimonials.has_next %}
+					<a href="{{ url_for('admin_testimonials', page=testimonials.next_num) }}" class="button small">Next →</a>
+				{% endif %}
+			</div>
+			{% endif %}
+
+			{% else %}
+			<p style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 4px;">
+				No testimonials yet. <a href="{{ url_for('admin_testimonial_add') }}">Add one now</a>.
+			</p>
+			{% endif %}
+		</div>
+	</section>
+</article>
+{% endblock %}

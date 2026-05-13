@@ -101,6 +101,87 @@
 		</section>
 	{% endif %}
 
+	<!-- Testimonials Carousel -->
+	{% if testimonials %}
+	<section id="testimonials" class="wrapper style3">
+		<div class="inner">
+			<h2>What Collaborators Say</h2>
+			<div class="testimonials-carousel" style="position: relative; max-width: 800px; margin: 2rem auto;">
+				<!-- Testimonials wrapper -->
+				<div style="overflow: hidden;">
+					<div class="testimonials-track" style="display: flex; transition: transform 0.5s ease-in-out;">
+						{% for testimonial in testimonials %}
+						<div class="testimonial-slide" style="flex: 0 0 100%; padding: 2rem 1rem; text-align: center;">
+							<blockquote style="font-style: italic; font-size: 1.1rem; color: #333; margin: 1.5rem 0; line-height: 1.6;">
+								"{{ testimonial.quote }}"
+							</blockquote>
+							<p style="margin: 1rem 0 0.5rem 0;"><strong>{{ testimonial.author }}</strong></p>
+							{% if testimonial.role or testimonial.organisation %}
+								<p style="color: #666; margin: 0; font-size: 0.9rem;">
+									{% if testimonial.role %}{{ testimonial.role }}{% endif %}
+									{% if testimonial.role and testimonial.organisation %}<br>{% endif %}
+									{% if testimonial.organisation %}<em>{{ testimonial.organisation }}</em>{% endif %}
+								</p>
+							{% endif %}
+						</div>
+						{% endfor %}
+					</div>
+				</div>
+
+				<!-- Navigation -->
+				{% if testimonials|length > 1 %}
+				<div style="text-align: center; margin-top: 1.5rem;">
+					<button class="testimonial-prev" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; margin: 0 0.5rem; color: #0d6efd;">❮</button>
+					<span id="testimonial-counter" style="margin: 0 1rem; font-size: 0.9rem; color: #666;"></span>
+					<button class="testimonial-next" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; margin: 0 0.5rem; color: #0d6efd;">❯</button>
+				</div>
+				{% endif %}
+			</div>
+		</div>
+	</section>
+
+	<script>
+	(function() {
+		const track = document.querySelector('.testimonials-track');
+		const slides = document.querySelectorAll('.testimonial-slide');
+		const counter = document.getElementById('testimonial-counter');
+		const prevBtn = document.querySelector('.testimonial-prev');
+		const nextBtn = document.querySelector('.testimonial-next');
+		
+		if (slides.length <= 1) return;
+		
+		let current = 0;
+		const total = slides.length;
+		
+		function updateDisplay() {
+			const offset = current * 100;
+			track.style.transform = `translateX(-${offset}%)`;
+			if (counter) counter.textContent = `${current + 1} / ${total}`;
+		}
+		
+		function nextSlide() {
+			current = (current + 1) % total;
+			updateDisplay();
+		}
+		
+		function prevSlide() {
+			current = (current - 1 + total) % total;
+			updateDisplay();
+		}
+		
+		if (prevBtn) prevBtn.addEventListener('click', prevSlide);
+		if (nextBtn) nextBtn.addEventListener('click', nextSlide);
+		
+		updateDisplay();
+		
+		// Auto-rotate every 8 seconds
+		if (total > 1) {
+			setInterval(nextSlide, 8000);
+		}
+	})();
+	</script>
+	{% endif %}
+
 	<!-- Upcoming Events -->
 	{% if upcoming_events %}
 	<section id="events" class="wrapper style3">

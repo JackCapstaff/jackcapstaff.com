@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block page_title %}Admin - {{ action }} Testimonial{% endblock %}
+
+{% block main_content %}
+<article id="main">
+	<header>
+		<h2>{{ action }} Testimonial</h2>
+		<p>{% if action == 'Add' %}Create a new testimonial{% else %}Update this testimonial{% endif %}</p>
+	</header>
+
+	<section class="wrapper style5">
+		<div class="inner">
+			<form method="POST" style="max-width: 600px;">
+				<!-- Author -->
+				<div style="margin-bottom: 1.5rem;">
+					<label for="author" style="display: block; font-weight: bold; margin-bottom: 0.5rem;">
+						Author <span style="color: red;">*</span>
+					</label>
+					<input 
+						type="text" 
+						id="author" 
+						name="author" 
+						required 
+						value="{{ testimonial.author if testimonial else '' }}"
+						placeholder="e.g., Sarah Johnson"
+						style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+					<small style="color: #666;">The person or organisation giving the testimonial</small>
+				</div>
+
+				<!-- Role -->
+				<div style="margin-bottom: 1.5rem;">
+					<label for="role" style="display: block; font-weight: bold; margin-bottom: 0.5rem;">
+						Role / Title
+					</label>
+					<input 
+						type="text" 
+						id="role" 
+						name="role" 
+						value="{{ testimonial.role if testimonial else '' }}"
+						placeholder="e.g., Orchestra Director, Festival Producer"
+						style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+					<small style="color: #666;">Optional: Their role or title</small>
+				</div>
+
+				<!-- Organisation -->
+				<div style="margin-bottom: 1.5rem;">
+					<label for="organisation" style="display: block; font-weight: bold; margin-bottom: 0.5rem;">
+						Organisation
+					</label>
+					<input 
+						type="text" 
+						id="organisation" 
+						name="organisation" 
+						value="{{ testimonial.organisation if testimonial else '' }}"
+						placeholder="e.g., London Symphony Orchestra"
+						style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+					<small style="color: #666;">Optional: Their organisation or ensemble</small>
+				</div>
+
+				<!-- Quote -->
+				<div style="margin-bottom: 1.5rem;">
+					<label for="quote" style="display: block; font-weight: bold; margin-bottom: 0.5rem;">
+						Testimonial Quote <span style="color: red;">*</span>
+					</label>
+					<textarea 
+						id="quote" 
+						name="quote" 
+						required 
+						rows="6"
+						placeholder="Enter the testimonial text (without quotes - they'll be added automatically)"
+						style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; font-family: inherit; resize: vertical;">{{ testimonial.quote if testimonial else '' }}</textarea>
+					<small style="color: #666;">The testimonial text. Keep it concise (1-3 sentences recommended)</small>
+				</div>
+
+				<!-- Published -->
+				<div style="margin-bottom: 2rem;">
+					<label style="display: flex; align-items: center; gap: 0.5rem; font-weight: bold;">
+						<input 
+							type="checkbox" 
+							id="published" 
+							name="published" 
+							{% if not testimonial or testimonial.published %}checked{% endif %}>
+						Publish this testimonial
+					</label>
+					<small style="color: #666; display: block; margin-top: 0.5rem;">Uncheck to hide this testimonial from the website</small>
+				</div>
+
+				<!-- Actions -->
+				<div style="display: flex; gap: 1rem;">
+					<button type="submit" class="button primary">{{ 'Add' if action == 'Add' else 'Update' }} Testimonial</button>
+					<a href="{{ url_for('admin_testimonials') }}" class="button outline">Cancel</a>
+				</div>
+			</form>
+		</div>
+	</section>
+</article>
+{% endblock %}

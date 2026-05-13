@@ -723,10 +723,19 @@ def index():
         Event.event_date >= datetime.utcnow()
     ).order_by(Event.event_date).limit(3).all()
     recent_news = NewsItem.query.filter_by(published=True).order_by(NewsItem.published_at.desc()).limit(5).all()
+    
+    # Testimonials carousel
+    testimonials = Testimonial.query.filter_by(published=True).order_by(Testimonial.order).all()
+    
+    # Hero video background (optional) - set via HERO_VIDEO_URL environment variable
+    hero_video_url = os.environ.get('HERO_VIDEO_URL', '').strip() or None
+    
     return render_template('index.html', 
                          home_content=home_content,
                          upcoming_events=upcoming_events,
-                         recent_news=recent_news)
+                         recent_news=recent_news,
+                         testimonials=testimonials,
+                         hero_video_url=hero_video_url)
 
 
 @app.route('/Biography')
@@ -976,6 +985,101 @@ def reset_password(token):
         return redirect(url_for('login'))
 
     return render_template('reset_password.html', token=token)
+
+
+# ============================================================================
+# TESTIMONIALS ADMIN
+# ============================================================================
+
+@app.route('/admin/testimonials')
+@login_required
+def admin_testimonials():
+    """List all testimonials"""
+    if current_user.role not in ['admin', 'editor']:
+        abort(403)
+    
+    page = request.args.get('page', 1, type=int)
+    testimonials = Testimonial.query.order_by(Testimonial.order).paginate(page=page, per_page=20)
+    return render_template('admin_testimonials.html', testimonials=testimonials)
+
+
+@app.route('/admin/testimonials/add', methods=['GET', 'POST'])
+@login_required
+def admin_testimonial_add():
+    """Add a new testimonial"""
+    if current_user.role not in ['admin', 'editor']:
+        abort(403)
+    
+    if request.method == 'POST':
+        author = request.form.get('author', '').strip()
+        role = request.form.get('role', '').strip()
+        quote = request.form.get('quote', '').strip()
+        organisation = request.form.get('organisation', '').strip()
+        published = request.form.get('published') == 'on'
+        
+        if not author or not quote:
+            flash('Author and quote are required.', 'warning')
+            return render_template('admin_testimonial_form.html', action='Add')
+        
+        testimonial = Testimonial(
+            author=author,
+            role=role or None,
+            quote=quote,
+            organisation=organisation or None,
+            published=published,
+            author_id=current_user.id,
+            order=Testimonial.query.count()
+        )
+        
+        db.session.add(testimonial)
+        db.session.commit()
+        
+        flash('Testimonial added successfully.', 'success')
+        return redirect(url_for('admin_testimonials'))
+    
+    return render_template('admin_testimonial_form.html', action='Add')
+
+
+@app.route('/admin/testimonials/<int:testimonial_id>/edit', methods=['GET', 'POST'])
+@login_required
+def admin_testimonial_edit(testimonial_id):
+    """Edit a testimonial"""
+    if current_user.role not in ['admin', 'editor']:
+        abort(403)
+    
+    testimonial = Testimonial.query.get_or_404(testimonial_id)
+    
+    if request.method == 'POST':
+        testimonial.author = request.form.get('author', '').strip()
+        testimonial.role = request.form.get('role', '').strip() or None
+        testimonial.quote = request.form.get('quote', '').strip()
+        testimonial.organisation = request.form.get('organisation', '').strip() or None
+        testimonial.published = request.form.get('published') == 'on'
+        
+        if not testimonial.author or not testimonial.quote:
+            flash('Author and quote are required.', 'warning')
+            return render_template('admin_testimonial_form.html', testimonial=testimonial, action='Edit')
+        
+        db.session.commit()
+        flash('Testimonial updated successfully.', 'success')
+        return redirect(url_for('admin_testimonials'))
+    
+    return render_template('admin_testimonial_form.html', testimonial=testimonial, action='Edit')
+
+
+@app.route('/admin/testimonials/<int:testimonial_id>/delete', methods=['POST'])
+@login_required
+def admin_testimonial_delete(testimonial_id):
+    """Delete a testimonial"""
+    if current_user.role not in ['admin', 'editor']:
+        abort(403)
+    
+    testimonial = Testimonial.query.get_or_404(testimonial_id)
+    db.session.delete(testimonial)
+    db.session.commit()
+    
+    flash('Testimonial deleted successfully.', 'success')
+    return redirect(url_for('admin_testimonials'))
 
 
 with app.app_context():
