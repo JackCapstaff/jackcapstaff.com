@@ -751,13 +751,15 @@ def index():
     
     # Hero video background (optional) - set via HERO_VIDEO_URL environment variable
     hero_video_url = os.environ.get('HERO_VIDEO_URL', '').strip() or None
+    hero_video_position = os.environ.get('HERO_VIDEO_POSITION', '50% 22%').strip() or '50% 22%'
     
     return render_template('index.html', 
                          home_content=home_content,
                          upcoming_events=upcoming_events,
                          recent_news=recent_news,
                          testimonials=testimonials,
-                         hero_video_url=hero_video_url)
+                         hero_video_url=hero_video_url,
+                         hero_video_position=hero_video_position)
 
 
 @app.route('/Biography')

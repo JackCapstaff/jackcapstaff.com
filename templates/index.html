@@ -3,7 +3,54 @@
 {% block page_title %}Jack Capstaff - Home{% endblock %}
 {% block body_class %}landing is-preload{% endblock %}
 
+{% block extra_head %}
+	{% if hero_video_url %}
+	<style>
+		#landing-bg-video-wrap,
+		#landing-bg-overlay {
+			position: fixed;
+			inset: 0;
+			pointer-events: none;
+		}
+
+		#landing-bg-video-wrap {
+			z-index: -3;
+			overflow: hidden;
+		}
+
+		#landing-bg-video {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+			object-position: {{ hero_video_position }};
+		}
+
+		#landing-bg-overlay {
+			z-index: -2;
+			background: linear-gradient(to bottom, rgba(10, 16, 22, 0.28), rgba(10, 16, 22, 0.6));
+		}
+
+		body.landing #page-wrapper,
+		body.is-mobile.landing #page-wrapper,
+		body.is-mobile.landing #banner,
+		body.is-mobile.landing .wrapper.style4 {
+			background: none !important;
+			background-image: none !important;
+		}
+	</style>
+	{% endif %}
+{% endblock %}
+
 {% block main_content %}
+	{% if hero_video_url %}
+		<div id="landing-bg-video-wrap" aria-hidden="true">
+			<video id="landing-bg-video" autoplay loop muted playsinline preload="metadata">
+				<source src="{{ hero_video_url }}" type="video/mp4">
+			</video>
+		</div>
+		<div id="landing-bg-overlay" aria-hidden="true"></div>
+	{% endif %}
+
 	{% set has_hero = home_content and (home_content|selectattr('page', 'equalto', 'home')|selectattr('section', 'equalto', 'hero')|selectattr('published')|list|length > 0) %}
 	{% set has_featured = home_content and (home_content|selectattr('page', 'equalto', 'home')|selectattr('section', 'equalto', 'featured')|selectattr('published')|list|length > 0) %}
 	{% if has_hero %}
@@ -19,15 +66,8 @@
 	{% endif %}
 
 	<!-- Banner -->
-
-	<section id="banner" style="position:relative;overflow:hidden;">
-		{% if hero_video_url %}
-		<video autoplay loop muted playsinline poster="" id="hero-bg-video" style="position:absolute;top:0;left:0;width:100vw;height:100%;object-fit:cover;z-index:0;min-height:400px;max-height:900px;">
-			<source src="{{ hero_video_url }}" type="video/mp4">
-			Your browser does not support the video tag.
-		</video>
-		{% endif %}
-		<div class="inner" style="position:relative;z-index:2;">
+	<section id="banner">
+		<div class="inner">
 			<h2>Jack Capstaff</h2>
 			<p>CONDUCTOR | COMPOSER | COMMUNICATOR</p>
 			<p>Creating bold, contemporary concert experiences for modern audiences.</p>
@@ -37,7 +77,7 @@
 				<li><a href="{{ url_for('contact') }}" class="button">Booking Enquiries</a></li>
 			</ul>
 		</div>
-		<a href="{{ learn_more_target }}" class="more{% if learn_more_target.startswith('#') %} scrolly{% endif %}" style="z-index:2;position:relative;">Learn More</a>
+		<a href="{{ learn_more_target }}" class="more{% if learn_more_target.startswith('#') %} scrolly{% endif %}">Learn More</a>
 	</section>
 
 	<!-- Content Blocks -->
