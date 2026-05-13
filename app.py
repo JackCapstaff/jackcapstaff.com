@@ -151,6 +151,7 @@ NewsItem = models_dict['NewsItem']
 Event = models_dict['Event']
 PageContent = models_dict['PageContent']
 ContactMessage = models_dict['ContactMessage']
+Testimonial = models_dict['Testimonial']
 # Expose models and db to app context for access in blueprints
 app.db = db
 app.User = User
@@ -158,6 +159,7 @@ app.NewsItem = NewsItem
 app.Event = Event
 app.PageContent = PageContent
 app.ContactMessage = ContactMessage
+app.Testimonial = Testimonial
 
 
 # Import and register admin blueprint
