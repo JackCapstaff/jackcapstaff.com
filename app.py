@@ -724,7 +724,7 @@ def index():
     upcoming_events = Event.query.filter_by(published=True).filter(
         Event.event_date >= datetime.utcnow()
     ).order_by(Event.event_date).limit(3).all()
-    recent_news = NewsItem.query.filter_by(published=True).order_by(NewsItem.published_at.desc()).limit(5).all()
+    recent_news = NewsItem.query.filter_by(published=True).order_by(NewsItem.published_at.desc()).limit(1).all()
     
     # Testimonials carousel
     testimonials = Testimonial.query.filter_by(published=True).order_by(Testimonial.order).all()
