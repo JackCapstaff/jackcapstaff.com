@@ -4,13 +4,33 @@
 {% block body_class %}landing is-preload{% endblock %}
 
 {% block main_content %}
+	{% set has_hero = home_content and (home_content|selectattr('page', 'equalto', 'home')|selectattr('section', 'equalto', 'hero')|selectattr('published')|list|length > 0) %}
+	{% set has_featured = home_content and (home_content|selectattr('page', 'equalto', 'home')|selectattr('section', 'equalto', 'featured')|selectattr('published')|list|length > 0) %}
+	{% if has_hero %}
+		{% set learn_more_target = '#one' %}
+	{% elif has_featured %}
+		{% set learn_more_target = '#two' %}
+	{% elif upcoming_events %}
+		{% set learn_more_target = '#events' %}
+	{% elif recent_news %}
+		{% set learn_more_target = '#news' %}
+	{% else %}
+		{% set learn_more_target = url_for('biography') %}
+	{% endif %}
+
 	<!-- Banner -->
 	<section id="banner">
 		<div class="inner">
 			<h2>Jack Capstaff</h2>
-			<p>CONDUCTOR | COMPOSER| COMMUNICATOR</p>
+			<p>CONDUCTOR | COMPOSER | COMMUNICATOR</p>
+			<p>Creating bold, contemporary concert experiences for modern audiences.</p>
+			<ul class="actions special" style="margin-top:1.25rem;">
+				<li><a href="{{ url_for('media') }}" class="button primary">Watch Reel & Media</a></li>
+				<li><a href="{{ url_for('schedule') }}" class="button">Upcoming Events</a></li>
+				<li><a href="{{ url_for('contact') }}" class="button">Booking Enquiries</a></li>
+			</ul>
 		</div>
-		<a href="#one" class="more scrolly">Learn More</a>
+		<a href="{{ learn_more_target }}" class="more{% if learn_more_target.startswith('#') %} scrolly{% endif %}">Learn More</a>
 	</section>
 
 	<!-- Content Blocks -->
