@@ -6029,6 +6029,16 @@ def _outlook_event_delete(config: dict, access_token: str, event_id: str) -> boo
 def api_member_rehearsals():
     u = current_user()
     public_mode = u is None
+    # Cache per audience scope so repeated page loads avoid rebuilding all schedule data.
+    if u:
+        cache_key = f"member_rehearsals:{'admin' if u.get('is_admin') else 'member'}:{u.get('id', 'unknown')}"
+    else:
+        cache_key = "member_rehearsals:public"
+
+    cached_payload = cache.get(cache_key)
+    if cached_payload is not None:
+        return jsonify(cached_payload)
+
     print(f"\n=== api_member_rehearsals called ===")
     print(f"Current user: {u.get('email') if u else 'None'}")
     print(f"Is admin: {u.get('is_admin') if u else False}")
@@ -6286,8 +6296,12 @@ def api_member_rehearsals():
     all_events.sort(key=lambda x: x["sort_key"])
     
     print(f"\n=== Total events to return: {len(all_events)} ({len(rehearsals_list)} rehearsals + {len(concerts_list)} concerts) ===\n")
-    
-    return jsonify({"events": all_events, "rehearsals": rehearsals_list, "concerts": concerts_list, "public_mode": public_mode})
+
+    payload = {"events": all_events, "rehearsals": rehearsals_list, "concerts": concerts_list, "public_mode": public_mode}
+    cache_timeout = 300 if (u and u.get('is_admin')) else 900
+    cache.set(cache_key, payload, timeout=cache_timeout)
+
+    return jsonify(payload)
 
 
 @app.get("/")
