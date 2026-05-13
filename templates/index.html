@@ -19,8 +19,15 @@
 	{% endif %}
 
 	<!-- Banner -->
-	<section id="banner">
-		<div class="inner">
+
+	<section id="banner" style="position:relative;overflow:hidden;">
+		{% if hero_video_url %}
+		<video autoplay loop muted playsinline poster="" id="hero-bg-video" style="position:absolute;top:0;left:0;width:100vw;height:100%;object-fit:cover;z-index:0;min-height:400px;max-height:900px;">
+			<source src="{{ hero_video_url }}" type="video/mp4">
+			Your browser does not support the video tag.
+		</video>
+		{% endif %}
+		<div class="inner" style="position:relative;z-index:2;">
 			<h2>Jack Capstaff</h2>
 			<p>CONDUCTOR | COMPOSER | COMMUNICATOR</p>
 			<p>Creating bold, contemporary concert experiences for modern audiences.</p>
@@ -30,7 +37,7 @@
 				<li><a href="{{ url_for('contact') }}" class="button">Booking Enquiries</a></li>
 			</ul>
 		</div>
-		<a href="{{ learn_more_target }}" class="more{% if learn_more_target.startswith('#') %} scrolly{% endif %}">Learn More</a>
+		<a href="{{ learn_more_target }}" class="more{% if learn_more_target.startswith('#') %} scrolly{% endif %}" style="z-index:2;position:relative;">Learn More</a>
 	</section>
 
 	<!-- Content Blocks -->
