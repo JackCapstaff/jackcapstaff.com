@@ -873,6 +873,24 @@ def sitemap_xml():
     return response
 
 
+@app.route('/robots.txt')
+def robots_txt():
+    sitemap_url = url_for('sitemap_xml', _external=True)
+    lines = [
+        'User-agent: *',
+        'Disallow: /admin',
+        'Disallow: /admin/',
+        'Disallow: /login',
+        'Disallow: /register',
+        'Disallow: /logout',
+        f'Sitemap: {sitemap_url}',
+    ]
+
+    response = make_response('\n'.join(lines) + '\n')
+    response.headers['Content-Type'] = 'text/plain; charset=utf-8'
+    return response
+
+
 @app.route('/contact', methods=['GET', 'POST'])
 @app.route('/Contact')
 @app.route('/Contact.html', methods=['GET', 'POST'])
