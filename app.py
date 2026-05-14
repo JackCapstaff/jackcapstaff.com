@@ -4,6 +4,7 @@ import csv
 import os
 import re
 import smtplib
+import html
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -11,7 +12,7 @@ import uuid
 
 import requests
 
-from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, send_from_directory
+from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, send_from_directory, make_response
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
@@ -822,6 +823,54 @@ def news():
 def news_detail(slug):
     news_item = NewsItem.query.filter_by(slug=slug).first_or_404()
     return render_template('news_detail.html', news_item=news_item)
+
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    today = datetime.utcnow().date().isoformat()
+
+    static_urls = [
+        {'loc': url_for('index', _external=True), 'lastmod': today, 'changefreq': 'daily', 'priority': '1.0'},
+        {'loc': url_for('biography', _external=True), 'lastmod': today, 'changefreq': 'monthly', 'priority': '0.7'},
+        {'loc': url_for('schedule', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.8'},
+        {'loc': url_for('media', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.8'},
+        {'loc': url_for('news', _external=True), 'lastmod': today, 'changefreq': 'daily', 'priority': '0.9'},
+        {'loc': url_for('contact', _external=True), 'lastmod': today, 'changefreq': 'monthly', 'priority': '0.6'},
+    ]
+
+    urls = list(static_urls)
+
+    news_items = NewsItem.query.filter_by(published=True).order_by(NewsItem.published_at.desc()).all()
+    for item in news_items:
+        lastmod_dt = item.updated_at or item.published_at
+        lastmod = lastmod_dt.date().isoformat() if lastmod_dt else today
+        urls.append({
+            'loc': url_for('news_detail', slug=item.slug, _external=True),
+            'lastmod': lastmod,
+            'changefreq': 'monthly',
+            'priority': '0.8',
+        })
+
+    xml_parts = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+
+    for entry in urls:
+        xml_parts.append(
+            '  <url>\n'
+            f"    <loc>{html.escape(entry['loc'])}</loc>\n"
+            f"    <lastmod>{entry['lastmod']}</lastmod>\n"
+            f"    <changefreq>{entry['changefreq']}</changefreq>\n"
+            f"    <priority>{entry['priority']}</priority>\n"
+            '  </url>'
+        )
+
+    xml_parts.append('</urlset>')
+
+    response = make_response('\n'.join(xml_parts))
+    response.headers['Content-Type'] = 'application/xml; charset=utf-8'
+    return response
 
 
 @app.route('/contact', methods=['GET', 'POST'])

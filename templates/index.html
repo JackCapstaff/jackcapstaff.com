@@ -30,6 +30,52 @@
 			background: linear-gradient(to bottom, rgba(10, 16, 22, 0.28), rgba(10, 16, 22, 0.6));
 		}
 
+		#banner .inner {
+			max-width: 48rem;
+			margin: 0 auto;
+			padding: 1.25rem 1.5rem;
+			border-radius: 10px;
+			background: rgba(7, 11, 17, 0.24);
+			backdrop-filter: blur(2px);
+		}
+
+		#banner .hero-subtitle {
+			font-size: 0.9rem;
+			letter-spacing: 0.18em;
+			opacity: 0.92;
+			margin-bottom: 0.65rem;
+		}
+
+		#banner .hero-lead {
+			letter-spacing: 0.08em;
+			text-transform: none;
+			font-size: 1.03rem;
+			line-height: 1.5;
+			margin-bottom: 1.2rem;
+		}
+
+		#banner .hero-actions {
+			display: flex;
+			justify-content: center;
+			gap: 0.75rem;
+			flex-wrap: wrap;
+			margin: 1rem 0 0.35rem;
+		}
+
+		#banner .hero-secondary-link {
+			display: inline-block;
+			font-size: 0.84rem;
+			letter-spacing: 0.12em;
+			text-transform: uppercase;
+			opacity: 0.88;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+		}
+
+		#banner .hero-secondary-link:hover {
+			opacity: 1;
+			border-bottom-color: #fff;
+		}
+
 		body.landing #page-wrapper,
 		body.is-mobile.landing #page-wrapper,
 		body.is-mobile.landing #banner,
@@ -69,13 +115,13 @@
 	<section id="banner">
 		<div class="inner">
 			<h2>Jack Capstaff</h2>
-			<p>CONDUCTOR | COMPOSER | COMMUNICATOR</p>
-			<p>Creating bold, contemporary concert experiences for modern audiences.</p>
-			<ul class="actions special" style="margin-top:1.25rem;">
+			<p class="hero-subtitle">CONDUCTOR | COMPOSER | COMMUNICATOR</p>
+			<p class="hero-lead">Creating bold, contemporary concert experiences for modern audiences.</p>
+			<ul class="actions special hero-actions">
 				<li><a href="{{ url_for('media') }}" class="button primary">Watch Reel & Media</a></li>
 				<li><a href="{{ url_for('schedule') }}" class="button">Upcoming Events</a></li>
-				<li><a href="{{ url_for('contact') }}" class="button">Booking Enquiries</a></li>
 			</ul>
+			<p style="margin: 0.45rem 0 0;"><a class="hero-secondary-link" href="{{ url_for('contact') }}">Booking Enquiries</a></p>
 		</div>
 		<a href="{{ learn_more_target }}" class="more{% if learn_more_target.startswith('#') %} scrolly{% endif %}">Learn More</a>
 	</section>
