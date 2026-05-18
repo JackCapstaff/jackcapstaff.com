@@ -117,6 +117,35 @@ def _resolve_stripe_api_key():
     return os.environ.get("STRIPE_SECRET_KEY", "").strip()
 
 
+def _resolve_paypal_base_url():
+    mode = os.environ.get("PAYPAL_MODE", "sandbox").strip().lower()
+    if mode == "live":
+        return "https://api-m.paypal.com"
+    return "https://api-m.sandbox.paypal.com"
+
+
+def _paypal_access_token():
+    client_id = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        return None
+
+    token_url = f"{_resolve_paypal_base_url()}/v1/oauth2/token"
+    response = requests.post(
+        token_url,
+        auth=(client_id, client_secret),
+        headers={"Accept": "application/json", "Accept-Language": "en_US"},
+        data={"grant_type": "client_credentials"},
+        timeout=25,
+    )
+    if response.status_code >= 400:
+        current_app.logger.error("PayPal token request failed: %s", response.text[:400])
+        return None
+
+    data = response.json()
+    return data.get("access_token")
+
+
 def _send_email(subject: str, to_email: str, text_body: str, html_body: str):
     api_key = current_app.config.get("BREVO_API_KEY", "").strip()
     from_email = current_app.config.get("BREVO_FROM_EMAIL", "").strip() or current_app.config.get("CONTACT_FROM_EMAIL", "").strip()
@@ -263,6 +292,41 @@ def _cart_with_products():
     return out, total_cents
 
 
+def _create_pending_order_from_cart(customer_email: str):
+    items, total_cents = _cart_with_products()
+    if not items:
+        return None, None, "Your cart is empty."
+
+    db, _, ShopOrder, ShopOrderItem = _models()
+
+    order = ShopOrder(
+        order_number=f"JC{datetime.utcnow().strftime('%Y%m%d')}{secrets.randbelow(9000)+1000}",
+        status="pending",
+        customer_email=customer_email,
+        currency="gbp",
+        total_cents=total_cents,
+        has_physical_items=any(row["delivery_format"] == "print" for row in items),
+    )
+    db.session.add(order)
+    db.session.flush()
+
+    for row in items:
+        product = row["product"]
+        db.session.add(ShopOrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            title_snapshot=product.title,
+            delivery_format=row["delivery_format"],
+            quantity=row["quantity"],
+            unit_price_cents=row["unit_price_cents"],
+            line_total_cents=row["line_total_cents"],
+            pdf_file_url_snapshot=product.pdf_file_url,
+        ))
+
+    db.session.commit()
+    return order, items, None
+
+
 @shop_bp.app_context_processor
 def inject_shop_helpers():
     return {"format_money": _format_money}
@@ -353,28 +417,15 @@ def shop_checkout_create():
 
     stripe.api_key = api_key
 
-    items, total_cents = _cart_with_products()
-    if not items:
-        flash("Your cart is empty.", "warning")
-        return redirect(url_for("shop.shop_cart"))
-
     customer_email = (request.form.get("customer_email") or "").strip().lower()
     if not customer_email:
         flash("Please provide your email address for receipt and downloads.", "warning")
         return redirect(url_for("shop.shop_cart"))
 
-    db, _, ShopOrder, ShopOrderItem = _models()
-
-    order = ShopOrder(
-        order_number=f"JC{datetime.utcnow().strftime('%Y%m%d')}{secrets.randbelow(9000)+1000}",
-        status="pending",
-        customer_email=customer_email,
-        currency="gbp",
-        total_cents=total_cents,
-        has_physical_items=any(row["delivery_format"] == "print" for row in items),
-    )
-    db.session.add(order)
-    db.session.flush()
+    order, items, error_msg = _create_pending_order_from_cart(customer_email)
+    if error_msg:
+        flash(error_msg, "warning")
+        return redirect(url_for("shop.shop_cart"))
 
     line_items = []
     for row in items:
@@ -388,17 +439,6 @@ def shop_checkout_create():
             },
             "quantity": row["quantity"],
         })
-
-        db.session.add(ShopOrderItem(
-            order_id=order.id,
-            product_id=product.id,
-            title_snapshot=product.title,
-            delivery_format=row["delivery_format"],
-            quantity=row["quantity"],
-            unit_price_cents=row["unit_price_cents"],
-            line_total_cents=row["line_total_cents"],
-            pdf_file_url_snapshot=product.pdf_file_url,
-        ))
 
     checkout_args = {
         "mode": "payment",
@@ -414,9 +454,166 @@ def shop_checkout_create():
     checkout_session = stripe.checkout.Session.create(**checkout_args)
 
     order.stripe_checkout_session_id = checkout_session.id
+    db, _, _, _ = _models()
     db.session.commit()
 
     return redirect(checkout_session.url)
+
+
+@shop_bp.route("/shop/checkout/paypal/create", methods=["POST"])
+def shop_checkout_paypal_create():
+    customer_email = (request.form.get("customer_email") or "").strip().lower()
+    if not customer_email:
+        flash("Please provide your email address for receipt and downloads.", "warning")
+        return redirect(url_for("shop.shop_cart"))
+
+    access_token = _paypal_access_token()
+    if not access_token:
+        flash("PayPal is not configured yet.", "warning")
+        return redirect(url_for("shop.shop_cart"))
+
+    order, items, error_msg = _create_pending_order_from_cart(customer_email)
+    if error_msg:
+        flash(error_msg, "warning")
+        return redirect(url_for("shop.shop_cart"))
+
+    total_value = f"{(order.total_cents or 0) / 100:.2f}"
+    paypal_items = []
+    for row in items:
+        label = "PDF Download" if row["delivery_format"] == "pdf" else "Printed Copy"
+        paypal_items.append({
+            "name": f"{row['product'].title} ({label})"[:127],
+            "quantity": str(row["quantity"]),
+            "unit_amount": {"currency_code": "GBP", "value": f"{row['unit_price_cents'] / 100:.2f}"},
+        })
+
+    shipping_pref = "GET_FROM_FILE" if order.has_physical_items else "NO_SHIPPING"
+    payload = {
+        "intent": "CAPTURE",
+        "purchase_units": [{
+            "reference_id": str(order.id),
+            "amount": {
+                "currency_code": "GBP",
+                "value": total_value,
+                "breakdown": {"item_total": {"currency_code": "GBP", "value": total_value}},
+            },
+            "items": paypal_items,
+        }],
+        "application_context": {
+            "brand_name": current_app.config.get("SITE_TITLE", "Jack Capstaff"),
+            "user_action": "PAY_NOW",
+            "shipping_preference": shipping_pref,
+            "return_url": url_for("shop.shop_checkout_paypal_return", _external=True),
+            "cancel_url": url_for("shop.shop_cart", _external=True),
+        },
+    }
+
+    resp = requests.post(
+        f"{_resolve_paypal_base_url()}/v2/checkout/orders",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        },
+        json=payload,
+        timeout=30,
+    )
+
+    if resp.status_code >= 400:
+        current_app.logger.error("PayPal create order failed: %s", resp.text[:500])
+        flash("PayPal checkout could not start. Please try again.", "danger")
+        return redirect(url_for("shop.shop_cart"))
+
+    order_data = resp.json()
+    paypal_order_id = order_data.get("id")
+    approval_url = None
+    for link in order_data.get("links", []):
+        if link.get("rel") == "approve":
+            approval_url = link.get("href")
+            break
+
+    if not paypal_order_id or not approval_url:
+        flash("PayPal checkout could not start. Please try again.", "danger")
+        return redirect(url_for("shop.shop_cart"))
+
+    db, _, ShopOrder, _ = _models()
+    existing = ShopOrder.query.filter_by(stripe_checkout_session_id=paypal_order_id).first()
+    if existing and existing.id != order.id:
+        paypal_order_id = f"{paypal_order_id}-{order.id}"
+    order.stripe_checkout_session_id = paypal_order_id
+    db.session.commit()
+
+    return redirect(approval_url)
+
+
+@shop_bp.route("/shop/checkout/paypal/return")
+def shop_checkout_paypal_return():
+    paypal_order_id = (request.args.get("token") or "").strip()
+    if not paypal_order_id:
+        flash("PayPal checkout did not complete.", "warning")
+        return redirect(url_for("shop.shop_cart"))
+
+    access_token = _paypal_access_token()
+    if not access_token:
+        flash("PayPal is not configured yet.", "warning")
+        return redirect(url_for("shop.shop_cart"))
+
+    db, _, ShopOrder, _ = _models()
+    order = ShopOrder.query.filter_by(stripe_checkout_session_id=paypal_order_id).first()
+    if not order:
+        flash("Order could not be found.", "danger")
+        return redirect(url_for("shop.shop_cart"))
+
+    capture_resp = requests.post(
+        f"{_resolve_paypal_base_url()}/v2/checkout/orders/{paypal_order_id}/capture",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        },
+        timeout=30,
+    )
+
+    if capture_resp.status_code >= 400:
+        current_app.logger.error("PayPal capture failed: %s", capture_resp.text[:500])
+        flash("Payment capture failed. Please contact support.", "danger")
+        return redirect(url_for("shop.shop_cart"))
+
+    capture_data = capture_resp.json()
+    if capture_data.get("status") != "COMPLETED":
+        flash("Payment has not completed yet.", "warning")
+        return redirect(url_for("shop.shop_cart"))
+
+    purchase_units = capture_data.get("purchase_units", [])
+    shipping = (purchase_units[0].get("shipping") if purchase_units else {}) or {}
+    shipping_addr = shipping.get("address") or {}
+    captures = (((purchase_units[0].get("payments") or {}).get("captures") or [{}])[0]) if purchase_units else {}
+
+    order.status = "paid"
+    order.stripe_payment_intent_id = captures.get("id") or order.stripe_payment_intent_id
+    amount_val = captures.get("amount", {}).get("value")
+    if amount_val:
+        order.total_cents = _parse_price_to_cents(amount_val)
+    order.currency = (captures.get("amount", {}).get("currency_code") or order.currency or "GBP").lower()
+    order.paid_at = datetime.utcnow()
+    payer = capture_data.get("payer") or {}
+    order.customer_name = (payer.get("name", {}).get("given_name", "") + " " + payer.get("name", {}).get("surname", "")).strip() or order.customer_name
+    order.customer_email = payer.get("email_address") or order.customer_email
+
+    if shipping:
+        order.shipping_name = shipping.get("name", {}).get("full_name") or order.shipping_name
+        order.shipping_line1 = shipping_addr.get("address_line_1")
+        order.shipping_line2 = shipping_addr.get("address_line_2")
+        order.shipping_city = shipping_addr.get("admin_area_2")
+        order.shipping_state = shipping_addr.get("admin_area_1")
+        order.shipping_postal_code = shipping_addr.get("postal_code")
+        order.shipping_country = shipping_addr.get("country_code")
+
+    db.session.commit()
+
+    if not order.customer_email_sent or not order.admin_email_sent:
+        _send_order_emails(order)
+
+    _save_cart([])
+    return redirect(url_for("shop.shop_checkout_success", session_id=order.stripe_checkout_session_id))
 
 
 @shop_bp.route("/shop/checkout/success")

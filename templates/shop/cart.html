@@ -45,10 +45,15 @@
 
             <h3 style="margin-bottom:1rem;">Total: {{ format_money(total_cents, 'gbp') }}</h3>
 
-            <form method="POST" action="{{ url_for('shop.shop_checkout_create') }}" style="max-width:420px;">
+            <form method="POST" action="{{ url_for('shop.shop_checkout_create') }}" style="max-width:420px; margin-bottom:0.75rem;">
                 <label for="customer_email"><strong>Email for receipt and downloads</strong></label>
                 <input id="customer_email" name="customer_email" type="email" required style="margin-top:0.4rem; margin-bottom:0.9rem;">
                 <button class="button primary fit" type="submit">Proceed To Secure Checkout</button>
+            </form>
+
+            <form method="POST" action="{{ url_for('shop.shop_checkout_paypal_create') }}" style="max-width:420px;">
+                <input name="customer_email" type="email" required placeholder="Email for receipt and downloads" style="margin-bottom:0.9rem;">
+                <button class="button fit" type="submit">Checkout With PayPal</button>
             </form>
             {% else %}
             <p>Your cart is empty.</p>
