@@ -629,14 +629,17 @@ def shop_checkout_success():
     session_id = (request.args.get("session_id") or "").strip()
     _, _, ShopOrder, _ = _models()
     order = None
+    payment_confirmed = False
     if session_id:
         order = ShopOrder.query.filter_by(stripe_checkout_session_id=session_id).first()
         if order and order.status == "paid":
+            payment_confirmed = True
             _save_cart([])
-    return render_template("shop/success.html", order=order)
+    return render_template("shop/success.html", order=order, payment_confirmed=payment_confirmed)
 
 
 @shop_bp.route("/shop/stripe/webhook", methods=["POST"])
+@shop_bp.route("/shop/checkout/stripe/webhook", methods=["POST"])
 def shop_stripe_webhook():
     if stripe is None:
         return jsonify({"error": "stripe not installed"}), 500

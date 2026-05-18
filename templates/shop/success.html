@@ -5,15 +5,18 @@
 {% block main_content %}
 <article id="main">
     <header>
-        <h2>Thank You</h2>
-        <p>Your payment was received successfully.</p>
+        <h2>{% if payment_confirmed %}Thank You{% else %}Payment Processing{% endif %}</h2>
+        <p>{% if payment_confirmed %}Your payment was received successfully.{% else %}Your payment is being confirmed.{% endif %}</p>
     </header>
 
     <section class="wrapper style5">
         <div class="inner">
-            {% if order %}
+            {% if order and payment_confirmed %}
             <p><strong>Order:</strong> {{ order.order_number }}</p>
             <p>A receipt and any download links have been emailed to {{ order.customer_email }}.</p>
+            {% elif order %}
+            <p><strong>Order:</strong> {{ order.order_number }}</p>
+            <p>We are still waiting for payment confirmation from the provider. Your receipt and download links will be emailed as soon as confirmation arrives.</p>
             {% else %}
             <p>Your order is processing. You will receive a receipt shortly.</p>
             {% endif %}
