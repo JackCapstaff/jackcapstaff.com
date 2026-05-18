@@ -17,12 +17,20 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as reportlab_canvas
+from reportlab.lib.utils import ImageReader
+
+from PIL import Image, ImageDraw
 
 try:
     from pypdf import PdfReader, PdfWriter
 except Exception:
     PdfReader = None
     PdfWriter = None
+
+try:
+    import pypdfium2 as pdfium
+except Exception:
+    pdfium = None
 
 try:
     import cloudinary.uploader
@@ -153,43 +161,64 @@ def _read_pdf_bytes(file_url: str):
     raise ValueError("Unsupported PDF source URL")
 
 
-def _build_perusal_preview_pdf(pdf_bytes: bytes, max_pages: int = 4):
-    if PdfReader is None or PdfWriter is None:
-        raise RuntimeError("PDF preview requires pypdf")
+def _apply_preview_watermark(image: Image.Image) -> Image.Image:
+    base = image.convert("RGBA")
+    overlay = Image.new("RGBA", base.size, (255, 255, 255, 0))
+    draw = ImageDraw.Draw(overlay)
 
-    source_reader = PdfReader(BytesIO(pdf_bytes))
-    total_pages = len(source_reader.pages)
-    preview_pages = min(max(total_pages, 0), max(1, max_pages))
-    writer = PdfWriter()
+    width, height = base.size
+    draw.text((width * 0.34, height * 0.5), "PERUSAL COPY", fill=(120, 120, 120, 80))
+    draw.text((width * 0.5, height - 26), "Preview only. Not licensed for performance.", anchor="mm", fill=(95, 95, 95, 180))
 
-    for page_index in range(preview_pages):
-        source_page = source_reader.pages[page_index]
-        width = float(source_page.mediabox.width)
-        height = float(source_page.mediabox.height)
+    return Image.alpha_composite(base, overlay).convert("RGB")
 
-        overlay_stream = BytesIO()
-        overlay_canvas = reportlab_canvas.Canvas(overlay_stream, pagesize=(width, height))
-        overlay_canvas.setFont("Helvetica-Bold", 44)
-        overlay_canvas.setFillColorRGB(0.6, 0.6, 0.6)
-        overlay_canvas.saveState()
-        overlay_canvas.translate(width / 2, height / 2)
-        overlay_canvas.rotate(33)
-        overlay_canvas.drawCentredString(0, 0, "PERUSAL COPY")
-        overlay_canvas.restoreState()
-        overlay_canvas.setFont("Helvetica", 10)
-        overlay_canvas.setFillColorRGB(0.35, 0.35, 0.35)
-        overlay_canvas.drawString(36, 24, "Preview only. Performance and reproduction rights are not included.")
-        overlay_canvas.showPage()
-        overlay_canvas.save()
 
-        overlay_stream.seek(0)
-        watermark_page = PdfReader(overlay_stream).pages[0]
-        source_page.merge_page(watermark_page)
-        writer.add_page(source_page)
+def _render_pdf_page_to_jpeg(pdf_bytes: bytes, page_index: int, max_width: int = 1200):
+    if pdfium is None:
+        raise RuntimeError("PDF rendering requires pypdfium2")
 
-    out_stream = BytesIO()
-    writer.write(out_stream)
-    return out_stream.getvalue(), preview_pages, total_pages
+    document = pdfium.PdfDocument(pdf_bytes)
+    if len(document) == 0 or page_index < 0 or page_index >= len(document):
+        raise ValueError("PDF page out of range")
+
+    rendered = document[page_index].render(scale=2)
+    image = rendered.to_pil().convert("RGB")
+    if image.width > max_width:
+        ratio = max_width / float(image.width)
+        image = image.resize((max_width, int(image.height * ratio)), Image.LANCZOS)
+
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=90, optimize=True)
+    return output.getvalue()
+
+
+def _build_perusal_preview_pdf(pdf_bytes: bytes, max_pages: int = 20):
+    if pdfium is None:
+        raise RuntimeError("PDF preview requires pypdfium2")
+
+    document = pdfium.PdfDocument(pdf_bytes)
+    total_pages = len(document)
+    even_page_indexes = [idx for idx in range(total_pages) if (idx + 1) % 2 == 0]
+    if not even_page_indexes and total_pages > 0:
+        even_page_indexes = [0]
+
+    selected_indexes = even_page_indexes[:max(1, max_pages)]
+    output = BytesIO()
+    preview_canvas = reportlab_canvas.Canvas(output)
+
+    for idx in selected_indexes:
+        rendered = document[idx].render(scale=2)
+        image = rendered.to_pil().convert("RGB")
+        image = _apply_preview_watermark(image)
+
+        page_width = max(100, int(image.width / 2))
+        page_height = max(100, int(image.height / 2))
+        preview_canvas.setPageSize((page_width, page_height))
+        preview_canvas.drawImage(ImageReader(image), 0, 0, width=page_width, height=page_height, preserveAspectRatio=False)
+        preview_canvas.showPage()
+
+    preview_canvas.save()
+    return output.getvalue(), len(selected_indexes), total_pages
 
 
 def _build_authorized_copy_pdf(pdf_bytes: bytes, authorized_for: str):
@@ -610,6 +639,25 @@ def shop_product_detail(slug):
     return render_template("shop/detail.html", product=product)
 
 
+@shop_bp.route("/shop/<slug>/cover.jpg")
+def shop_product_cover_image(slug):
+    _, Product, _, _ = _models()
+    product = Product.query.filter_by(slug=slug, published=True).first_or_404()
+    if not product.has_pdf or not product.pdf_file_url:
+        abort(404)
+
+    try:
+        source_pdf = _read_pdf_bytes(product.pdf_file_url)
+        cover_bytes = _render_pdf_page_to_jpeg(source_pdf, page_index=0, max_width=1200)
+        response = make_response(cover_bytes)
+        response.headers["Content-Type"] = "image/jpeg"
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
+    except Exception:
+        current_app.logger.exception("Failed generating product cover image from PDF")
+        abort(404)
+
+
 @shop_bp.route("/shop/<slug>/preview.pdf")
 def shop_product_preview(slug):
     _, Product, _, _ = _models()
@@ -620,7 +668,7 @@ def shop_product_preview(slug):
 
     try:
         source_pdf = _read_pdf_bytes(product.pdf_file_url)
-        preview_count = int(os.environ.get("SHOP_PREVIEW_PAGES", "4"))
+        preview_count = int(os.environ.get("SHOP_PREVIEW_MAX_PAGES", "20"))
         preview_bytes, shown_pages, total_pages = _build_perusal_preview_pdf(source_pdf, max_pages=preview_count)
         response = make_response(preview_bytes)
         response.headers["Content-Type"] = "application/pdf"

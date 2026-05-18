@@ -15,9 +15,9 @@
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1.5rem;">
                 {% for product in products %}
                 <article style="border:1px solid rgba(0,0,0,0.1); border-radius:10px; overflow:hidden; background:#fff;">
-                    {% if product.cover_image_url %}
+                    {% if product.cover_image_url or (product.has_pdf and product.pdf_file_url) %}
                     <a href="{{ url_for('shop.shop_product_detail', slug=product.slug) }}" style="display:block;">
-                        <img src="{{ media_url(product.cover_image_url) }}" alt="{{ product.title }}" style="display:block; width:100%; height:260px; object-fit:cover;">
+                        <img src="{{ media_url(product.cover_image_url) if product.cover_image_url else url_for('shop.shop_product_cover_image', slug=product.slug) }}" alt="{{ product.title }}" style="display:block; width:100%; height:260px; object-fit:cover;">
                     </a>
                     {% endif %}
                     <div style="padding:1rem;">

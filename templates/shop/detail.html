@@ -12,8 +12,8 @@
     <section class="wrapper style5">
         <div class="inner" style="display:grid; gap:2rem; grid-template-columns:minmax(260px,420px) minmax(280px,1fr); align-items:start;">
             <div>
-                {% if product.cover_image_url %}
-                <img src="{{ media_url(product.cover_image_url) }}" alt="{{ product.title }}" style="display:block; width:100%; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.12);">
+                {% if product.cover_image_url or (product.has_pdf and product.pdf_file_url) %}
+                <img src="{{ media_url(product.cover_image_url) if product.cover_image_url else url_for('shop.shop_product_cover_image', slug=product.slug) }}" alt="{{ product.title }}" style="display:block; width:100%; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.12);">
                 {% endif %}
             </div>
 
