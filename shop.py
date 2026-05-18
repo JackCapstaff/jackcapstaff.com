@@ -896,7 +896,18 @@ def shop_checkout_create():
     if order.has_physical_items:
         checkout_args["shipping_address_collection"] = {"allowed_countries": ["GB", "US", "CA", "AU", "IE", "NZ"]}
 
-    checkout_session = stripe.checkout.Session.create(**checkout_args)
+    try:
+        checkout_session = stripe.checkout.Session.create(**checkout_args)
+    except stripe.error.InvalidRequestError as e:
+        msg = str(e)
+        if "minimum" in msg.lower() or "at least" in msg.lower():
+            flash("Sorry, the order total is below the minimum allowed for card payments (£0.30). Please adjust your cart.", "danger")
+        else:
+            flash("There was a problem starting checkout. Please try again or contact us.", "danger")
+        return redirect(url_for("shop.shop_cart"))
+    except stripe.error.StripeError:
+        flash("Payment service unavailable. Please try again shortly or contact us.", "danger")
+        return redirect(url_for("shop.shop_cart"))
 
     order.stripe_checkout_session_id = checkout_session.id
     db, _, _, _ = _models()
