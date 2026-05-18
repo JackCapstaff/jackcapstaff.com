@@ -22,6 +22,11 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from sqlalchemy import inspect, text
 
 try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
+
+try:
     import cloudinary
     import cloudinary.uploader
 except Exception:
@@ -74,6 +79,59 @@ IMAGES_DIR = os.path.join(BASE_DIR, 'images')
 UPLOADS_DIR = os.path.join(BASE_DIR, 'assets', 'uploads')
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+PUBLISHING_DEFAULT_SETTINGS = {
+    "cost_a4": 0.05,
+    "cost_a3": 0.12,
+    "ink_cost_a4": 0.03,
+    "ink_cost_a3": 0.035,
+    "photo_paper_surcharge": 0.15,
+    "acetate_cost": 0.60,
+    "labour_per_job": 0.25,
+    "markup_multiplier": 1.25,
+    "binding_costs": {"None": 0.0, "Staple": 0.10, "Plastic Comb": 0.40, "Wire Comb": 0.60},
+    "binding_labour": {"None": 0.0, "Staple": 0.30, "Plastic Comb": 1.00, "Wire Comb": 2.50},
+    "bw_cover_costs": {"Card 300gsm": 1.10, "Card 450gsm": 1.15, "Card 600gsm": 1.20},
+    "colour_cover_costs": {"Card 300gsm": 1.20, "Card 450gsm": 1.30, "Card 600gsm": 1.40},
+    "paper_grade_surcharge": {
+        "80gsm": {"A4": 0.0, "A3": 0.0},
+        "100gsm": {"A4": 0.01, "A3": 0.02},
+        "110gsm": {"A4": 0.02, "A3": 0.04},
+        "120gsm": {"A4": 0.03, "A3": 0.06},
+    },
+}
+
+
+def _load_print_engine_calculator():
+    module = app.config.get('_print_engine_module')
+    if module is not None:
+        return module
+
+    engine_path = os.path.join(BASE_DIR, 'Print cost calculator', 'Web Deply', 'print_engine.py')
+    if not os.path.exists(engine_path):
+        return None
+
+    try:
+        spec = importlib.util.spec_from_file_location('jackcapstaff_print_engine', engine_path)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        app.config['_print_engine_module'] = module
+        return module
+    except Exception:
+        app.logger.exception('Failed loading print_engine.py')
+        return None
+
+
+def _safe_int(value, default=0, minimum=None):
+    try:
+        out = int(value)
+    except (TypeError, ValueError):
+        out = default
+    if minimum is not None:
+        out = max(minimum, out)
+    return out
 
 
 def load_rehearsal_schedule_app():
@@ -820,6 +878,99 @@ def media():
     )
 
 
+@app.route('/Publishing', methods=['GET', 'POST'])
+@app.route('/Publishing.html', methods=['GET', 'POST'])
+@app.route('/publishing', methods=['GET', 'POST'])
+def publishing():
+    form_data = {
+        'qty': '1',
+        'print_type': 'A4 Double-sided',
+        'binding': 'None',
+        'front_cover': 'None',
+        'back_cover': 'None',
+        'acetate': 'None',
+        'paper_type': 'Standard',
+        'paper_grade': '120gsm',
+    }
+    quote = None
+
+    if request.method == 'POST':
+        form_data.update({k: (request.form.get(k) or form_data.get(k, '')) for k in form_data.keys()})
+
+        engine = _load_print_engine_calculator()
+        if engine is None:
+            flash('Publishing quote engine is not available on the server yet.', 'danger')
+            return render_template('Publishing.html', form_data=form_data, quote=None)
+
+        upload = request.files.get('score_pdf')
+        if not upload or not upload.filename:
+            flash('Please upload a PDF score/set file.', 'warning')
+            return render_template('Publishing.html', form_data=form_data, quote=None)
+
+        filename = (upload.filename or '').lower()
+        if not filename.endswith('.pdf'):
+            flash('Please upload a valid PDF file.', 'warning')
+            return render_template('Publishing.html', form_data=form_data, quote=None)
+
+        if PdfReader is None:
+            flash('PDF reader dependency is unavailable.', 'danger')
+            return render_template('Publishing.html', form_data=form_data, quote=None)
+
+        try:
+            upload.stream.seek(0)
+            pages = len(PdfReader(upload.stream).pages)
+        except Exception:
+            app.logger.exception('Failed reading uploaded PDF for publishing quote')
+            flash('We could not read that PDF. Please try another file.', 'danger')
+            return render_template('Publishing.html', form_data=form_data, quote=None)
+
+        qty = _safe_int(request.form.get('qty'), default=1, minimum=1)
+        print_type = request.form.get('print_type', 'A4 Double-sided')
+        binding = request.form.get('binding', 'None')
+        front_cover = request.form.get('front_cover', 'None')
+        back_cover = request.form.get('back_cover', 'None')
+        acetate = request.form.get('acetate', 'None')
+        paper_type = request.form.get('paper_type', 'Standard')
+        paper_grade = request.form.get('paper_grade', '120gsm')
+
+        item = {
+            'file_name': secure_filename(upload.filename) or 'uploaded-score.pdf',
+            'pages': pages,
+            'qty': qty,
+            'type': print_type,
+            'binding': binding,
+            'front_cover': front_cover,
+            'back_cover': back_cover,
+            'acetate': acetate,
+            'paper_type': paper_type,
+            'paper_grade': paper_grade,
+        }
+
+        try:
+            totals = engine.calculate_totals([item], PUBLISHING_DEFAULT_SETTINGS)
+            line = (totals.get('breakdowns') or [{}])[0]
+            quote = {
+                'pages': pages,
+                'qty': qty,
+                'file_name': item['file_name'],
+                'unit_price': float(line.get('unit_price') or 0.0),
+                'line_total': float(line.get('line_total') or 0.0),
+                'materials_subtotal': float(line.get('materials_subtotal') or 0.0),
+                'labour': float(line.get('labour') or 0.0),
+                'sheets_per_copy': int(line.get('sheets_per_copy') or 0),
+                'total_sheets': int(line.get('total_sheets') or 0),
+                'print_type': print_type,
+                'binding': str(line.get('binding') or binding),
+                'paper_type': paper_type,
+                'paper_grade': paper_grade,
+            }
+        except Exception:
+            app.logger.exception('Publishing quote calculation failed')
+            flash('Quote calculation failed. Please try again.', 'danger')
+
+    return render_template('Publishing.html', form_data=form_data, quote=quote)
+
+
 @app.route('/News')
 @app.route('/News.html')
 def news():
@@ -845,6 +996,7 @@ def sitemap_xml():
         {'loc': url_for('biography', _external=True), 'lastmod': today, 'changefreq': 'monthly', 'priority': '0.7'},
         {'loc': url_for('schedule', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.8'},
         {'loc': url_for('shop.shop_index', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.9'},
+        {'loc': url_for('publishing', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.8'},
         {'loc': url_for('media', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.8'},
         {'loc': url_for('news', _external=True), 'lastmod': today, 'changefreq': 'daily', 'priority': '0.9'},
         {'loc': url_for('contact', _external=True), 'lastmod': today, 'changefreq': 'monthly', 'priority': '0.6'},

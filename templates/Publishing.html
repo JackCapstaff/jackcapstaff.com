@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block page_title %}Publishing - Quote Calculator{% endblock %}
+
+{% block main_content %}
+<article id="main">
+    <header>
+        <h2>Publishing & Print Quotes</h2>
+        <p>Upload your PDF score/set and get an instant estimate.</p>
+    </header>
+
+    <section class="wrapper style5">
+        <div class="inner">
+            <form method="POST" enctype="multipart/form-data" style="max-width:900px;">
+                <div class="row gtr-uniform">
+                    <div class="col-12">
+                        <label for="score_pdf"><strong>PDF File</strong></label>
+                        <input id="score_pdf" type="file" name="score_pdf" accept="application/pdf" required>
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="qty">Quantity</label>
+                        <input id="qty" type="number" min="1" name="qty" value="{{ form_data.qty }}">
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="print_type">Print Type</label>
+                        <select id="print_type" name="print_type">
+                            {% for opt in ['A3 Single-sided', 'A3 Double-sided', 'A3 Booklet', 'A4 Single-sided', 'A4 Double-sided', 'A4 Booklet'] %}
+                            <option value="{{ opt }}" {% if form_data.print_type == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="binding">Binding</label>
+                        <select id="binding" name="binding">
+                            {% for opt in ['None', 'Staple', 'Plastic Comb', 'Wire Comb'] %}
+                            <option value="{{ opt }}" {% if form_data.binding == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="acetate">Acetate</label>
+                        <select id="acetate" name="acetate">
+                            {% for opt in ['None', 'Front', 'Back', 'Both'] %}
+                            <option value="{{ opt }}" {% if form_data.acetate == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="front_cover">Front Cover</label>
+                        <select id="front_cover" name="front_cover">
+                            {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
+                            <option value="{{ opt }}" {% if form_data.front_cover == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="back_cover">Back Cover</label>
+                        <select id="back_cover" name="back_cover">
+                            {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
+                            <option value="{{ opt }}" {% if form_data.back_cover == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="paper_type">Paper Type</label>
+                        <select id="paper_type" name="paper_type">
+                            {% for opt in ['Standard', 'Photo'] %}
+                            <option value="{{ opt }}" {% if form_data.paper_type == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-12-xsmall">
+                        <label for="paper_grade">Paper Grade</label>
+                        <select id="paper_grade" name="paper_grade">
+                            {% for opt in ['80gsm', '100gsm', '110gsm', '120gsm'] %}
+                            <option value="{{ opt }}" {% if form_data.paper_grade == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-12">
+                        <button class="button primary" type="submit">Get Quote</button>
+                    </div>
+                </div>
+            </form>
+
+            {% if quote %}
+            <hr>
+            <h3>Quote Result</h3>
+            <p><strong>File:</strong> {{ quote.file_name }}</p>
+            <p><strong>Pages:</strong> {{ quote.pages }} per copy</p>
+            <p><strong>Quantity:</strong> {{ quote.qty }}</p>
+            <p><strong>Format:</strong> {{ quote.print_type }}</p>
+            <p><strong>Unit Price:</strong> £{{ '%.2f'|format(quote.unit_price) }}</p>
+            <p><strong>Total:</strong> £{{ '%.2f'|format(quote.line_total) }}</p>
+            <p style="color:#666;"><small>Estimate includes material, labour, and markup from your calculator defaults.</small></p>
+            {% endif %}
+        </div>
+    </section>
+</article>
+{% endblock %}
