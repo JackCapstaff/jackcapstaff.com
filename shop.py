@@ -723,7 +723,9 @@ def _cart_with_products():
         if not product or not product.published:
             continue
 
-        fmt = entry.get("delivery_format")
+        fmt_raw = (entry.get("delivery_format") or "").strip().lower()
+        # Keep legacy/non-standard values compatible: anything non-pdf is treated as print.
+        fmt = "pdf" if fmt_raw == "pdf" else "print"
         quantity = max(1, int(entry.get("quantity") or 1))
         if fmt == "pdf":
             unit = int(product.price_pdf_cents or 0)
@@ -855,7 +857,7 @@ def shop_product_preview(slug):
 @shop_bp.route("/shop/cart")
 def shop_cart():
     items, total_cents = _cart_with_products()
-    has_physical_items = any(row.get("delivery_format") == "print" for row in items)
+    has_physical_items = any(row.get("delivery_format") != "pdf" for row in items)
     shipping_cents = 0
     shipping_fee_gbp = 5.00
     free_delivery_gbp = 0.00
@@ -964,7 +966,7 @@ def shop_checkout_create():
         return redirect(url_for("shop.shop_cart"))
 
     cart_items, _ = _cart_with_products()
-    has_physical_items = any(row.get("delivery_format") == "print" for row in cart_items)
+    has_physical_items = any(row.get("delivery_format") != "pdf" for row in cart_items)
     shipping_region = (request.form.get("shipping_region") or "domestic").strip().lower()
     shipping_fee_gbp = 5.00
     free_delivery_gbp = 0.00
