@@ -44,10 +44,23 @@
             </div>
 
             <h3 style="margin-bottom:1rem;">Total: {{ format_money(total_cents, 'gbp') }}</h3>
+            {% if has_physical_items %}
+            <p style="margin-bottom:0.6rem;"><strong>Shipping for printed copies:</strong> £5.00 UK domestic. International shipping is by quote.</p>
+            {% endif %}
 
             <form method="POST" action="{{ url_for('shop.shop_checkout_start') }}" style="max-width:520px; margin-bottom:0.75rem;">
                 <label for="customer_email"><strong>Email for receipt and downloads</strong></label>
                 <input id="customer_email" name="customer_email" type="email" required style="margin-top:0.4rem; margin-bottom:0.9rem;">
+                {% if has_physical_items %}
+                <div style="margin-bottom:0.95rem;">
+                    <label for="shipping_region"><strong>Shipping destination</strong></label>
+                    <select id="shipping_region" name="shipping_region" style="margin-top:0.35rem; max-width:320px;">
+                        <option value="domestic" selected>United Kingdom (£5.00 shipping)</option>
+                        <option value="international">International (contact for quote)</option>
+                    </select>
+                    <small style="display:block; margin-top:0.4rem; color:#555;">Selecting international will pause checkout and prompt you to contact us for a quote.</small>
+                </div>
+                {% endif %}
                 <button class="button primary fit" type="submit">Continue To Payment</button>
             </form>
             {% else %}

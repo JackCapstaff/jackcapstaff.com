@@ -447,12 +447,24 @@ def _build_invoice_pdf(order, items):
         pdf.drawRightString(548, y, _format_money(item.line_total_cents, order.currency))
         y -= 14
 
+    shipping_cents = max(0, int(order.total_cents or 0) - subtotal_cents)
+
     y -= 8
     pdf.line(44, y, 548, y)
     y -= 18
+    pdf.setFont("Helvetica", 10)
+    pdf.drawRightString(500, y, "Subtotal")
+    pdf.drawRightString(548, y, _format_money(subtotal_cents, order.currency))
+
+    if shipping_cents > 0:
+        y -= 14
+        pdf.drawRightString(500, y, "Shipping (UK domestic)")
+        pdf.drawRightString(548, y, _format_money(shipping_cents, order.currency))
+
+    y -= 16
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawRightString(500, y, "Total")
-    pdf.drawRightString(548, y, _format_money(subtotal_cents, order.currency))
+    pdf.drawRightString(548, y, _format_money(order.total_cents, order.currency))
 
     y -= 24
     pdf.setFont("Helvetica", 9)
@@ -603,6 +615,14 @@ def _send_order_emails(order):
         f"- {item.title_snapshot} ({item.delivery_format.upper()}) x{item.quantity} - {_format_money(item.line_total_cents, order.currency)}"
         for item in items
     ])
+    items_subtotal_cents = sum(int(item.line_total_cents or 0) for item in items)
+    shipping_cents = max(0, int(order.total_cents or 0) - items_subtotal_cents)
+    charges_text = f"Items subtotal: {_format_money(items_subtotal_cents, order.currency)}"
+    if shipping_cents > 0:
+        charges_text += (
+            f"\nShipping (UK domestic): {_format_money(shipping_cents, order.currency)}"
+            f"\nOrder total: {_format_money(order.total_cents, order.currency)}"
+        )
     downloads_text = "\n".join(download_lines) if download_lines else "No digital downloads in this order."
     invoice_bytes = _build_invoice_pdf(order, items)
     invoice_attachment = [{"filename": _safe_pdf_name(order.order_number, "invoice"), "data": invoice_bytes}]
@@ -650,6 +670,7 @@ def _send_order_emails(order):
         "Thank you for your order.\n\n"
         f"Order: {order.order_number}\n"
         f"Total: {_format_money(order.total_cents, order.currency)}\n\nItems:\n{items_text}\n\n"
+        f"Charges:\n{charges_text}\n\n"
         f"Digital downloads:\n{downloads_text}\n\n"
         f"Security note: download links expire and each PDF can be downloaded up to {download_limit} times.\n\n"
         f"{signoff_text}\n"
@@ -659,6 +680,7 @@ def _send_order_emails(order):
         f"<p>Thank you for your order.</p><p><strong>Order:</strong> {order.order_number}<br>"
         f"<strong>Total:</strong> {_format_money(order.total_cents, order.currency)}</p>"
         f"<p><strong>Items</strong><br>{items_text.replace(chr(10), '<br>')}</p>"
+        f"<p><strong>Charges</strong><br>{charges_text.replace(chr(10), '<br>')}</p>"
         f"<p><strong>Digital downloads</strong><br>{downloads_text.replace(chr(10), '<br>')}</p>"
         f"<p><em>Security note: download links expire and each PDF can be downloaded up to {download_limit} times.</em></p>"
         f"{signoff_html}"
@@ -723,10 +745,13 @@ def _cart_with_products():
     return out, total_cents
 
 
-def _create_pending_order_from_cart(customer_email: str):
+def _create_pending_order_from_cart(customer_email: str, shipping_cents: int = 0):
     items, total_cents = _cart_with_products()
     if not items:
         return None, None, "Your cart is empty."
+
+    shipping_cents = max(0, int(shipping_cents or 0))
+    grand_total_cents = total_cents + shipping_cents
 
     db, _, ShopOrder, ShopOrderItem = _models()
     default_download_limit = max(1, int(os.environ.get("SHOP_DOWNLOAD_MAX_USES", "3")))
@@ -736,7 +761,7 @@ def _create_pending_order_from_cart(customer_email: str):
         status="pending",
         customer_email=customer_email,
         currency="gbp",
-        total_cents=total_cents,
+        total_cents=grand_total_cents,
         has_physical_items=any(row["delivery_format"] == "print" for row in items),
     )
     db.session.add(order)
@@ -829,7 +854,8 @@ def shop_product_preview(slug):
 @shop_bp.route("/shop/cart")
 def shop_cart():
     items, total_cents = _cart_with_products()
-    return render_template("shop/cart.html", items=items, total_cents=total_cents)
+    has_physical_items = any(row.get("delivery_format") == "print" for row in items)
+    return render_template("shop/cart.html", items=items, total_cents=total_cents, has_physical_items=has_physical_items)
 
 
 @shop_bp.route("/shop/cart/add", methods=["POST"])
@@ -906,7 +932,16 @@ def shop_checkout_create():
         flash("Please provide your email address for receipt and downloads.", "warning")
         return redirect(url_for("shop.shop_cart"))
 
-    order, items, error_msg = _create_pending_order_from_cart(customer_email)
+    cart_items, _ = _cart_with_products()
+    has_physical_items = any(row.get("delivery_format") == "print" for row in cart_items)
+    shipping_region = (request.form.get("shipping_region") or "domestic").strip().lower()
+    shipping_cents = 500 if has_physical_items else 0
+
+    if has_physical_items and shipping_region != "domestic":
+        flash("International shipping for printed copies is quoted manually. Please contact us for a quote.", "warning")
+        return redirect(url_for("shop.shop_cart"))
+
+    order, items, error_msg = _create_pending_order_from_cart(customer_email, shipping_cents=shipping_cents)
     if error_msg:
         flash(error_msg, "warning")
         return redirect(url_for("shop.shop_cart"))
@@ -924,6 +959,16 @@ def shop_checkout_create():
             "quantity": row["quantity"],
         })
 
+    if shipping_cents > 0:
+        line_items.append({
+            "price_data": {
+                "currency": "gbp",
+                "unit_amount": shipping_cents,
+                "product_data": {"name": "Shipping (UK domestic)"},
+            },
+            "quantity": 1,
+        })
+
     checkout_args = {
         "mode": "payment",
         "line_items": line_items,
@@ -933,7 +978,7 @@ def shop_checkout_create():
         "metadata": {"order_id": str(order.id)},
     }
     if order.has_physical_items:
-        checkout_args["shipping_address_collection"] = {"allowed_countries": ["GB", "US", "CA", "AU", "IE", "NZ"]}
+        checkout_args["shipping_address_collection"] = {"allowed_countries": ["GB"]}
 
     try:
         checkout_session = stripe.checkout.Session.create(**checkout_args)
