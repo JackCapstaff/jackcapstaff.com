@@ -2,6 +2,62 @@
 
 {% block page_title %}{{ product.title }} - Shop{% endblock %}
 
+{% block extra_head %}
+{{ super() }}
+<style>
+    .shop-detail-grid {
+        display: grid;
+        gap: 2rem;
+        grid-template-columns: minmax(260px, 420px) minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .shop-detail-cover {
+        display: block;
+        width: 100%;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .shop-detail-select,
+    .shop-detail-qty {
+        display: block;
+        margin-top: 0.35rem;
+        width: 100%;
+        max-width: 320px;
+    }
+
+    .shop-detail-qty {
+        color: #1f2a44;
+        background: #ffffff;
+        border: 1px solid #7c8798;
+    }
+
+    .shop-detail-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    @media screen and (max-width: 736px) {
+        .shop-detail-grid {
+            grid-template-columns: 1fr;
+            gap: 1.25rem;
+        }
+
+        .shop-detail-actions .button {
+            width: 100%;
+            text-align: center;
+        }
+
+        .shop-detail-select,
+        .shop-detail-qty {
+            max-width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block main_content %}
 <article id="main">
     <header>
@@ -10,10 +66,10 @@
     </header>
 
     <section class="wrapper style5">
-        <div class="inner" style="display:grid; gap:2rem; grid-template-columns:minmax(260px,420px) minmax(280px,1fr); align-items:start;">
+        <div class="inner shop-detail-grid">
             <div>
                 {% if product.cover_image_url or (product.has_pdf and product.pdf_file_url) %}
-                <img src="{{ media_url(product.cover_image_url) if product.cover_image_url else url_for('shop.shop_product_cover_image', slug=product.slug) }}" alt="{{ product.title }}" style="display:block; width:100%; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.12);">
+                <img src="{{ media_url(product.cover_image_url) if product.cover_image_url else url_for('shop.shop_product_cover_image', slug=product.slug) }}" alt="{{ product.title }}" class="shop-detail-cover">
                 {% endif %}
             </div>
 
@@ -32,7 +88,7 @@
 
                     <div style="margin-bottom:1rem;">
                         <label for="delivery_format"><strong>Format</strong></label>
-                        <select id="delivery_format" name="delivery_format" style="display:block; margin-top:0.35rem; min-width:240px;">
+                        <select id="delivery_format" name="delivery_format" class="shop-detail-select">
                             {% if product.has_pdf %}<option value="pdf">PDF Download - {{ format_money(product.price_pdf_cents, 'gbp') }}</option>{% endif %}
                             {% if product.has_print %}<option value="print">Printed Copy - {{ format_money(product.price_print_cents, 'gbp') }}</option>{% endif %}
                         </select>
@@ -40,10 +96,10 @@
 
                     <div style="margin-bottom:1rem;">
                         <label for="quantity"><strong>Quantity</strong></label>
-                        <input id="quantity" name="quantity" type="number" min="1" value="1" style="display:block; margin-top:0.35rem; width:120px; color:#1f2a44; background:#ffffff; border:1px solid #7c8798;">
+                        <input id="quantity" name="quantity" type="number" min="1" value="1" class="shop-detail-qty">
                     </div>
 
-                    <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                    <div class="shop-detail-actions">
                         <button type="submit" class="button primary">Add To Cart</button>
                         <a href="{{ url_for('shop.shop_cart') }}" class="button">View Cart</a>
                         {% if product.has_pdf and product.pdf_file_url %}
