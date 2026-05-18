@@ -404,6 +404,14 @@ def shop_cart_remove():
     return redirect(url_for("shop.shop_cart"))
 
 
+@shop_bp.route("/shop/checkout/start", methods=["POST"])
+def shop_checkout_start():
+    payment_method = (request.form.get("payment_method") or "stripe").strip().lower()
+    if payment_method == "paypal":
+        return shop_checkout_paypal_create()
+    return shop_checkout_create()
+
+
 @shop_bp.route("/shop/checkout/create", methods=["POST"])
 def shop_checkout_create():
     if stripe is None:
