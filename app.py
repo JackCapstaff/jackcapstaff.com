@@ -235,6 +235,40 @@ def _serialize_quote_payload(items, totals, request_email):
     }
 
 
+def _round_up_to_49_or_99(amount_gbp):
+    """Round up to the next price ending in .49 or .99."""
+    pennies = int(round(float(amount_gbp or 0.0) * 100))
+    if pennies <= 0:
+        return 0.49
+
+    pounds = pennies // 100
+    candidates = [
+        pounds * 100 + 49,
+        pounds * 100 + 99,
+        (pounds + 1) * 100 + 49,
+        (pounds + 1) * 100 + 99,
+    ]
+    rounded_pennies = min(c for c in candidates if c >= pennies)
+    return rounded_pennies / 100.0
+
+
+def _apply_quote_rounding(totals):
+    """Apply commercial rounding to each line and recompute grand total."""
+    breakdowns = totals.get('breakdowns') or []
+    grand_total = 0.0
+    for line in breakdowns:
+        rounded_line_total = _round_up_to_49_or_99(float(line.get('line_total') or 0.0))
+        line['line_total'] = round(rounded_line_total, 2)
+        qty = int(line.get('qty') or 0)
+        if qty > 0:
+            line['unit_price'] = round(rounded_line_total / qty, 2)
+        grand_total += rounded_line_total
+
+    totals['grand_total'] = round(grand_total, 2)
+    totals['breakdowns'] = breakdowns
+    return totals
+
+
 def _quote_summary_from_totals(qty, default_print_type, default_binding, paper_type, paper_grade, totals):
     return {
         'qty': qty,
@@ -328,6 +362,7 @@ def _calculate_publishing_quote(uploads, form):
 
     settings = _load_publishing_settings()
     totals = engine.calculate_totals(items, settings)
+    totals = _apply_quote_rounding(totals)
     quote = _quote_summary_from_totals(qty, default_print_type, default_binding, paper_type, paper_grade, totals)
     quote_payload = _serialize_quote_payload(items, totals, customer_email)
     return quote, quote_payload
