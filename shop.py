@@ -152,25 +152,28 @@ def _send_email(subject: str, to_email: str, text_body: str, html_body: str):
     from_name = current_app.config.get("BREVO_FROM_NAME", "").strip() or current_app.config.get("SITE_TITLE", "Jack Capstaff")
 
     if api_key and from_email:
-        payload = {
-            "sender": {"name": from_name, "email": from_email},
-            "to": [{"email": to_email}],
-            "subject": subject,
-            "htmlContent": html_body,
-            "textContent": text_body,
-        }
-        response = requests.post(
-            "https://api.brevo.com/v3/smtp/email",
-            headers={
-                "accept": "application/json",
-                "api-key": api_key,
-                "content-type": "application/json",
-            },
-            json=payload,
-            timeout=20,
-        )
-        if response.status_code < 400:
-            return True
+        try:
+            payload = {
+                "sender": {"name": from_name, "email": from_email},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "htmlContent": html_body,
+                "textContent": text_body,
+            }
+            response = requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "accept": "application/json",
+                    "api-key": api_key,
+                    "content-type": "application/json",
+                },
+                json=payload,
+                timeout=20,
+            )
+            if response.status_code < 400:
+                return True
+        except Exception:
+            current_app.logger.exception("Brevo email send failed; attempting SMTP fallback")
 
     smtp_host = current_app.config.get("SMTP_HOST", "").strip()
     smtp_username = current_app.config.get("SMTP_USERNAME", "").strip()
@@ -663,7 +666,10 @@ def shop_stripe_webhook():
 
     if event.get("type") == "checkout.session.completed":
         session_obj = event["data"]["object"]
-        order_id = int(session_obj.get("metadata", {}).get("order_id", 0) or 0)
+        try:
+            order_id = int(session_obj.get("metadata", {}).get("order_id", 0) or 0)
+        except (TypeError, ValueError):
+            order_id = 0
 
         db, _, ShopOrder, ShopOrderItem = _models()
         order = ShopOrder.query.get(order_id)
@@ -692,7 +698,10 @@ def shop_stripe_webhook():
             db.session.commit()
 
             if not order.customer_email_sent or not order.admin_email_sent:
-                _send_order_emails(order)
+                try:
+                    _send_order_emails(order)
+                except Exception:
+                    current_app.logger.exception("Order email processing failed in Stripe webhook")
 
     return jsonify({"received": True})
 
