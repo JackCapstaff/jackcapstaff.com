@@ -37,9 +37,13 @@
                     </div>
                     {% if product and product.id and product.pdf_file_url %}
                     <div class="mb-3">
-                        <form method="POST" action="{{ url_for('shop.admin_products_regen_cover', product_id=product.id) }}" style="display:inline;">
-                            <button type="submit" class="btn btn-outline-secondary btn-sm">&#x21bb; Use page 1 of PDF as cover image</button>
-                        </form>
+                        <button
+                            type="submit"
+                            class="btn btn-outline-secondary btn-sm"
+                            formaction="{{ url_for('shop.admin_products_regen_cover', product_id=product.id) }}"
+                            formmethod="post"
+                            formnovalidate
+                        >&#x21bb; Use page 1 of PDF as cover image</button>
                     </div>
                     {% endif %}
                     <div class="mb-3">
