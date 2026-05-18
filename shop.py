@@ -192,6 +192,35 @@ def _build_perusal_preview_pdf(pdf_bytes: bytes, max_pages: int = 4):
     return out_stream.getvalue(), preview_pages, total_pages
 
 
+def _build_authorized_copy_pdf(pdf_bytes: bytes, authorized_for: str):
+    if PdfReader is None or PdfWriter is None:
+        raise RuntimeError("PDF personalization requires pypdf")
+
+    reader = PdfReader(BytesIO(pdf_bytes))
+    writer = PdfWriter()
+    footer_text = f"This copy is authorised for use by {authorized_for}".strip()
+
+    for page in reader.pages:
+        width = float(page.mediabox.width)
+        height = float(page.mediabox.height)
+
+        overlay_stream = BytesIO()
+        overlay_canvas = reportlab_canvas.Canvas(overlay_stream, pagesize=(width, height))
+        overlay_canvas.setFont("Helvetica", 7)
+        overlay_canvas.setFillColorRGB(0.45, 0.45, 0.45)
+        overlay_canvas.drawCentredString(width / 2, 8, footer_text)
+        overlay_canvas.save()
+
+        overlay_stream.seek(0)
+        overlay_page = PdfReader(overlay_stream).pages[0]
+        page.merge_page(overlay_page)
+        writer.add_page(page)
+
+    out_stream = BytesIO()
+    writer.write(out_stream)
+    return out_stream.getvalue()
+
+
 def _serve_pdf_from_url(file_url: str, download_name: str, as_attachment: bool):
     local_path = _resolve_local_upload_path(file_url)
     if local_path:
@@ -995,7 +1024,14 @@ def download_order_item(token):
 
     download_name = _safe_pdf_name(item.title_snapshot)
     try:
-        response = _serve_pdf_from_url(item.pdf_file_url_snapshot, download_name=download_name, as_attachment=True)
+        authorized_for = (order.customer_name or order.customer_email or "the purchaser").strip()
+        source_pdf = _read_pdf_bytes(item.pdf_file_url_snapshot)
+        personalized_pdf = _build_authorized_copy_pdf(source_pdf, authorized_for=authorized_for)
+
+        response = make_response(personalized_pdf)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
+
         item.download_access_count = current_downloads + 1
         now = datetime.utcnow()
         if not item.first_downloaded_at:
