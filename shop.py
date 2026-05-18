@@ -602,7 +602,7 @@ def _send_order_emails(order):
     if not order.customer_email:
         return
 
-    _, _, _, ShopOrderItem = _models()
+    _, _, _, ShopOrderItem, _ = _models()
     download_limit = max(1, int(os.environ.get("SHOP_DOWNLOAD_MAX_USES", "3")))
     items = ShopOrderItem.query.filter_by(order_id=order.id).all()
     download_lines = []
@@ -706,14 +706,14 @@ def _send_order_emails(order):
     html_admin = f"<p>{text_admin.replace(chr(10), '<br>')}</p>"
     admin_ok = _send_email(subject_admin, admin_to, text_admin, html_admin, attachments=invoice_attachment)
 
-    db, _, ShopOrder, _ = _models()
+    db, _, ShopOrder, _, _ = _models()
     order.customer_email_sent = bool(customer_ok)
     order.admin_email_sent = bool(admin_ok)
     db.session.commit()
 
 
 def _cart_with_products():
-    _, Product, _, _ = _models()
+    _, Product, _, _, _ = _models()
     cart = _cart_items()
     out = []
     total_cents = 0
@@ -754,7 +754,7 @@ def _create_pending_order_from_cart(customer_email: str, shipping_cents: int = 0
     shipping_cents = max(0, int(shipping_cents or 0))
     grand_total_cents = total_cents + shipping_cents
 
-    db, _, ShopOrder, ShopOrderItem = _models()
+    db, _, ShopOrder, ShopOrderItem, _ = _models()
     default_download_limit = max(1, int(os.environ.get("SHOP_DOWNLOAD_MAX_USES", "3")))
 
     order = ShopOrder(
@@ -796,21 +796,21 @@ def inject_shop_helpers():
 @shop_bp.route("/shop")
 @shop_bp.route("/Shop")
 def shop_index():
-    _, Product, _, _ = _models()
+    _, Product, _, _, _ = _models()
     products = Product.query.filter_by(published=True).order_by(Product.sort_order.asc(), Product.created_at.desc()).all()
     return render_template("shop/index.html", products=products)
 
 
 @shop_bp.route("/shop/<slug>")
 def shop_product_detail(slug):
-    _, Product, _, _ = _models()
+    _, Product, _, _, _ = _models()
     product = Product.query.filter_by(slug=slug, published=True).first_or_404()
     return render_template("shop/detail.html", product=product)
 
 
 @shop_bp.route("/shop/<slug>/cover.jpg")
 def shop_product_cover_image(slug):
-    _, Product, _, _ = _models()
+    _, Product, _, _, _ = _models()
     product = Product.query.filter_by(slug=slug, published=True).first_or_404()
     if not product.has_pdf or not product.pdf_file_url:
         abort(404)
@@ -829,7 +829,7 @@ def shop_product_cover_image(slug):
 
 @shop_bp.route("/shop/<slug>/preview.pdf")
 def shop_product_preview(slug):
-    _, Product, _, _ = _models()
+    _, Product, _, _, _ = _models()
     product = Product.query.filter_by(slug=slug, published=True).first_or_404()
     if not product.has_pdf or not product.pdf_file_url:
         flash("Preview is not available for this item.", "warning")
@@ -891,7 +891,7 @@ def shop_cart():
 
 @shop_bp.route("/shop/cart/add", methods=["POST"])
 def shop_cart_add():
-    _, Product, _, _ = _models()
+    _, Product, _, _, _ = _models()
     product_id = request.form.get("product_id", type=int)
     delivery_format = (request.form.get("delivery_format") or "").strip().lower()
     quantity = max(1, request.form.get("quantity", type=int) or 1)
@@ -1047,7 +1047,7 @@ def shop_checkout_create():
         return redirect(url_for("shop.shop_cart"))
 
     order.stripe_checkout_session_id = checkout_session.id
-    db, _, _, _ = _models()
+    db, _, _, _, _ = _models()
     db.session.commit()
 
     return redirect(checkout_session.url)
@@ -1128,7 +1128,7 @@ def shop_checkout_paypal_create():
         flash("PayPal checkout could not start. Please try again.", "danger")
         return redirect(url_for("shop.shop_cart"))
 
-    db, _, ShopOrder, _ = _models()
+    db, _, ShopOrder, _, _ = _models()
     existing = ShopOrder.query.filter_by(stripe_checkout_session_id=paypal_order_id).first()
     if existing and existing.id != order.id:
         paypal_order_id = f"{paypal_order_id}-{order.id}"
@@ -1150,7 +1150,7 @@ def shop_checkout_paypal_return():
         flash("PayPal is not configured yet.", "warning")
         return redirect(url_for("shop.shop_cart"))
 
-    db, _, ShopOrder, _ = _models()
+    db, _, ShopOrder, _, _ = _models()
     order = ShopOrder.query.filter_by(stripe_checkout_session_id=paypal_order_id).first()
     if not order:
         flash("Order could not be found.", "danger")
@@ -1212,7 +1212,7 @@ def shop_checkout_paypal_return():
 @shop_bp.route("/shop/checkout/success")
 def shop_checkout_success():
     session_id = (request.args.get("session_id") or "").strip()
-    _, _, ShopOrder, _ = _models()
+    _, _, ShopOrder, _, _ = _models()
     order = None
     payment_confirmed = False
     if session_id:
@@ -1259,7 +1259,7 @@ def shop_stripe_webhook():
         except (TypeError, ValueError):
             order_id = 0
 
-        db, _, ShopOrder, ShopOrderItem = _models()
+        db, _, ShopOrder, ShopOrderItem, _ = _models()
         order = ShopOrder.query.get(order_id)
         if order:
             order.status = "paid"
@@ -1296,7 +1296,7 @@ def shop_stripe_webhook():
 
 @shop_bp.route("/shop/download/<token>")
 def download_order_item(token):
-    db, _, ShopOrder, ShopOrderItem = _models()
+    db, _, ShopOrder, ShopOrderItem, _ = _models()
     link_ttl_hours = max(1, int(os.environ.get("SHOP_DOWNLOAD_LINK_TTL_HOURS", "72")))
 
     try:
