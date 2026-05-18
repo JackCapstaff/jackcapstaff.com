@@ -885,9 +885,6 @@ def shop_cart_remove():
 
 @shop_bp.route("/shop/checkout/start", methods=["POST"])
 def shop_checkout_start():
-    payment_method = (request.form.get("payment_method") or "stripe").strip().lower()
-    if payment_method == "paypal":
-        return shop_checkout_paypal_create()
     return shop_checkout_create()
 
 
