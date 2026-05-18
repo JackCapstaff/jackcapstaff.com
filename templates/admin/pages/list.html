@@ -26,6 +26,14 @@
             <tbody>
                 {% if content.items %}
                     {% for item in content.items %}
+                        {% set _page = (item.page or '')|lower %}
+                        {% set live_url = url_for('index') if _page in ['', 'home', 'index'] else
+                                          url_for('biography') if _page == 'biography' else
+                                          url_for('schedule') if _page == 'schedule' else
+                                          url_for('media') if _page == 'media' else
+                                          url_for('news') if _page == 'news' else
+                                          url_for('contact') if _page == 'contact' else
+                                          url_for('shop.shop_index') if _page == 'shop' else None %}
                         <tr>
                             <td><strong>{{ item.page }}</strong></td>
                             <td>{{ item.section }}</td>
@@ -40,6 +48,11 @@
                                 <a href="{{ url_for('admin.edit_page_content', content_id=item.id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
                                     <i class="bi bi-pencil"></i>
                                 </a>
+                                {% if live_url %}
+                                <a href="{{ live_url }}" class="btn btn-sm btn-outline-secondary" title="View live page" target="_blank" rel="noopener">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
+                                {% endif %}
                                 <form method="POST" action="{{ url_for('admin.delete_page_content', content_id=item.id) }}" style="display: inline;" onsubmit="return confirm('Delete this content block?');">
                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                         <i class="bi bi-trash"></i>

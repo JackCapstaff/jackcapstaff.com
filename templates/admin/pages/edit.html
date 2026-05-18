@@ -1,7 +1,22 @@
 {% extends "admin/base.html" %}
 
 {% block page_title %}
-<h2 class="page-title">Edit Page Content: {{ content.page }}/{{ content.section }}</h2>
+{% set _page = (content.page or '')|lower %}
+{% set live_url = url_for('index') if _page in ['', 'home', 'index'] else
+                  url_for('biography') if _page == 'biography' else
+                  url_for('schedule') if _page == 'schedule' else
+                  url_for('media') if _page == 'media' else
+                  url_for('news') if _page == 'news' else
+                  url_for('contact') if _page == 'contact' else
+                  url_for('shop.shop_index') if _page == 'shop' else None %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="page-title mb-0">Edit Page Content: {{ content.page }}/{{ content.section }}</h2>
+    {% if live_url %}
+    <a href="{{ live_url }}" class="btn btn-outline-secondary" target="_blank" rel="noopener">
+        <i class="bi bi-box-arrow-up-right"></i> View Live Page
+    </a>
+    {% endif %}
+</div>
 {% endblock %}
 
 {% block content %}

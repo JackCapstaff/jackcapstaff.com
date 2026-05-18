@@ -36,6 +36,9 @@
                     </td>
                     <td>
                         <a href="{{ url_for('shop.admin_products_edit', product_id=product.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                        {% if product.slug %}
+                        <a href="{{ url_for('shop.shop_product_detail', slug=product.slug) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener" title="View live product"><i class="bi bi-box-arrow-up-right"></i></a>
+                        {% endif %}
                         <form method="POST" action="{{ url_for('shop.admin_products_delete', product_id=product.id) }}" style="display:inline;" onsubmit="return confirm('Delete this product?');">
                             <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                         </form>

@@ -41,6 +41,9 @@
                                 <a href="{{ url_for('admin.edit_event', event_id=event.id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
                                     <i class="bi bi-pencil"></i>
                                 </a>
+                                <a href="{{ url_for('schedule') }}" class="btn btn-sm btn-outline-secondary" title="View live schedule" target="_blank" rel="noopener">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
                                 <form method="POST" action="{{ url_for('admin.delete_event', event_id=event.id) }}" style="display: inline;" onsubmit="return confirm('Delete this event?');">
                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                         <i class="bi bi-trash"></i>
