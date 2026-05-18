@@ -22,7 +22,7 @@
                     {% endif %}
                     <div style="padding:1rem;">
                         <h3 style="margin-bottom:0.35rem;">{{ product.title }}</h3>
-                        {% if product.subtitle %}<p style="font-size:0.9rem; margin-bottom:0.7rem;">{{ product.subtitle }}</p>{% endif %}
+                        {% if product.subtitle and product.subtitle|trim|lower not in ['none', 'null'] %}<p style="font-size:0.9rem; margin-bottom:0.7rem;">{{ product.subtitle }}</p>{% endif %}
                         <p style="font-size:0.9rem; color:#555; margin-bottom:1rem;">
                             {% if product.has_pdf %}PDF: {{ format_money(product.price_pdf_cents, 'gbp') }}{% endif %}
                             {% if product.has_pdf and product.has_print %} | {% endif %}

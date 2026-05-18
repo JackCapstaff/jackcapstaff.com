@@ -20,7 +20,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Subtitle</label>
-                        <input class="form-control" name="subtitle" value="{{ product.subtitle if product else '' }}">
+                        <input class="form-control" name="subtitle" value="{{ product.subtitle if product and product.subtitle and product.subtitle|trim|lower not in ['none', 'null'] else '' }}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Description</label>
@@ -28,7 +28,12 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Cover Image URL</label>
-                        <input class="form-control" name="cover_image_url" value="{{ product.cover_image_url if product else '' }}">
+                        <input class="form-control" name="cover_image_url" value="{{ product.cover_image_url if product and product.cover_image_url and product.cover_image_url|trim|lower not in ['none', 'null'] else '' }}">
+                        <small class="text-muted">You can paste a URL or upload an image below.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Upload Cover Image</label>
+                        <input type="file" class="form-control" name="cover_image_file" accept="image/*">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">PDF File URL</label>

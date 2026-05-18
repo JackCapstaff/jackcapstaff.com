@@ -126,6 +126,85 @@ def _upload_pdf(file_storage):
     return f"/assets/uploads/{out_name}"
 
 
+def _clean_optional_text(value):
+    text = (value or "").strip()
+    if not text:
+        return None
+    if text.lower() in {"none", "null", "n/a", "na"}:
+        return None
+    return text
+
+
+def _upload_cover_image(file_storage):
+    if not file_storage or not getattr(file_storage, "filename", None):
+        return None
+
+    filename = (file_storage.filename or "").lower()
+    if not any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+        return None
+
+    if cloudinary is not None and os.environ.get("CLOUDINARY_URL", "").strip():
+        try:
+            result = cloudinary.uploader.upload(
+                file_storage,
+                folder="jackcapstaff/shop/covers",
+                resource_type="image",
+                use_filename=True,
+                unique_filename=True,
+            )
+            return result.get("secure_url")
+        except Exception:
+            current_app.logger.exception("Cloudinary image upload failed; fallback to local storage")
+
+    uploads_dir = os.path.join(current_app.root_path, "assets", "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", file_storage.filename)
+    out_name = f"cover_{secrets.token_hex(8)}_{safe_name}"
+    out_path = os.path.join(uploads_dir, out_name)
+    file_storage.save(out_path)
+    return f"/assets/uploads/{out_name}"
+
+
+def _upload_cover_image_bytes(image_bytes: bytes, slug_hint: str):
+    if not image_bytes:
+        return None
+
+    if cloudinary is not None and os.environ.get("CLOUDINARY_URL", "").strip():
+        try:
+            result = cloudinary.uploader.upload(
+                BytesIO(image_bytes),
+                folder="jackcapstaff/shop/covers",
+                public_id=f"{slug_hint}-cover-{secrets.token_hex(4)}",
+                resource_type="image",
+                format="jpg",
+                overwrite=False,
+            )
+            return result.get("secure_url")
+        except Exception:
+            current_app.logger.exception("Cloudinary generated cover upload failed; fallback to local storage")
+
+    uploads_dir = os.path.join(current_app.root_path, "assets", "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    out_name = f"cover_{slug_hint}_{secrets.token_hex(6)}.jpg"
+    out_path = os.path.join(uploads_dir, out_name)
+    with open(out_path, "wb") as fh:
+        fh.write(image_bytes)
+    return f"/assets/uploads/{out_name}"
+
+
+def _generate_cover_from_pdf(pdf_file_url: str, slug_hint: str):
+    if not pdf_file_url:
+        return None
+
+    try:
+        source_pdf = _read_pdf_bytes(pdf_file_url)
+        cover_jpg = _render_pdf_page_to_jpeg(source_pdf, page_index=0, max_width=1200)
+        return _upload_cover_image_bytes(cover_jpg, slug_hint=slug_hint)
+    except Exception:
+        current_app.logger.exception("Failed generating/uploading cover from PDF")
+        return None
+
+
 def _safe_pdf_name(value: str, suffix: str = "") -> str:
     base = re.sub(r"[^A-Za-z0-9_-]+", "-", (value or "document")).strip("-")
     base = base or "document"
@@ -1145,18 +1224,25 @@ def admin_products_create():
         if Product.query.filter_by(slug=slug).first():
             slug = f"{slug}-{secrets.randbelow(10000)}"
 
-        pdf_file_url = (request.form.get("pdf_file_url") or "").strip() or None
+        pdf_file_url = _clean_optional_text(request.form.get("pdf_file_url"))
         pdf_file = request.files.get("pdf_file")
         uploaded_pdf = _upload_pdf(pdf_file)
         if uploaded_pdf:
             pdf_file_url = uploaded_pdf
 
+        cover_image_url = _clean_optional_text(request.form.get("cover_image_url"))
+        uploaded_cover = _upload_cover_image(request.files.get("cover_image_file"))
+        if uploaded_cover:
+            cover_image_url = uploaded_cover
+        elif not cover_image_url and pdf_file_url:
+            cover_image_url = _generate_cover_from_pdf(pdf_file_url, slug_hint=slug)
+
         product = Product(
             title=title,
             slug=slug,
-            subtitle=(request.form.get("subtitle") or "").strip() or None,
-            description=(request.form.get("description") or "").strip() or None,
-            cover_image_url=(request.form.get("cover_image_url") or "").strip() or None,
+            subtitle=_clean_optional_text(request.form.get("subtitle")),
+            description=_clean_optional_text(request.form.get("description")),
+            cover_image_url=cover_image_url,
             pdf_file_url=pdf_file_url,
             has_pdf=request.form.get("has_pdf") == "on",
             has_print=request.form.get("has_print") == "on",
@@ -1191,16 +1277,24 @@ def admin_products_edit(product_id):
 
         product.title = title
         product.slug = _slugify((request.form.get("slug") or "").strip() or title)
-        product.subtitle = (request.form.get("subtitle") or "").strip() or None
-        product.description = (request.form.get("description") or "").strip() or None
-        product.cover_image_url = (request.form.get("cover_image_url") or "").strip() or None
+        product.subtitle = _clean_optional_text(request.form.get("subtitle"))
+        product.description = _clean_optional_text(request.form.get("description"))
 
-        pdf_file_url = (request.form.get("pdf_file_url") or "").strip() or product.pdf_file_url
+        cover_image_url = _clean_optional_text(request.form.get("cover_image_url"))
+        uploaded_cover = _upload_cover_image(request.files.get("cover_image_file"))
+        if uploaded_cover:
+            cover_image_url = uploaded_cover
+
+        pdf_file_url = _clean_optional_text(request.form.get("pdf_file_url")) or product.pdf_file_url
         pdf_file = request.files.get("pdf_file")
         uploaded_pdf = _upload_pdf(pdf_file)
         if uploaded_pdf:
             pdf_file_url = uploaded_pdf
         product.pdf_file_url = pdf_file_url
+
+        if not cover_image_url and product.pdf_file_url:
+            cover_image_url = _generate_cover_from_pdf(product.pdf_file_url, slug_hint=product.slug)
+        product.cover_image_url = cover_image_url
 
         product.has_pdf = request.form.get("has_pdf") == "on"
         product.has_print = request.form.get("has_print") == "on"

@@ -6,7 +6,7 @@
 <article id="main">
     <header>
         <h2 style="color:#1f2a44;">{{ product.title }}</h2>
-        {% if product.subtitle and product.subtitle|lower not in ['none', 'null'] %}<p style="color:#1f2a44;">{{ product.subtitle }}</p>{% endif %}
+        {% if product.subtitle and product.subtitle|trim|lower not in ['none', 'null'] %}<p style="color:#1f2a44;">{{ product.subtitle }}</p>{% endif %}
     </header>
 
     <section class="wrapper style5">
@@ -19,7 +19,7 @@
 
             <div>
                 <h3 style="margin-bottom:0.45rem; color:#1f2a44;">{{ product.title }}</h3>
-                {% if product.subtitle and product.subtitle|lower not in ['none', 'null'] %}
+                {% if product.subtitle and product.subtitle|trim|lower not in ['none', 'null'] %}
                 <p style="margin-bottom:0.85rem; color:#3a465e;">{{ product.subtitle }}</p>
                 {% endif %}
 
