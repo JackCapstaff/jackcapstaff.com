@@ -13,7 +13,10 @@ from __future__ import annotations
 import math
 import os
 import io
-import PyPDF2
+try:
+    import PyPDF2
+except Exception:
+    import pypdf as PyPDF2
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4, A3, landscape
 from typing import Dict, Any, List, Tuple
