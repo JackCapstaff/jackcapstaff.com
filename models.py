@@ -235,6 +235,10 @@ def init_models(db):
         unit_price_cents = db.Column(db.Integer, default=0, nullable=False)
         line_total_cents = db.Column(db.Integer, default=0, nullable=False)
         pdf_file_url_snapshot = db.Column(db.String(512))
+        download_access_limit = db.Column(db.Integer, default=3, nullable=False)
+        download_access_count = db.Column(db.Integer, default=0, nullable=False)
+        first_downloaded_at = db.Column(db.DateTime)
+        last_downloaded_at = db.Column(db.DateTime)
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
         product = db.relationship('Product')

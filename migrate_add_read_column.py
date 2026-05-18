@@ -100,6 +100,26 @@ def init_database():
                                 connection.rollback()
                         else:
                             print(f"   ✓ user.{col_name} already exists")
+
+                    shop_item_patches = [
+                        ("download_access_limit", "ALTER TABLE shop_order_item ADD COLUMN download_access_limit INTEGER DEFAULT 3 NOT NULL"),
+                        ("download_access_count", "ALTER TABLE shop_order_item ADD COLUMN download_access_count INTEGER DEFAULT 0 NOT NULL"),
+                        ("first_downloaded_at", "ALTER TABLE shop_order_item ADD COLUMN first_downloaded_at TIMESTAMP WITHOUT TIME ZONE"),
+                        ("last_downloaded_at", "ALTER TABLE shop_order_item ADD COLUMN last_downloaded_at TIMESTAMP WITHOUT TIME ZONE"),
+                    ]
+
+                    for col_name, alter_sql in shop_item_patches:
+                        if not _column_exists_postgres(connection, "shop_order_item", col_name):
+                            print(f"   Adding '{col_name}' column to shop_order_item...")
+                            try:
+                                connection.execute(db.text(alter_sql))
+                                connection.commit()
+                                print(f"   ✓ shop_order_item.{col_name} added")
+                            except Exception as e:
+                                print(f"   ⚠️  Could not add shop_order_item.{col_name}: {e}")
+                                connection.rollback()
+                        else:
+                            print(f"   ✓ shop_order_item.{col_name} already exists")
                 
                 elif dialect == 'sqlite':
                     print("\n🔧 SQLite specific setup...")
@@ -145,6 +165,27 @@ def init_database():
                                 connection.rollback()
                         else:
                             print(f"   ✓ user.{col_name} already exists")
+
+                    shop_item_columns = _sqlite_table_columns(connection, "shop_order_item")
+                    sqlite_shop_item_patches = [
+                        ("download_access_limit", 'ALTER TABLE shop_order_item ADD COLUMN download_access_limit INTEGER DEFAULT 3 NOT NULL'),
+                        ("download_access_count", 'ALTER TABLE shop_order_item ADD COLUMN download_access_count INTEGER DEFAULT 0 NOT NULL'),
+                        ("first_downloaded_at", 'ALTER TABLE shop_order_item ADD COLUMN first_downloaded_at DATETIME'),
+                        ("last_downloaded_at", 'ALTER TABLE shop_order_item ADD COLUMN last_downloaded_at DATETIME'),
+                    ]
+
+                    for col_name, alter_sql in sqlite_shop_item_patches:
+                        if col_name not in shop_item_columns:
+                            print(f"   Adding '{col_name}' column to shop_order_item...")
+                            try:
+                                connection.execute(db.text(alter_sql))
+                                connection.commit()
+                                print(f"   ✓ shop_order_item.{col_name} added")
+                            except Exception as e:
+                                print(f"   ⚠️  Could not add shop_order_item.{col_name}: {e}")
+                                connection.rollback()
+                        else:
+                            print(f"   ✓ shop_order_item.{col_name} already exists")
             
             finally:
                 connection.close()

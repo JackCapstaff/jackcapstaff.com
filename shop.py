@@ -432,6 +432,7 @@ def _send_order_emails(order):
         return
 
     _, _, _, ShopOrderItem = _models()
+    download_limit = max(1, int(os.environ.get("SHOP_DOWNLOAD_MAX_USES", "3")))
     items = ShopOrderItem.query.filter_by(order_id=order.id).all()
     download_lines = []
     for item in items:
@@ -452,13 +453,15 @@ def _send_order_emails(order):
     text_customer = (
         f"Thank you for your order.\n\nOrder: {order.order_number}\n"
         f"Total: {_format_money(order.total_cents, order.currency)}\n\nItems:\n{items_text}\n\n"
-        f"Digital downloads:\n{downloads_text}\n"
+        f"Digital downloads:\n{downloads_text}\n\n"
+        f"Security note: download links expire and each PDF can be downloaded up to {download_limit} times.\n"
     )
     html_customer = (
         f"<p>Thank you for your order.</p><p><strong>Order:</strong> {order.order_number}<br>"
         f"<strong>Total:</strong> {_format_money(order.total_cents, order.currency)}</p>"
         f"<p><strong>Items</strong><br>{items_text.replace(chr(10), '<br>')}</p>"
         f"<p><strong>Digital downloads</strong><br>{downloads_text.replace(chr(10), '<br>')}</p>"
+        f"<p><em>Security note: download links expire and each PDF can be downloaded up to {download_limit} times.</em></p>"
     )
     customer_ok = _send_email(subject_customer, order.customer_email, text_customer, html_customer, attachments=invoice_attachment)
 
@@ -526,6 +529,7 @@ def _create_pending_order_from_cart(customer_email: str):
         return None, None, "Your cart is empty."
 
     db, _, ShopOrder, ShopOrderItem = _models()
+    default_download_limit = max(1, int(os.environ.get("SHOP_DOWNLOAD_MAX_USES", "3")))
 
     order = ShopOrder(
         order_number=f"JC{datetime.utcnow().strftime('%Y%m%d')}{secrets.randbelow(9000)+1000}",
@@ -549,6 +553,8 @@ def _create_pending_order_from_cart(customer_email: str):
             unit_price_cents=row["unit_price_cents"],
             line_total_cents=row["line_total_cents"],
             pdf_file_url_snapshot=product.pdf_file_url,
+            download_access_limit=default_download_limit if row["delivery_format"] == "pdf" else 0,
+            download_access_count=0,
         ))
 
     db.session.commit()
@@ -965,9 +971,10 @@ def shop_stripe_webhook():
 @shop_bp.route("/shop/download/<token>")
 def download_order_item(token):
     db, _, ShopOrder, ShopOrderItem = _models()
+    link_ttl_hours = max(1, int(os.environ.get("SHOP_DOWNLOAD_LINK_TTL_HOURS", "72")))
 
     try:
-        data = _download_serializer().loads(token, max_age=60 * 60 * 24 * 7)
+        data = _download_serializer().loads(token, max_age=60 * 60 * link_ttl_hours)
         order_item_id = int(data.get("order_item_id", 0))
     except (BadSignature, SignatureExpired, ValueError):
         flash("This download link is invalid or has expired.", "warning")
@@ -979,10 +986,25 @@ def download_order_item(token):
         flash("This download is not available.", "danger")
         return redirect(url_for("shop.shop_index"))
 
+    configured_default_limit = max(1, int(os.environ.get("SHOP_DOWNLOAD_MAX_USES", "3")))
+    effective_limit = int(item.download_access_limit or configured_default_limit)
+    current_downloads = int(item.download_access_count or 0)
+    if current_downloads >= effective_limit:
+        flash("This secure download link has reached its access limit. Please contact support if you need it reissued.", "warning")
+        return redirect(url_for("shop.shop_index"))
+
     download_name = _safe_pdf_name(item.title_snapshot)
     try:
-        return _serve_pdf_from_url(item.pdf_file_url_snapshot, download_name=download_name, as_attachment=True)
+        response = _serve_pdf_from_url(item.pdf_file_url_snapshot, download_name=download_name, as_attachment=True)
+        item.download_access_count = current_downloads + 1
+        now = datetime.utcnow()
+        if not item.first_downloaded_at:
+            item.first_downloaded_at = now
+        item.last_downloaded_at = now
+        db.session.commit()
+        return response
     except Exception:
+        db.session.rollback()
         current_app.logger.exception("Failed serving order PDF download")
         flash("Download is temporarily unavailable.", "warning")
         return redirect(url_for("shop.shop_index"))
