@@ -19,7 +19,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as reportlab_canvas
 from reportlab.lib.utils import ImageReader
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 try:
     from pypdf import PdfReader, PdfWriter
@@ -164,11 +164,32 @@ def _read_pdf_bytes(file_url: str):
 def _apply_preview_watermark(image: Image.Image) -> Image.Image:
     base = image.convert("RGBA")
     overlay = Image.new("RGBA", base.size, (255, 255, 255, 0))
-    draw = ImageDraw.Draw(overlay)
-
     width, height = base.size
-    draw.text((width * 0.34, height * 0.5), "PERUSAL COPY", fill=(120, 120, 120, 80))
-    draw.text((width * 0.5, height - 26), "Preview only. Not licensed for performance.", anchor="mm", fill=(95, 95, 95, 180))
+
+    try:
+        title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(30, int(width * 0.055)))
+        footer_font = ImageFont.truetype("DejaVuSans.ttf", max(13, int(width * 0.013)))
+    except Exception:
+        title_font = ImageFont.load_default()
+        footer_font = ImageFont.load_default()
+
+    # Draw a subtle diagonal stamp layer and rotate it into place.
+    stamp = Image.new("RGBA", (width, height), (255, 255, 255, 0))
+    stamp_draw = ImageDraw.Draw(stamp)
+    stamp_draw.text((int(width * 0.20), int(height * 0.45)), "PERUSAL COPY", font=title_font, fill=(90, 90, 90, 88))
+    stamp_draw.text((int(width * 0.18), int(height * 0.62)), "PERUSAL COPY", font=title_font, fill=(90, 90, 90, 74))
+    stamp = stamp.rotate(-26, expand=False, resample=Image.BICUBIC)
+    overlay = Image.alpha_composite(overlay, stamp)
+
+    draw = ImageDraw.Draw(overlay)
+    draw.rectangle([(0, height - 34), (width, height)], fill=(255, 255, 255, 140))
+    draw.text(
+        (width // 2, height - 17),
+        "PERUSAL COPY • Preview only • Not licensed for performance",
+        font=footer_font,
+        anchor="mm",
+        fill=(70, 70, 70, 220),
+    )
 
     return Image.alpha_composite(base, overlay).convert("RGB")
 
