@@ -41,6 +41,9 @@
                     <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
                         <button type="submit" class="button primary">Add To Cart</button>
                         <a href="{{ url_for('shop.shop_cart') }}" class="button">View Cart</a>
+                        {% if product.has_pdf and product.pdf_file_url %}
+                        <a href="{{ url_for('shop.shop_product_preview', slug=product.slug) }}" class="button" target="_blank" rel="noopener">Preview PDF</a>
+                        {% endif %}
                     </div>
                 </form>
             </div>
