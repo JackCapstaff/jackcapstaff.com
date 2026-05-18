@@ -1311,6 +1311,25 @@ def admin_products_edit(product_id):
     return render_template("admin/shop/product_form.html", action="Edit", product=product)
 
 
+@shop_bp.route("/admin/shop/<int:product_id>/regen-cover", methods=["POST"])
+@login_required
+def admin_products_regen_cover(product_id):
+    if not _editor_required():
+        abort(403)
+
+    db, Product, _, _ = _models()
+    product = Product.query.get_or_404(product_id)
+    if not product.pdf_file_url:
+        flash("No PDF uploaded — cannot generate cover.", "warning")
+        return redirect(url_for("shop.admin_products_edit", product_id=product_id))
+    try:
+        _generate_and_store_cover_from_pdf(product, db)
+        flash("Cover image regenerated from PDF page 1.", "success")
+    except Exception as e:
+        flash(f"Cover generation failed: {e}", "danger")
+    return redirect(url_for("shop.admin_products_edit", product_id=product_id))
+
+
 @shop_bp.route("/admin/shop/<int:product_id>/delete", methods=["POST"])
 @login_required
 def admin_products_delete(product_id):

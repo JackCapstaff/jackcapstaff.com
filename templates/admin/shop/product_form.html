@@ -35,6 +35,13 @@
                         <label class="form-label">Upload Cover Image</label>
                         <input type="file" class="form-control" name="cover_image_file" accept="image/*">
                     </div>
+                    {% if product and product.id and product.pdf_file_url %}
+                    <div class="mb-3">
+                        <form method="POST" action="{{ url_for('shop.admin_products_regen_cover', product_id=product.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm">&#x21bb; Use page 1 of PDF as cover image</button>
+                        </form>
+                    </div>
+                    {% endif %}
                     <div class="mb-3">
                         <label class="form-label">PDF File URL</label>
                         <input class="form-control" name="pdf_file_url" value="{{ product.pdf_file_url if product else '' }}">
