@@ -6,171 +6,316 @@
 <article id="main">
     <header>
         <h2>Publishing & Print Quotes</h2>
-        <p>Upload your PDF score/set and get an instant estimate.</p>
+        <p>Upload your PDFs, adjust each line in place, and watch the quote update live.</p>
     </header>
 
     <section class="wrapper style5">
         <div class="inner">
+            <style>
+                .publishing-shell {
+                    display: grid;
+                    gap: 1.5rem;
+                }
+                .publishing-panel {
+                    background: #fbfbf8;
+                    border: 1px solid rgba(0, 0, 0, 0.08);
+                    border-radius: 18px;
+                    padding: 1.25rem;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+                }
+                .publishing-panel h3,
+                .publishing-panel h4 {
+                    margin-top: 0;
+                }
+                .publishing-toolbar {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 0.75rem;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 1rem;
+                }
+                .publishing-status {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.4rem;
+                    padding: 0.45rem 0.75rem;
+                    border-radius: 999px;
+                    background: #efe8d8;
+                    color: #604c20;
+                    font-size: 0.9rem;
+                }
+                .publishing-status.is-live {
+                    background: #e1f3e4;
+                    color: #14532d;
+                }
+                .publishing-status.is-error {
+                    background: #fde7e7;
+                    color: #8a1c1c;
+                }
+                .publishing-summary-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                    gap: 0.85rem;
+                }
+                .publishing-stat {
+                    background: white;
+                    border: 1px solid rgba(0, 0, 0, 0.06);
+                    border-radius: 14px;
+                    padding: 0.9rem 1rem;
+                }
+                .publishing-stat strong {
+                    display: block;
+                    font-size: 1.35rem;
+                    line-height: 1.1;
+                    margin-top: 0.35rem;
+                }
+                .publishing-grid-wrap {
+                    overflow-x: auto;
+                }
+                .publishing-grid {
+                    width: 100%;
+                    border-collapse: separate;
+                    border-spacing: 0;
+                    min-width: 980px;
+                }
+                .publishing-grid th,
+                .publishing-grid td {
+                    padding: 0.65rem 0.6rem;
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+                    vertical-align: middle;
+                    text-align: left;
+                }
+                .publishing-grid th {
+                    font-size: 0.82rem;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: #666;
+                }
+                .publishing-grid input,
+                .publishing-grid select,
+                .publishing-actions button,
+                .publishing-actions a {
+                    margin-bottom: 0;
+                }
+                .publishing-grid .file-name {
+                    font-weight: 600;
+                    min-width: 220px;
+                }
+                .publishing-grid .muted {
+                    color: #777;
+                    font-size: 0.9rem;
+                }
+                .publishing-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 0.75rem;
+                    margin-top: 1rem;
+                }
+                .publishing-actions form {
+                    margin: 0;
+                }
+                .publishing-actions .button,
+                .publishing-actions button,
+                .publishing-actions input[type="submit"] {
+                    min-width: 160px;
+                }
+                .publishing-settings-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: 1rem;
+                }
+                .publishing-note {
+                    color: #666;
+                    font-size: 0.92rem;
+                    margin-top: 0.75rem;
+                }
+                .publishing-recent ul {
+                    margin-bottom: 0;
+                }
+                @media (max-width: 736px) {
+                    .publishing-panel {
+                        padding: 1rem;
+                    }
+                    .publishing-actions .button,
+                    .publishing-actions button,
+                    .publishing-actions input[type="submit"] {
+                        width: 100%;
+                    }
+                }
+            </style>
+
             {% if current_user.is_authenticated %}
             <p style="margin-bottom:1rem;"><a href="{{ url_for('publishing_quotes') }}">View my saved publishing quotes</a></p>
             {% endif %}
-            <form method="POST" enctype="multipart/form-data" style="max-width:900px;">
-                <div class="row gtr-uniform">
-                    <div class="col-12">
-                        <label for="score_pdfs"><strong>PDF Files (single score or full set)</strong></label>
-                        <input id="score_pdfs" type="file" name="score_pdfs" accept="application/pdf" multiple required>
-                        <small>Tip: Upload multiple PDFs to quote a full set in one go.</small>
+            <div class="publishing-shell">
+                <form id="publishing-form" method="POST" enctype="multipart/form-data" class="publishing-panel">
+                    <div class="publishing-toolbar">
+                        <div>
+                            <h3 style="margin-bottom:0.25rem;">Quote Workspace</h3>
+                            <div class="publishing-note">Each uploaded PDF gets its own editable line. Totals refresh automatically.</div>
+                        </div>
+                        <div id="publishing-status" class="publishing-status">Waiting for files</div>
                     </div>
 
-                    <div class="col-12">
-                        <h4 style="margin:0.5rem 0;">Per-file settings</h4>
-                        <div style="overflow-x:auto;">
-                            <table style="width:100%; border-collapse:collapse;" id="file-settings-table">
-                                <thead>
-                                    <tr style="border-bottom:1px solid rgba(0,0,0,0.15);">
-                                        <th style="text-align:left; padding:0.5rem;">File</th>
-                                        <th style="text-align:left; padding:0.5rem;">Preset</th>
-                                        <th style="text-align:left; padding:0.5rem;">Qty</th>
-                                        <th style="text-align:left; padding:0.5rem;">Print Type</th>
-                                        <th style="text-align:left; padding:0.5rem;">Binding</th>
-                                        <th style="text-align:left; padding:0.5rem;">Acetate</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="file-settings-body">
-                                    <tr><td colspan="6" style="padding:0.5rem; color:#666;">Choose files to configure per-file settings.</td></tr>
-                                </tbody>
-                            </table>
+                    <div class="row gtr-uniform">
+                        <div class="col-12">
+                            <label for="score_pdfs"><strong>PDF Files</strong></label>
+                            <input id="score_pdfs" type="file" name="score_pdfs" accept="application/pdf" multiple required>
+                            <small>Upload a score plus all parts together. Filename rules and presets will prefill the grid.</small>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="publishing-grid-wrap">
+                                <table class="publishing-grid" id="file-settings-table">
+                                    <thead>
+                                        <tr>
+                                            <th>File</th>
+                                            <th>Preset</th>
+                                            <th>Pages</th>
+                                            <th>Qty</th>
+                                            <th>Print Type</th>
+                                            <th>Binding</th>
+                                            <th>Acetate</th>
+                                            <th>Line Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="file-settings-body">
+                                        <tr><td colspan="8" class="muted">Choose files to start your quote.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <h4>Shared Options</h4>
+                            <div class="publishing-settings-grid">
+                                <div>
+                                    <label for="qty">Fallback Qty</label>
+                                    <input id="qty" type="number" min="1" name="qty" value="{{ form_data.qty }}">
+                                </div>
+                                <div>
+                                    <label for="print_type">Fallback Print Type</label>
+                                    <select id="print_type" name="print_type">
+                                        {% for opt in ['A3 Single-sided', 'A3 Double-sided', 'A3 Booklet', 'A4 Single-sided', 'A4 Double-sided', 'A4 Booklet'] %}
+                                        <option value="{{ opt }}" {% if form_data.print_type == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="binding">Fallback Binding</label>
+                                    <select id="binding" name="binding">
+                                        {% for opt in ['None', 'Staple', 'Plastic Comb', 'Wire Comb'] %}
+                                        <option value="{{ opt }}" {% if form_data.binding == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="acetate">Fallback Acetate</label>
+                                    <select id="acetate" name="acetate">
+                                        {% for opt in ['None', 'Front', 'Back', 'Both'] %}
+                                        <option value="{{ opt }}" {% if form_data.acetate == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="front_cover">Front Cover</label>
+                                    <select id="front_cover" name="front_cover">
+                                        {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
+                                        <option value="{{ opt }}" {% if form_data.front_cover == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="back_cover">Back Cover</label>
+                                    <select id="back_cover" name="back_cover">
+                                        {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
+                                        <option value="{{ opt }}" {% if form_data.back_cover == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="paper_type">Paper Type</label>
+                                    <select id="paper_type" name="paper_type">
+                                        {% for opt in ['Standard', 'Photo'] %}
+                                        <option value="{{ opt }}" {% if form_data.paper_type == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="paper_grade">Paper Grade</label>
+                                    <select id="paper_grade" name="paper_grade">
+                                        {% for opt in ['80gsm', '100gsm', '110gsm', '120gsm'] %}
+                                        <option value="{{ opt }}" {% if form_data.paper_grade == opt %}selected{% endif %}>{{ opt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="customer_email">Email quote to</label>
+                                    <input id="customer_email" type="email" name="customer_email" value="{{ form_data.customer_email }}" placeholder="name@example.com">
+                                </div>
+                            </div>
+                            <div class="publishing-note">Front/back covers and paper settings apply to all files in this quote.</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label style="display:flex; gap:0.5rem; align-items:center; margin:0;">
+                                <input type="checkbox" name="email_quote" value="1"> Send me this quote by email when I use the email button
+                            </label>
+                        </div>
+
+                        <div class="col-12 publishing-actions">
+                            <button class="button primary" type="button" id="refresh-quote-btn">Refresh Live Quote</button>
+                            <button class="button" type="submit">Email Quote</button>
+                        </div>
+                    </div>
+                </form>
+
+                <section class="publishing-panel">
+                    <div class="publishing-toolbar">
+                        <div>
+                            <h3 style="margin-bottom:0.25rem;">Live Quote</h3>
+                            <div class="publishing-note">Line prices update from the server using the same calculator as the saved quote.</div>
                         </div>
                     </div>
 
-                    <div class="col-6 col-12-xsmall">
-                        <label for="qty">Quantity</label>
-                        <input id="qty" type="number" min="1" name="qty" value="{{ form_data.qty }}">
+                    <div class="publishing-summary-grid">
+                        <div class="publishing-stat"><span>Files</span><strong id="summary-files">{{ quote.files_count if quote else 0 }}</strong></div>
+                        <div class="publishing-stat"><span>Total Pages</span><strong id="summary-pages">{{ quote.total_pages if quote else 0 }}</strong></div>
+                        <div class="publishing-stat"><span>Total Sheets</span><strong id="summary-sheets">{{ quote.total_sheets if quote else 0 }}</strong></div>
+                        <div class="publishing-stat"><span>Grand Total</span><strong id="summary-total">£{{ '%.2f'|format(quote.line_total if quote else 0) }}</strong></div>
                     </div>
 
-                    <div class="col-6 col-12-xsmall">
-                        <label for="print_type">Print Type</label>
-                        <select id="print_type" name="print_type">
-                            {% for opt in ['A3 Single-sided', 'A3 Double-sided', 'A3 Booklet', 'A4 Single-sided', 'A4 Double-sided', 'A4 Booklet'] %}
-                            <option value="{{ opt }}" {% if form_data.print_type == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
+                    <div class="publishing-actions">
+                        {% if current_user.is_authenticated %}
+                        <form method="POST" action="{{ url_for('publishing_save_quote') }}">
+                            <input type="hidden" name="quote_payload" id="save-quote-payload">
+                            <button type="submit" class="button" id="save-quote-btn" disabled>Save Quote</button>
+                        </form>
+                        {% else %}
+                        <a class="button" href="{{ url_for('login') }}">Log In to Save Quote</a>
+                        {% endif %}
+
+                        <form method="POST" action="{{ url_for('publishing_export_csv') }}">
+                            <input type="hidden" name="quote_payload" id="export-quote-payload">
+                            <button type="submit" class="button" id="export-quote-btn" disabled>Export Quote CSV</button>
+                        </form>
                     </div>
 
-                    <div class="col-6 col-12-xsmall">
-                        <label for="binding">Binding</label>
-                        <select id="binding" name="binding">
-                            {% for opt in ['None', 'Staple', 'Plastic Comb', 'Wire Comb'] %}
-                            <option value="{{ opt }}" {% if form_data.binding == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
+                    <div class="publishing-note" id="quote-meta">Upload files to see a live breakdown.</div>
+                </section>
 
-                    <div class="col-6 col-12-xsmall">
-                        <label for="acetate">Acetate</label>
-                        <select id="acetate" name="acetate">
-                            {% for opt in ['None', 'Front', 'Back', 'Both'] %}
-                            <option value="{{ opt }}" {% if form_data.acetate == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="col-6 col-12-xsmall">
-                        <label for="front_cover">Front Cover</label>
-                        <select id="front_cover" name="front_cover">
-                            {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
-                            <option value="{{ opt }}" {% if form_data.front_cover == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="col-6 col-12-xsmall">
-                        <label for="back_cover">Back Cover</label>
-                        <select id="back_cover" name="back_cover">
-                            {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
-                            <option value="{{ opt }}" {% if form_data.back_cover == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="col-6 col-12-xsmall">
-                        <label for="paper_type">Paper Type</label>
-                        <select id="paper_type" name="paper_type">
-                            {% for opt in ['Standard', 'Photo'] %}
-                            <option value="{{ opt }}" {% if form_data.paper_type == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="col-6 col-12-xsmall">
-                        <label for="paper_grade">Paper Grade</label>
-                        <select id="paper_grade" name="paper_grade">
-                            {% for opt in ['80gsm', '100gsm', '110gsm', '120gsm'] %}
-                            <option value="{{ opt }}" {% if form_data.paper_grade == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="col-6 col-12-xsmall">
-                        <label for="customer_email">Email quote to</label>
-                        <input id="customer_email" type="email" name="customer_email" value="{{ form_data.customer_email }}" placeholder="name@example.com">
-                    </div>
-
-                    <div class="col-6 col-12-xsmall" style="display:flex; align-items:flex-end;">
-                        <label style="display:flex; gap:0.5rem; align-items:center; margin:0;">
-                            <input type="checkbox" name="email_quote" value="1"> Send me this quote by email
-                        </label>
-                    </div>
-
-                    <div class="col-12">
-                        <button class="button primary" type="submit">Get Quote</button>
-                    </div>
-                </div>
-            </form>
-
-            {% if quote %}
-            <hr>
-            <h3>Quote Result</h3>
-            <p><strong>Files:</strong> {{ quote.files_count }}</p>
-            <p><strong>Quantity:</strong> {{ quote.qty }}</p>
-            <p><strong>Format:</strong> {{ quote.print_type }}</p>
-            <p><strong>Total Pages:</strong> {{ quote.total_pages }}</p>
-            <p><strong>Total Sheets:</strong> {{ quote.total_sheets }}</p>
-            <p><strong>Total:</strong> £{{ '%.2f'|format(quote.line_total) }}</p>
-            <div style="overflow-x:auto; margin-top:1rem;">
-                <table style="width:100%; border-collapse:collapse;">
-                    <thead>
-                        <tr style="border-bottom:1px solid rgba(0,0,0,0.15);">
-                            <th style="text-align:left; padding:0.5rem;">File</th>
-                            <th style="text-align:left; padding:0.5rem;">Pages</th>
-                            <th style="text-align:left; padding:0.5rem;">Qty</th>
-                            <th style="text-align:left; padding:0.5rem;">Line Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for line in quote.breakdowns %}
-                        <tr style="border-bottom:1px solid rgba(0,0,0,0.1);">
-                            <td style="padding:0.5rem;">{{ line.file }}</td>
-                            <td style="padding:0.5rem;">{{ line.pages_per_copy }}</td>
-                            <td style="padding:0.5rem;">{{ line.qty }}</td>
-                            <td style="padding:0.5rem;">£{{ '%.2f'|format(line.line_total) }}</td>
-                        </tr>
+                {% if current_user.is_authenticated and recent_quotes %}
+                <section class="publishing-panel publishing-recent">
+                    <h3>Recent Saved Quotes</h3>
+                    <ul>
+                        {% for rec in recent_quotes %}
+                        <li>{{ rec.created_at.strftime('%d %b %Y %H:%M') }} - £{{ '%.2f'|format(rec.total_gbp) }}</li>
                         {% endfor %}
-                    </tbody>
-                </table>
+                    </ul>
+                </section>
+                {% endif %}
             </div>
-            <p style="color:#666;"><small>Estimate includes material, labour, and markup from your calculator defaults.</small></p>
-            {% endif %}
-
-            {% if current_user.is_authenticated and recent_quotes %}
-            <hr>
-            <h3>Recent Saved Quotes</h3>
-            <ul>
-                {% for rec in recent_quotes %}
-                <li>{{ rec.created_at.strftime('%d %b %Y %H:%M') }} - £{{ '%.2f'|format(rec.total_gbp) }}</li>
-                {% endfor %}
-            </ul>
-            {% endif %}
         </div>
     </section>
 </article>
@@ -180,9 +325,19 @@
 {{ super() }}
 <script>
 (function () {
+    const previewUrl = {{ url_for('publishing_preview')|tojson }};
     const fileInput = document.getElementById('score_pdfs');
+    const form = document.getElementById('publishing-form');
     const tbody = document.getElementById('file-settings-body');
+    const status = document.getElementById('publishing-status');
+    const refreshButton = document.getElementById('refresh-quote-btn');
+    const savePayloadInput = document.getElementById('save-quote-payload');
+    const exportPayloadInput = document.getElementById('export-quote-payload');
+    const saveButton = document.getElementById('save-quote-btn');
+    const exportButton = document.getElementById('export-quote-btn');
+    const quoteMeta = document.getElementById('quote-meta');
     const autoQtyRules = {{ (auto_qty_rules or [])|tojson }};
+    const initialQuote = {{ (quote or {})|tojson }};
 
     function printTypeOptions(selected) {
         const opts = ['A3 Single-sided', 'A3 Double-sided', 'A3 Booklet', 'A4 Single-sided', 'A4 Double-sided', 'A4 Booklet'];
@@ -197,6 +352,69 @@
     function acetateOptions(selected) {
         const opts = ['None', 'Front', 'Back', 'Both'];
         return opts.map((opt) => `<option value="${opt}" ${selected === opt ? 'selected' : ''}>${opt}</option>`).join('');
+    }
+
+    function setStatus(message, mode) {
+        status.textContent = message;
+        status.classList.remove('is-live', 'is-error');
+        if (mode) {
+            status.classList.add(mode);
+        }
+    }
+
+    function setActionState(enabled, payload) {
+        const serialized = payload ? JSON.stringify(payload) : '';
+        if (savePayloadInput) {
+            savePayloadInput.value = serialized;
+        }
+        if (exportPayloadInput) {
+            exportPayloadInput.value = serialized;
+        }
+        if (saveButton) {
+            saveButton.disabled = !enabled;
+        }
+        if (exportButton) {
+            exportButton.disabled = !enabled;
+        }
+    }
+
+    function setSummary(quote) {
+        document.getElementById('summary-files').textContent = String(quote && quote.files_count ? quote.files_count : 0);
+        document.getElementById('summary-pages').textContent = String(quote && quote.total_pages ? quote.total_pages : 0);
+        document.getElementById('summary-sheets').textContent = String(quote && quote.total_sheets ? quote.total_sheets : 0);
+        document.getElementById('summary-total').textContent = `£${Number(quote && quote.line_total ? quote.line_total : 0).toFixed(2)}`;
+    }
+
+    function updateRowsFromQuote(quote) {
+        const breakdowns = (quote && quote.breakdowns) ? quote.breakdowns : [];
+        const rows = Array.from(tbody.querySelectorAll('tr[data-file-name]'));
+        rows.forEach((row, idx) => {
+            const line = breakdowns[idx] || {};
+            const pagesCell = row.querySelector('[data-role="pages"]');
+            const totalCell = row.querySelector('[data-role="line-total"]');
+            if (pagesCell) {
+                pagesCell.textContent = String(line.pages_per_copy || 0);
+            }
+            if (totalCell) {
+                totalCell.textContent = `£${Number(line.line_total || 0).toFixed(2)}`;
+            }
+        });
+    }
+
+    function setQuoteMeta(quote) {
+        if (!quote || !quote.breakdowns || !quote.breakdowns.length) {
+            quoteMeta.textContent = 'Upload files to see a live breakdown.';
+            return;
+        }
+        quoteMeta.textContent = `${quote.files_count} file(s), ${quote.total_pages} total pages, ${quote.total_sheets} sheets.`;
+    }
+
+    function debounce(fn, delay) {
+        let timeoutId = null;
+        return function debounced() {
+            window.clearTimeout(timeoutId);
+            timeoutId = window.setTimeout(() => fn(), delay);
+        };
     }
 
     function inferPreset(fileName) {
@@ -245,48 +463,118 @@
     function buildRows(files) {
         tbody.innerHTML = '';
         if (!files || !files.length) {
-            tbody.innerHTML = '<tr><td colspan="6" style="padding:0.5rem; color:#666;">Choose files to configure per-file settings.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="muted">Choose files to start your quote.</td></tr>';
+            setSummary(null);
+            setQuoteMeta(null);
+            setActionState(false, null);
+            setStatus('Waiting for files');
             return;
         }
 
-        Array.from(files).forEach((file, idx) => {
+        Array.from(files).forEach((file) => {
             const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
             tr.setAttribute('data-file-name', file.name || '');
             const inferredPreset = inferPreset(file.name || '');
             const inferredQty = suggestedQty(file.name || '', inferredPreset);
             tr.innerHTML = `
-                <td style="padding:0.5rem;">${file.name}</td>
-                <td style="padding:0.5rem;">
+                <td class="file-name">${file.name}</td>
+                <td>
                     <select name="item_preset">
                         <option value="score" ${inferredPreset === 'score' ? 'selected' : ''}>Score</option>
                         <option value="parts" ${inferredPreset === 'parts' ? 'selected' : ''}>Parts</option>
                         <option value="custom">Custom</option>
                     </select>
                 </td>
-                <td style="padding:0.5rem;">
+                <td data-role="pages" class="muted">-</td>
+                <td>
                     <input type="number" name="item_qty" min="1" value="${inferredQty}" style="max-width:90px;">
                 </td>
-                <td style="padding:0.5rem;">
+                <td>
                     <select name="item_print_type">${printTypeOptions('A3 Double-sided')}</select>
                 </td>
-                <td style="padding:0.5rem;">
+                <td>
                     <select name="item_binding">${bindingOptions('Wire Comb')}</select>
                 </td>
-                <td style="padding:0.5rem;">
+                <td>
                     <select name="item_acetate">${acetateOptions('Front')}</select>
                 </td>
+                <td data-role="line-total">-</td>
             `;
             tbody.appendChild(tr);
 
             const presetSelect = tr.querySelector('select[name="item_preset"]');
-            presetSelect.addEventListener('change', () => applyPreset(tr, presetSelect.value));
+            presetSelect.addEventListener('change', () => {
+                applyPreset(tr, presetSelect.value);
+                schedulePreview();
+            });
+
+            tr.querySelectorAll('input, select').forEach((field) => {
+                if (field !== presetSelect) {
+                    field.addEventListener('change', schedulePreview);
+                    field.addEventListener('input', schedulePreview);
+                }
+            });
 
             applyPreset(tr, inferredPreset);
         });
+
+        schedulePreview();
     }
 
+    async function previewQuote() {
+        if (!fileInput.files || !fileInput.files.length) {
+            setStatus('Waiting for files');
+            return;
+        }
+
+        setStatus('Calculating live quote…');
+        refreshButton.disabled = true;
+        setActionState(false, null);
+
+        try {
+            const response = await fetch(previewUrl, {
+                method: 'POST',
+                body: new FormData(form),
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                throw new Error(data && data.error ? data.error : 'Live quote preview failed.');
+            }
+
+            setSummary(data.quote);
+            updateRowsFromQuote(data.quote);
+            setQuoteMeta(data.quote);
+            setActionState(true, data.quote_payload);
+            setStatus('Live quote is up to date', 'is-live');
+        } catch (error) {
+            setSummary(null);
+            updateRowsFromQuote(null);
+            setQuoteMeta(null);
+            setActionState(false, null);
+            setStatus(error && error.message ? error.message : 'Live quote failed.', 'is-error');
+        } finally {
+            refreshButton.disabled = false;
+        }
+    }
+
+    const schedulePreview = debounce(previewQuote, 350);
+
     fileInput.addEventListener('change', () => buildRows(fileInput.files));
+    refreshButton.addEventListener('click', previewQuote);
+    ['qty', 'print_type', 'binding', 'acetate', 'front_cover', 'back_cover', 'paper_type', 'paper_grade'].forEach((id) => {
+        const field = document.getElementById(id);
+        if (!field) {
+            return;
+        }
+        field.addEventListener('change', schedulePreview);
+        field.addEventListener('input', schedulePreview);
+    });
+
+    if (initialQuote && initialQuote.breakdowns && initialQuote.breakdowns.length) {
+        setSummary(initialQuote);
+        setQuoteMeta(initialQuote);
+        setStatus('Last calculated quote shown below', 'is-live');
+    }
 })();
 </script>
 {% endblock %}

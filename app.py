@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import csv
+import io
 import os
 import re
 import smtplib
@@ -12,7 +13,7 @@ import uuid
 
 import requests
 
-from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, send_from_directory, make_response
+from flask import Flask, flash, redirect, render_template, request, session, url_for, abort, send_from_directory, make_response, jsonify
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
@@ -232,6 +233,130 @@ def _serialize_quote_payload(items, totals, request_email):
         "breakdowns": totals.get("breakdowns") or [],
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
+
+
+def _quote_summary_from_totals(qty, default_print_type, default_binding, paper_type, paper_grade, totals):
+    return {
+        'qty': qty,
+        'files_count': len(totals.get('breakdowns') or []),
+        'breakdowns': totals.get('breakdowns') or [],
+        'total_pages': int(totals.get('total_pages') or 0),
+        'total_sheets': int(totals.get('total_sheets') or 0),
+        'line_total': float(totals.get('grand_total') or 0.0),
+        'print_type': default_print_type,
+        'binding': default_binding,
+        'paper_type': paper_type,
+        'paper_grade': paper_grade,
+    }
+
+
+def _get_publishing_uploads(files):
+    uploads = [f for f in files.getlist('score_pdfs') if f and f.filename]
+    if uploads:
+        return uploads
+
+    single_upload = files.get('score_pdf')
+    if single_upload and single_upload.filename:
+        return [single_upload]
+    return []
+
+
+def _calculate_publishing_quote(uploads, form):
+    engine = _load_print_engine_calculator()
+    if engine is None:
+        raise RuntimeError('Publishing quote engine is not available on the server yet.')
+    if PdfReader is None:
+        raise RuntimeError('PDF reader dependency is unavailable.')
+    if not uploads:
+        raise ValueError('Please upload at least one PDF score/set file.')
+
+    qty = _safe_int(form.get('qty'), default=1, minimum=1)
+    default_print_type = form.get('print_type', 'A4 Double-sided')
+    default_binding = form.get('binding', 'None')
+    front_cover = form.get('front_cover', 'None')
+    back_cover = form.get('back_cover', 'None')
+    default_acetate = form.get('acetate', 'None')
+    paper_type = form.get('paper_type', 'Standard')
+    paper_grade = form.get('paper_grade', '120gsm')
+    customer_email = (form.get('customer_email') or '').strip().lower()
+
+    item_qty_list = form.getlist('item_qty')
+    item_print_type_list = form.getlist('item_print_type')
+    item_binding_list = form.getlist('item_binding')
+    item_acetate_list = form.getlist('item_acetate')
+    item_preset_list = form.getlist('item_preset')
+
+    items = []
+    for idx, upload in enumerate(uploads):
+        filename = (upload.filename or '').lower()
+        if not filename.endswith('.pdf'):
+            raise ValueError(f'{upload.filename} is not a valid PDF file.')
+
+        try:
+            upload.stream.seek(0)
+            pages = len(PdfReader(upload.stream).pages)
+            upload.stream.seek(0)
+        except Exception as exc:
+            raise ValueError(f'We could not read {upload.filename}. Please try another PDF.') from exc
+
+        file_qty = _safe_int(_list_value(item_qty_list, idx, str(qty)), default=qty, minimum=1)
+        file_print_type = _list_value(item_print_type_list, idx, default_print_type)
+        file_binding = _list_value(item_binding_list, idx, default_binding)
+        file_acetate = _list_value(item_acetate_list, idx, default_acetate)
+        file_preset = _list_value(item_preset_list, idx, 'custom')
+
+        file_print_type, file_binding, file_acetate = _apply_publishing_preset(
+            file_preset,
+            file_print_type,
+            file_binding,
+            file_acetate,
+        )
+
+        items.append({
+            'file_name': secure_filename(upload.filename or '') or 'uploaded-score.pdf',
+            'pages': pages,
+            'qty': file_qty,
+            'type': file_print_type,
+            'binding': file_binding,
+            'front_cover': front_cover,
+            'back_cover': back_cover,
+            'acetate': file_acetate,
+            'paper_type': paper_type,
+            'paper_grade': paper_grade,
+            'preset': file_preset,
+        })
+
+    settings = _load_publishing_settings()
+    totals = engine.calculate_totals(items, settings)
+    quote = _quote_summary_from_totals(qty, default_print_type, default_binding, paper_type, paper_grade, totals)
+    quote_payload = _serialize_quote_payload(items, totals, customer_email)
+    return quote, quote_payload
+
+
+def _csv_response_for_quote_payload(quote_payload):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    totals = quote_payload.get('totals') or {}
+    writer.writerow(['File', 'Pages per copy', 'Qty', 'Print type', 'Binding', 'Acetate', 'Line total GBP'])
+    for line in quote_payload.get('breakdowns') or []:
+        writer.writerow([
+            line.get('file', ''),
+            int(line.get('pages_per_copy') or 0),
+            int(line.get('qty') or 0),
+            line.get('print_type', ''),
+            line.get('binding', ''),
+            line.get('acetate', ''),
+            f"{float(line.get('line_total') or 0.0):.2f}",
+        ])
+    writer.writerow([])
+    writer.writerow(['Total pages', int(totals.get('total_pages') or 0)])
+    writer.writerow(['Total sheets', int(totals.get('total_sheets') or 0)])
+    writer.writerow(['Grand total GBP', f"{float(totals.get('grand_total') or 0.0):.2f}"])
+
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    response.headers['Content-Disposition'] = 'attachment; filename=publishing-quote.csv'
+    return response
 
 
 def _send_publishing_quote_email(customer_email, quote_payload):
@@ -1107,113 +1232,12 @@ def publishing():
 
     if request.method == 'POST':
         form_data.update({k: (request.form.get(k) or form_data.get(k, '')) for k in form_data.keys()})
-
-        engine = _load_print_engine_calculator()
-        if engine is None:
-            flash('Publishing quote engine is not available on the server yet.', 'danger')
-            return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
-
-        uploads = [f for f in request.files.getlist('score_pdfs') if f and f.filename]
-        if not uploads:
-            single_upload = request.files.get('score_pdf')
-            if single_upload and single_upload.filename:
-                uploads = [single_upload]
-
-        if not uploads:
-            flash('Please upload at least one PDF score/set file.', 'warning')
-            return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
-
-        if PdfReader is None:
-            flash('PDF reader dependency is unavailable.', 'danger')
-            return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
-
-        qty = _safe_int(request.form.get('qty'), default=1, minimum=1)
-        default_print_type = request.form.get('print_type', 'A4 Double-sided')
-        default_binding = request.form.get('binding', 'None')
-        front_cover = request.form.get('front_cover', 'None')
-        back_cover = request.form.get('back_cover', 'None')
-        default_acetate = request.form.get('acetate', 'None')
-        paper_type = request.form.get('paper_type', 'Standard')
-        paper_grade = request.form.get('paper_grade', '120gsm')
-        customer_email = (request.form.get('customer_email') or '').strip().lower()
-
-        item_qty_list = request.form.getlist('item_qty')
-        item_print_type_list = request.form.getlist('item_print_type')
-        item_binding_list = request.form.getlist('item_binding')
-        item_acetate_list = request.form.getlist('item_acetate')
-        item_preset_list = request.form.getlist('item_preset')
-
-        items = []
-        for idx, upload in enumerate(uploads):
-            filename = (upload.filename or '').lower()
-            if not filename.endswith('.pdf'):
-                flash(f'{upload.filename} is not a valid PDF file.', 'warning')
-                return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes)
-
-            try:
-                upload.stream.seek(0)
-                pages = len(PdfReader(upload.stream).pages)
-            except Exception:
-                app.logger.exception('Failed reading uploaded PDF for publishing quote')
-                flash(f'We could not read {upload.filename}. Please try another PDF.', 'danger')
-                return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
-
-            file_qty = _safe_int(_list_value(item_qty_list, idx, str(qty)), default=qty, minimum=1)
-            file_print_type = _list_value(item_print_type_list, idx, default_print_type)
-            file_binding = _list_value(item_binding_list, idx, default_binding)
-            file_acetate = _list_value(item_acetate_list, idx, default_acetate)
-            file_preset = _list_value(item_preset_list, idx, "custom")
-
-            file_print_type, file_binding, file_acetate = _apply_publishing_preset(
-                file_preset,
-                file_print_type,
-                file_binding,
-                file_acetate,
-            )
-
-            items.append({
-                'file_name': secure_filename(upload.filename or '') or 'uploaded-score.pdf',
-                'pages': pages,
-                'qty': file_qty,
-                'type': file_print_type,
-                'binding': file_binding,
-                'front_cover': front_cover,
-                'back_cover': back_cover,
-                'acetate': file_acetate,
-                'paper_type': paper_type,
-                'paper_grade': paper_grade,
-                'preset': file_preset,
-            })
-
+        uploads = _get_publishing_uploads(request.files)
         try:
-            settings = _load_publishing_settings()
-            totals = engine.calculate_totals(items, settings)
-            quote = {
-                'qty': qty,
-                'files_count': len(items),
-                'breakdowns': totals.get('breakdowns') or [],
-                'total_pages': int(totals.get('total_pages') or 0),
-                'total_sheets': int(totals.get('total_sheets') or 0),
-                'line_total': float(totals.get('grand_total') or 0.0),
-                'print_type': default_print_type,
-                'binding': default_binding,
-                'paper_type': paper_type,
-                'paper_grade': paper_grade,
-            }
-
-            quote_payload = _serialize_quote_payload(items, totals, customer_email)
-
-            if current_user.is_authenticated:
-                saved = PublishingQuote(
-                    user_id=current_user.id,
-                    customer_email=customer_email or current_user.email,
-                    quote_payload=json.dumps(quote_payload),
-                    total_gbp=float(totals.get('grand_total') or 0.0),
-                )
-                db.session.add(saved)
-                db.session.commit()
+            quote, quote_payload = _calculate_publishing_quote(uploads, request.form)
 
             if request.form.get('email_quote') == '1':
+                customer_email = (request.form.get('customer_email') or '').strip().lower()
                 if not customer_email:
                     flash('Enter an email address to send the quote.', 'warning')
                 else:
@@ -1223,11 +1247,73 @@ def publishing():
                     else:
                         flash(f'Quote generated but email failed: {detail}', 'warning')
 
+        except ValueError as exc:
+            flash(str(exc), 'warning')
+        except RuntimeError as exc:
+            flash(str(exc), 'danger')
         except Exception:
             app.logger.exception('Publishing quote calculation failed')
             flash('Quote calculation failed. Please try again.', 'danger')
 
     return render_template('Publishing.html', form_data=form_data, quote=quote, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
+
+
+@app.route('/publishing/preview', methods=['POST'])
+def publishing_preview():
+    try:
+        uploads = _get_publishing_uploads(request.files)
+        quote, quote_payload = _calculate_publishing_quote(uploads, request.form)
+        return jsonify({'ok': True, 'quote': quote, 'quote_payload': quote_payload})
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 503
+    except Exception:
+        app.logger.exception('Publishing live preview failed')
+        return jsonify({'ok': False, 'error': 'Live quote preview failed. Please try again.'}), 500
+
+
+@app.route('/publishing/save', methods=['POST'])
+@login_required
+def publishing_save_quote():
+    quote_payload_raw = (request.form.get('quote_payload') or '').strip()
+    if not quote_payload_raw:
+        flash('Generate a quote before saving it.', 'warning')
+        return redirect(url_for('publishing'))
+
+    try:
+        quote_payload = json.loads(quote_payload_raw)
+    except (TypeError, ValueError):
+        flash('Quote data was invalid. Please refresh the quote and try again.', 'warning')
+        return redirect(url_for('publishing'))
+
+    total_gbp = float((quote_payload.get('totals') or {}).get('grand_total') or 0.0)
+    saved = PublishingQuote(
+        user_id=current_user.id,
+        customer_email=(quote_payload.get('customer_email') or current_user.email or '').strip().lower(),
+        quote_payload=json.dumps(quote_payload),
+        total_gbp=total_gbp,
+    )
+    db.session.add(saved)
+    db.session.commit()
+    flash('Quote saved to your account.', 'success')
+    return redirect(url_for('publishing_quotes'))
+
+
+@app.route('/publishing/export.csv', methods=['POST'])
+def publishing_export_csv():
+    quote_payload_raw = (request.form.get('quote_payload') or '').strip()
+    if not quote_payload_raw:
+        flash('Generate a quote before exporting it.', 'warning')
+        return redirect(url_for('publishing'))
+
+    try:
+        quote_payload = json.loads(quote_payload_raw)
+    except (TypeError, ValueError):
+        flash('Quote data was invalid. Please refresh the quote and try again.', 'warning')
+        return redirect(url_for('publishing'))
+
+    return _csv_response_for_quote_payload(quote_payload)
 
 
 @app.route('/publishing/quotes')
