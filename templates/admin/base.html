@@ -147,6 +147,12 @@
         <a href="{{ url_for('admin.manage_pages') }}" class="{% if 'page' in request.endpoint %}active{% endif %}">
             <i class="bi bi-file-text"></i> Page Content
         </a>
+        <a href="{{ url_for('shop.admin_products_list') }}" class="{% if 'admin_products' in request.endpoint %}active{% endif %}">
+            <i class="bi bi-cart3"></i> Shop Products
+        </a>
+        <a href="{{ url_for('shop.admin_orders_list') }}" class="{% if 'admin_orders' in request.endpoint %}active{% endif %}">
+            <i class="bi bi-receipt"></i> Shop Orders
+        </a>
         
         <h5>Site</h5>
         <a href="{{ url_for('admin.manage_messages') }}" class="{% if 'message' in request.endpoint %}active{% endif %}">

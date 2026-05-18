@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ product.title }} - Shop{% endblock %}
+
+{% block main_content %}
+<article id="main">
+    <header>
+        <h2>{{ product.title }}</h2>
+        {% if product.subtitle %}<p>{{ product.subtitle }}</p>{% endif %}
+    </header>
+
+    <section class="wrapper style5">
+        <div class="inner" style="display:grid; gap:2rem; grid-template-columns:minmax(260px,420px) minmax(280px,1fr); align-items:start;">
+            <div>
+                {% if product.cover_image_url %}
+                <img src="{{ media_url(product.cover_image_url) }}" alt="{{ product.title }}" style="display:block; width:100%; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.12);">
+                {% endif %}
+            </div>
+
+            <div>
+                {% if product.description %}
+                <div style="margin-bottom:1.2rem;">{{ product.description|safe }}</div>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('shop.shop_cart_add') }}">
+                    <input type="hidden" name="product_id" value="{{ product.id }}">
+
+                    <div style="margin-bottom:1rem;">
+                        <label for="delivery_format"><strong>Format</strong></label>
+                        <select id="delivery_format" name="delivery_format" style="display:block; margin-top:0.35rem; min-width:240px;">
+                            {% if product.has_pdf %}<option value="pdf">PDF Download - {{ format_money(product.price_pdf_cents, 'gbp') }}</option>{% endif %}
+                            {% if product.has_print %}<option value="print">Printed Copy - {{ format_money(product.price_print_cents, 'gbp') }}</option>{% endif %}
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom:1rem;">
+                        <label for="quantity"><strong>Quantity</strong></label>
+                        <input id="quantity" name="quantity" type="number" min="1" value="1" style="display:block; margin-top:0.35rem; width:120px;">
+                    </div>
+
+                    <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                        <button type="submit" class="button primary">Add To Cart</button>
+                        <a href="{{ url_for('shop.shop_cart') }}" class="button">View Cart</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+</article>
+{% endblock %}

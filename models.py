@@ -32,6 +32,7 @@ def init_models(db):
         news_items = db.relationship('NewsItem', backref='author', lazy=True, cascade='all, delete-orphan')
         events = db.relationship('Event', backref='author', lazy=True, cascade='all, delete-orphan')
         page_content = db.relationship('PageContent', backref='author', lazy=True, cascade='all, delete-orphan')
+        products = db.relationship('Product', backref='author', lazy=True, cascade='all, delete-orphan')
 
         def set_password(self, password):
             self.password_hash = generate_password_hash(password)
@@ -175,6 +176,69 @@ def init_models(db):
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    class Product(db.Model):
+        """Sellable music product with optional PDF download and printed copy."""
+        id = db.Column(db.Integer, primary_key=True)
+        slug = db.Column(db.String(255), unique=True, nullable=False, index=True)
+        title = db.Column(db.String(255), nullable=False)
+        subtitle = db.Column(db.String(255))
+        description = db.Column(db.Text)
+        cover_image_url = db.Column(db.String(512))
+        pdf_file_url = db.Column(db.String(512))
+        price_pdf_cents = db.Column(db.Integer)
+        price_print_cents = db.Column(db.Integer)
+        has_pdf = db.Column(db.Boolean, default=True, nullable=False)
+        has_print = db.Column(db.Boolean, default=True, nullable=False)
+        published = db.Column(db.Boolean, default=False, nullable=False, index=True)
+        sort_order = db.Column(db.Integer, default=0, nullable=False)
+
+        author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    class ShopOrder(db.Model):
+        """Customer order created from Stripe checkout."""
+        id = db.Column(db.Integer, primary_key=True)
+        order_number = db.Column(db.String(32), unique=True, nullable=False, index=True)
+        status = db.Column(db.String(32), default='pending', nullable=False, index=True)
+        stripe_checkout_session_id = db.Column(db.String(255), unique=True, index=True)
+        stripe_payment_intent_id = db.Column(db.String(255), index=True)
+        currency = db.Column(db.String(8), default='gbp', nullable=False)
+        total_cents = db.Column(db.Integer, default=0, nullable=False)
+        customer_name = db.Column(db.String(255))
+        customer_email = db.Column(db.String(255), nullable=False, index=True)
+        shipping_name = db.Column(db.String(255))
+        shipping_line1 = db.Column(db.String(255))
+        shipping_line2 = db.Column(db.String(255))
+        shipping_city = db.Column(db.String(255))
+        shipping_state = db.Column(db.String(255))
+        shipping_postal_code = db.Column(db.String(64))
+        shipping_country = db.Column(db.String(64))
+        has_physical_items = db.Column(db.Boolean, default=False, nullable=False)
+        customer_email_sent = db.Column(db.Boolean, default=False, nullable=False)
+        admin_email_sent = db.Column(db.Boolean, default=False, nullable=False)
+        paid_at = db.Column(db.DateTime)
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+        items = db.relationship('ShopOrderItem', backref='order', lazy=True, cascade='all, delete-orphan')
+
+    class ShopOrderItem(db.Model):
+        """Snapshot of product purchase at time of checkout."""
+        id = db.Column(db.Integer, primary_key=True)
+        order_id = db.Column(db.Integer, db.ForeignKey('shop_order.id'), nullable=False, index=True)
+        product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False, index=True)
+        title_snapshot = db.Column(db.String(255), nullable=False)
+        delivery_format = db.Column(db.String(16), nullable=False)  # 'pdf' or 'print'
+        quantity = db.Column(db.Integer, default=1, nullable=False)
+        unit_price_cents = db.Column(db.Integer, default=0, nullable=False)
+        line_total_cents = db.Column(db.Integer, default=0, nullable=False)
+        pdf_file_url_snapshot = db.Column(db.String(512))
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+        product = db.relationship('Product')
+
     
     return {
         'User': User,
@@ -183,4 +247,7 @@ def init_models(db):
         'PageContent': PageContent,
         'ContactMessage': ContactMessage,
         'Testimonial': Testimonial,
+        'Product': Product,
+        'ShopOrder': ShopOrder,
+        'ShopOrderItem': ShopOrderItem,
     }

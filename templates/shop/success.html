@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block page_title %}Order Received{% endblock %}
+
+{% block main_content %}
+<article id="main">
+    <header>
+        <h2>Thank You</h2>
+        <p>Your payment was received successfully.</p>
+    </header>
+
+    <section class="wrapper style5">
+        <div class="inner">
+            {% if order %}
+            <p><strong>Order:</strong> {{ order.order_number }}</p>
+            <p>A receipt and any download links have been emailed to {{ order.customer_email }}.</p>
+            {% else %}
+            <p>Your order is processing. You will receive a receipt shortly.</p>
+            {% endif %}
+            <a href="{{ url_for('shop.shop_index') }}" class="button">Back To Shop</a>
+        </div>
+    </section>
+</article>
+{% endblock %}

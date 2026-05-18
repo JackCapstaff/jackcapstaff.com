@@ -153,6 +153,9 @@ Event = models_dict['Event']
 PageContent = models_dict['PageContent']
 ContactMessage = models_dict['ContactMessage']
 Testimonial = models_dict['Testimonial']
+Product = models_dict['Product']
+ShopOrder = models_dict['ShopOrder']
+ShopOrderItem = models_dict['ShopOrderItem']
 # Expose models and db to app context for access in blueprints
 app.db = db
 app.User = User
@@ -161,11 +164,17 @@ app.Event = Event
 app.PageContent = PageContent
 app.ContactMessage = ContactMessage
 app.Testimonial = Testimonial
+app.Product = Product
+app.ShopOrder = ShopOrder
+app.ShopOrderItem = ShopOrderItem
 
 
 # Import and register admin blueprint
 from admin import admin_bp
 app.register_blueprint(admin_bp)
+
+from shop import shop_bp
+app.register_blueprint(shop_bp)
 
 rehearsal_schedule_app = load_rehearsal_schedule_app()
 if rehearsal_schedule_app is not None:
@@ -833,6 +842,7 @@ def sitemap_xml():
         {'loc': url_for('index', _external=True), 'lastmod': today, 'changefreq': 'daily', 'priority': '1.0'},
         {'loc': url_for('biography', _external=True), 'lastmod': today, 'changefreq': 'monthly', 'priority': '0.7'},
         {'loc': url_for('schedule', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.8'},
+        {'loc': url_for('shop.shop_index', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.9'},
         {'loc': url_for('media', _external=True), 'lastmod': today, 'changefreq': 'weekly', 'priority': '0.8'},
         {'loc': url_for('news', _external=True), 'lastmod': today, 'changefreq': 'daily', 'priority': '0.9'},
         {'loc': url_for('contact', _external=True), 'lastmod': today, 'changefreq': 'monthly', 'priority': '0.6'},

@@ -1,0 +1,50 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<h2 class="page-title">Order {{ order.order_number }}</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <p><strong>Status:</strong> {{ order.status }}</p>
+                <p><strong>Customer:</strong> {{ order.customer_name or '' }} ({{ order.customer_email }})</p>
+                <p><strong>Total:</strong> {{ format_money(order.total_cents, order.currency) }}</p>
+                <p><strong>Paid:</strong> {{ order.paid_at.strftime('%Y-%m-%d %H:%M') if order.paid_at else 'Not yet' }}</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Items</h5></div>
+            <div class="card-body">
+                <ul class="list-group">
+                    {% for item in items %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>{{ item.title_snapshot }} ({{ item.delivery_format|upper }}) x{{ item.quantity }}</span>
+                        <strong>{{ format_money(item.line_total_cents, order.currency) }}</strong>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Shipping</h5></div>
+            <div class="card-body">
+                {% if order.has_physical_items %}
+                    <p>{{ order.shipping_name or '' }}</p>
+                    <p>{{ order.shipping_line1 or '' }}<br>{{ order.shipping_line2 or '' }}</p>
+                    <p>{{ order.shipping_city or '' }} {{ order.shipping_postal_code or '' }}</p>
+                    <p>{{ order.shipping_country or '' }}</p>
+                {% else %}
+                    <p>No physical shipping required.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

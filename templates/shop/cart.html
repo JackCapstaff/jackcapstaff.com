@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block page_title %}Cart - Shop{% endblock %}
+
+{% block main_content %}
+<article id="main">
+    <header>
+        <h2>Your Cart</h2>
+        <p>Secure checkout powered by Stripe.</p>
+    </header>
+
+    <section class="wrapper style5">
+        <div class="inner">
+            {% if items %}
+            <div style="overflow-x:auto; margin-bottom:1.5rem;">
+                <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(0,0,0,0.15);">
+                            <th style="text-align:left; padding:0.6rem;">Item</th>
+                            <th style="text-align:left; padding:0.6rem;">Format</th>
+                            <th style="text-align:left; padding:0.6rem;">Qty</th>
+                            <th style="text-align:left; padding:0.6rem;">Line Total</th>
+                            <th style="text-align:left; padding:0.6rem;">Remove</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in items %}
+                        <tr style="border-bottom:1px solid rgba(0,0,0,0.1);">
+                            <td style="padding:0.6rem;">{{ row.product.title }}</td>
+                            <td style="padding:0.6rem;">{{ row.delivery_format|upper }}</td>
+                            <td style="padding:0.6rem;">{{ row.quantity }}</td>
+                            <td style="padding:0.6rem;">{{ format_money(row.line_total_cents, 'gbp') }}</td>
+                            <td style="padding:0.6rem;">
+                                <form method="POST" action="{{ url_for('shop.shop_cart_remove') }}">
+                                    <input type="hidden" name="product_id" value="{{ row.product.id }}">
+                                    <input type="hidden" name="delivery_format" value="{{ row.delivery_format }}">
+                                    <button class="button small">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="margin-bottom:1rem;">Total: {{ format_money(total_cents, 'gbp') }}</h3>
+
+            <form method="POST" action="{{ url_for('shop.shop_checkout_create') }}" style="max-width:420px;">
+                <label for="customer_email"><strong>Email for receipt and downloads</strong></label>
+                <input id="customer_email" name="customer_email" type="email" required style="margin-top:0.4rem; margin-bottom:0.9rem;">
+                <button class="button primary fit" type="submit">Proceed To Secure Checkout</button>
+            </form>
+            {% else %}
+            <p>Your cart is empty.</p>
+            <a class="button" href="{{ url_for('shop.shop_index') }}">Browse Music</a>
+            {% endif %}
+        </div>
+    </section>
+</article>
+{% endblock %}

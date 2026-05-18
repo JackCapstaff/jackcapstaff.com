@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block page_title %}Shop - Jack Capstaff{% endblock %}
+
+{% block main_content %}
+<article id="main">
+    <header>
+        <h2>Shop</h2>
+        <p>Original arrangements and compositions available as PDF downloads and printed copies.</p>
+    </header>
+
+    <section class="wrapper style5">
+        <div class="inner">
+            {% if products %}
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1.5rem;">
+                {% for product in products %}
+                <article style="border:1px solid rgba(0,0,0,0.1); border-radius:10px; overflow:hidden; background:#fff;">
+                    {% if product.cover_image_url %}
+                    <a href="{{ url_for('shop.shop_product_detail', slug=product.slug) }}" style="display:block;">
+                        <img src="{{ media_url(product.cover_image_url) }}" alt="{{ product.title }}" style="display:block; width:100%; height:260px; object-fit:cover;">
+                    </a>
+                    {% endif %}
+                    <div style="padding:1rem;">
+                        <h3 style="margin-bottom:0.35rem;">{{ product.title }}</h3>
+                        {% if product.subtitle %}<p style="font-size:0.9rem; margin-bottom:0.7rem;">{{ product.subtitle }}</p>{% endif %}
+                        <p style="font-size:0.9rem; color:#555; margin-bottom:1rem;">
+                            {% if product.has_pdf %}PDF: {{ format_money(product.price_pdf_cents, 'gbp') }}{% endif %}
+                            {% if product.has_pdf and product.has_print %} | {% endif %}
+                            {% if product.has_print %}Print: {{ format_money(product.price_print_cents, 'gbp') }}{% endif %}
+                        </p>
+                        <a class="button small fit" href="{{ url_for('shop.shop_product_detail', slug=product.slug) }}">View & Buy</a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p>No products are live yet. Check back soon.</p>
+            {% endif %}
+        </div>
+    </section>
+</article>
+{% endblock %}

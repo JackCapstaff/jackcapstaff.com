@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}
+<h2 class="page-title">{{ action }} Product</h2>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label class="form-label">Title *</label>
+                        <input class="form-control" name="title" required value="{{ product.title if product else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Slug</label>
+                        <input class="form-control" name="slug" value="{{ product.slug if product else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Subtitle</label>
+                        <input class="form-control" name="subtitle" value="{{ product.subtitle if product else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" name="description">{{ product.description if product else '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Cover Image URL</label>
+                        <input class="form-control" name="cover_image_url" value="{{ product.cover_image_url if product else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">PDF File URL</label>
+                        <input class="form-control" name="pdf_file_url" value="{{ product.pdf_file_url if product else '' }}">
+                        <small class="text-muted">Or upload a PDF below.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Upload PDF File</label>
+                        <input type="file" class="form-control" name="pdf_file" accept="application/pdf">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">PDF Price (GBP)</label>
+                            <input class="form-control" name="price_pdf" value="{{ '%.2f'|format((product.price_pdf_cents or 0)/100) if product else '' }}" placeholder="10.00">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Print Price (GBP)</label>
+                            <input class="form-control" name="price_print" value="{{ '%.2f'|format((product.price_print_cents or 0)/100) if product else '' }}" placeholder="15.00">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <input class="form-check-input" type="checkbox" id="has_pdf" name="has_pdf" {% if product and product.has_pdf %}checked{% elif not product %}checked{% endif %}>
+                        <label class="form-check-label" for="has_pdf">Offer PDF download</label>
+                    </div>
+                    <div class="mb-3">
+                        <input class="form-check-input" type="checkbox" id="has_print" name="has_print" {% if product and product.has_print %}checked{% elif not product %}checked{% endif %}>
+                        <label class="form-check-label" for="has_print">Offer printed copy</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Sort Order</label>
+                        <input class="form-control" type="number" name="sort_order" value="{{ product.sort_order if product else 0 }}">
+                    </div>
+                    <div class="mb-3">
+                        <input class="form-check-input" type="checkbox" id="published" name="published" {% if product and product.published %}checked{% endif %}>
+                        <label class="form-check-label" for="published">Published</label>
+                    </div>
+                    <button class="btn btn-primary" type="submit">{{ action }} Product</button>
+                    <a href="{{ url_for('shop.admin_products_list') }}" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
