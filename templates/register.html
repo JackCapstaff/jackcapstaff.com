@@ -13,6 +13,7 @@
 		<section class="wrapper style5">
 			<div class="inner" style="max-width: 520px; margin: 0 auto;">
 				<form method="POST" action="{{ url_for('register') }}">
+					<input type="hidden" name="next" value="{{ next_page or '' }}" />
 					<div class="fields">
 						<div class="field">
 							<label for="username">Username</label>
@@ -43,7 +44,7 @@
 				<hr />
 
 				<p style="text-align: center; margin-top: 2rem;">
-					Already have an account? <a href="{{ url_for('login') }}">Login here</a>
+					Already have an account? <a href="{{ url_for('login', next=next_page) if next_page else url_for('login') }}">Login here</a>
 				</p>
 			</div>
 		</section>

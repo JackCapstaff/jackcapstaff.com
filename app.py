@@ -1388,14 +1388,6 @@ def publishing():
     form_data = {
         'quote_title': '',
         'customer_name': current_user.name if current_user.is_authenticated else '',
-        'qty': '1',
-        'print_type': 'A4 Double-sided',
-        'binding': 'None',
-        'front_cover': 'None',
-        'back_cover': 'None',
-        'acetate': 'None',
-        'paper_type': 'Standard',
-        'paper_grade': '120gsm',
         'customer_email': current_user.email if current_user.is_authenticated else '',
     }
     quote = None
@@ -1449,8 +1441,11 @@ def publishing_preview():
 
 
 @app.route('/publishing/save', methods=['POST'])
-@login_required
 def publishing_save_quote():
+    if not current_user.is_authenticated:
+        flash('Create an account to save quotes.', 'warning')
+        return redirect(url_for('register', next=url_for('publishing')))
+
     quote_payload_raw = (request.form.get('quote_payload') or '').strip()
     quote_title = (request.form.get('quote_title') or '').strip()
     if not quote_payload_raw:
@@ -1836,24 +1831,27 @@ def register():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
 
+    next_page = request.args.get('next', '').strip()
+
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         name = request.form.get('name', '').strip()
         password = request.form.get('password', '')
         password_confirm = request.form.get('password_confirm', '')
+        next_page = request.form.get('next', '').strip() or next_page
 
         if not username or not email or not password:
             flash('Please complete all registration fields.', 'warning')
-            return render_template('register.html')
+            return render_template('register.html', next_page=next_page)
 
         if password != password_confirm:
             flash('Passwords do not match.', 'warning')
-            return render_template('register.html')
+            return render_template('register.html', next_page=next_page)
 
         if User.query.filter((User.username == username) | (User.email == email)).first():
             flash('That username or email already exists.', 'warning')
-            return render_template('register.html')
+            return render_template('register.html', next_page=next_page)
 
         user = User(username=username, email=email, name=name)
         user.set_password(password)
@@ -1862,9 +1860,11 @@ def register():
 
         login_user(user)
         flash('Registration complete. You are now logged in.', 'success')
+        if _is_safe_redirect_target(next_page):
+            return redirect(next_page)
         return redirect(url_for('index'))
 
-    return render_template('register.html')
+    return render_template('register.html', next_page=next_page)
 
 
 @app.route('/logout')

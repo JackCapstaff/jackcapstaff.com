@@ -188,68 +188,8 @@
                         </div>
 
                         <div class="col-12">
-                            <h4>Shared Options</h4>
+                            <h4>Quote Details</h4>
                             <div class="publishing-settings-grid">
-                                <div>
-                                    <label for="qty">Fallback Qty</label>
-                                    <input id="qty" type="number" min="1" name="qty" value="{{ form_data.qty }}">
-                                </div>
-                                <div>
-                                    <label for="print_type">Fallback Print Type</label>
-                                    <select id="print_type" name="print_type">
-                                        {% for opt in ['A3 Single-sided', 'A3 Double-sided', 'A3 Booklet', 'A4 Single-sided', 'A4 Double-sided', 'A4 Booklet'] %}
-                                        <option value="{{ opt }}" {% if form_data.print_type == opt %}selected{% endif %}>{{ opt }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="binding">Fallback Binding</label>
-                                    <select id="binding" name="binding">
-                                        {% for opt in ['None', 'Staple', 'Plastic Comb', 'Wire Comb'] %}
-                                        <option value="{{ opt }}" {% if form_data.binding == opt %}selected{% endif %}>{{ opt }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="acetate">Fallback Acetate</label>
-                                    <select id="acetate" name="acetate">
-                                        {% for opt in ['None', 'Front', 'Back', 'Both'] %}
-                                        <option value="{{ opt }}" {% if form_data.acetate == opt %}selected{% endif %}>{{ opt }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="front_cover">Front Cover</label>
-                                    <select id="front_cover" name="front_cover">
-                                        {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
-                                        <option value="{{ opt }}" {% if form_data.front_cover == opt %}selected{% endif %}>{{ opt }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="back_cover">Back Cover</label>
-                                    <select id="back_cover" name="back_cover">
-                                        {% for opt in ['None', 'Card 300gsm (B/W)', 'Card 450gsm (B/W)', 'Card 600gsm (B/W)', 'Card 300gsm (Colour)', 'Card 450gsm (Colour)', 'Card 600gsm (Colour)'] %}
-                                        <option value="{{ opt }}" {% if form_data.back_cover == opt %}selected{% endif %}>{{ opt }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="paper_type">Paper Type</label>
-                                    <select id="paper_type" name="paper_type">
-                                        {% for opt in ['Standard', 'Photo'] %}
-                                        <option value="{{ opt }}" {% if form_data.paper_type == opt %}selected{% endif %}>{{ opt }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="paper_grade">Paper Grade</label>
-                                    <select id="paper_grade" name="paper_grade">
-                                        {% for opt in ['80gsm', '100gsm', '110gsm', '120gsm'] %}
-                                        <option value="{{ opt }}" {% if form_data.paper_grade == opt %}selected{% endif %}>{{ opt }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
                                 <div>
                                     <label for="quote_title">Quote Name</label>
                                     <input id="quote_title" type="text" name="quote_title" value="{{ form_data.quote_title }}" placeholder="e.g. Brass Band Set - Spring Concert">
@@ -263,7 +203,7 @@
                                     <input id="customer_email" type="email" name="customer_email" value="{{ form_data.customer_email }}" placeholder="name@example.com">
                                 </div>
                             </div>
-                            <div class="publishing-note">Front/back covers and paper settings apply to all files in this quote.</div>
+                            <div class="publishing-note">Per-file print settings are controlled directly in the line items above.</div>
                         </div>
 
                         <div class="col-12">
@@ -310,7 +250,7 @@
                             <button type="submit" class="button" id="save-quote-btn" disabled>Save Quote</button>
                         </form>
                         {% else %}
-                        <a class="button" href="{{ url_for('login') }}">Log In to Save Quote</a>
+                        <a class="button" href="{{ url_for('register', next=url_for('publishing')) }}">Sign Up to Save Quote</a>
                         {% endif %}
 
                         <form method="POST" action="{{ url_for('publishing_export_csv') }}">
@@ -615,7 +555,7 @@
 
     fileInput.addEventListener('change', () => buildRows(fileInput.files));
     refreshButton.addEventListener('click', previewQuote);
-    ['quote_title', 'customer_name', 'customer_email', 'qty', 'print_type', 'binding', 'acetate', 'front_cover', 'back_cover', 'paper_type', 'paper_grade'].forEach((id) => {
+    ['quote_title', 'customer_name', 'customer_email'].forEach((id) => {
         const field = document.getElementById(id);
         if (!field) {
             return;
