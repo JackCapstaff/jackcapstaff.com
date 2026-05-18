@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block page_title %}My Publishing Quotes{% endblock %}
+
+{% block main_content %}
+<article id="main">
+    <header>
+        <h2>My Saved Publishing Quotes</h2>
+        <p>Quotes you generated while logged in.</p>
+    </header>
+
+    <section class="wrapper style5">
+        <div class="inner">
+            <p><a href="{{ url_for('publishing') }}">Back to Publishing Calculator</a></p>
+            {% if quotes %}
+            <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(0,0,0,0.15);">
+                            <th style="text-align:left; padding:0.6rem;">Date</th>
+                            <th style="text-align:left; padding:0.6rem;">Files</th>
+                            <th style="text-align:left; padding:0.6rem;">Total Pages</th>
+                            <th style="text-align:left; padding:0.6rem;">Grand Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in quotes %}
+                        <tr style="border-bottom:1px solid rgba(0,0,0,0.1);">
+                            <td style="padding:0.6rem;">{{ row.record.created_at.strftime('%d %b %Y %H:%M') }}</td>
+                            <td style="padding:0.6rem;">{{ (row.payload.get('items', []))|length }}</td>
+                            <td style="padding:0.6rem;">{{ (row.payload.get('totals', {})).get('total_pages', 0) }}</td>
+                            <td style="padding:0.6rem;">£{{ '%.2f'|format(row.record.total_gbp or 0) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p>No saved quotes yet.</p>
+            {% endif %}
+        </div>
+    </section>
+</article>
+{% endblock %}

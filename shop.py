@@ -1362,11 +1362,23 @@ def admin_products_list():
     shipping_fee = get_setting('shipping_fee_gbp', '5.00')
     free_delivery_threshold = get_setting('free_delivery_threshold_gbp', '0.00')
 
+    publishing_settings = {
+        'cost_a4': get_setting('publishing_cost_a4', '0.05'),
+        'cost_a3': get_setting('publishing_cost_a3', '0.12'),
+        'ink_cost_a4': get_setting('publishing_ink_cost_a4', '0.03'),
+        'ink_cost_a3': get_setting('publishing_ink_cost_a3', '0.035'),
+        'photo_paper_surcharge': get_setting('publishing_photo_paper_surcharge', '0.15'),
+        'acetate_cost': get_setting('publishing_acetate_cost', '0.60'),
+        'labour_per_job': get_setting('publishing_labour_per_job', '0.25'),
+        'markup_multiplier': get_setting('publishing_markup_multiplier', '1.25'),
+    }
+
     return render_template(
         "admin/shop/products_list.html",
         products=products,
         shipping_fee=shipping_fee,
         free_delivery_threshold=free_delivery_threshold,
+        publishing_settings=publishing_settings,
     )
 
 @shop_bp.route("/admin/shop/shipping-settings", methods=["POST"])
@@ -1389,6 +1401,46 @@ def admin_update_shipping_settings():
     set_setting('shipping_fee_gbp', fee)
     set_setting('free_delivery_threshold_gbp', threshold)
     flash("Shipping settings updated.", "success")
+    return redirect(url_for("shop.admin_products_list"))
+
+
+@shop_bp.route("/admin/shop/publishing-settings", methods=["POST"])
+@login_required
+def admin_update_publishing_settings():
+    if not _editor_required():
+        abort(403)
+    db, _, _, _, SiteSetting = _models()
+
+    setting_fields = {
+        'publishing_cost_a4': request.form.get('cost_a4', '0.05'),
+        'publishing_cost_a3': request.form.get('cost_a3', '0.12'),
+        'publishing_ink_cost_a4': request.form.get('ink_cost_a4', '0.03'),
+        'publishing_ink_cost_a3': request.form.get('ink_cost_a3', '0.035'),
+        'publishing_photo_paper_surcharge': request.form.get('photo_paper_surcharge', '0.15'),
+        'publishing_acetate_cost': request.form.get('acetate_cost', '0.60'),
+        'publishing_labour_per_job': request.form.get('labour_per_job', '0.25'),
+        'publishing_markup_multiplier': request.form.get('markup_multiplier', '1.25'),
+    }
+
+    for key, raw_value in setting_fields.items():
+        value = (raw_value or '').strip()
+        if not value:
+            continue
+        try:
+            float(value)
+        except ValueError:
+            continue
+
+        row = SiteSetting.query.filter_by(key=key).first()
+        if not row:
+            row = SiteSetting(key=key, value=value)
+            db.session.add(row)
+        else:
+            row.value = value
+        row.updated_at = datetime.utcnow()
+
+    db.session.commit()
+    flash("Publishing pricing settings updated.", "success")
     return redirect(url_for("shop.admin_products_list"))
 
 @shop_bp.route("/admin/shop/create", methods=["GET", "POST"])
@@ -1506,13 +1558,14 @@ def admin_products_regen_cover(product_id):
     if not _editor_required():
         abort(403)
 
-    db, Product, _, _ = _models()
+    db, Product, _, _, _ = _models()
     product = Product.query.get_or_404(product_id)
     if not product.pdf_file_url:
         flash("No PDF uploaded — cannot generate cover.", "warning")
         return redirect(url_for("shop.admin_products_edit", product_id=product_id))
     try:
-        _generate_and_store_cover_from_pdf(product, db)
+        product.cover_image_url = _generate_cover_from_pdf(product.pdf_file_url, slug_hint=product.slug)
+        db.session.commit()
         flash("Cover image regenerated from PDF page 1.", "success")
     except Exception as e:
         flash(f"Cover generation failed: {e}", "danger")
@@ -1525,7 +1578,7 @@ def admin_products_delete(product_id):
     if not _editor_required():
         abort(403)
 
-    db, Product, _, _ = _models()
+    db, Product, _, _, _ = _models()
     product = Product.query.get_or_404(product_id)
     db.session.delete(product)
     db.session.commit()
@@ -1539,7 +1592,7 @@ def admin_orders_list():
     if not _editor_required():
         abort(403)
 
-    _, _, ShopOrder, _ = _models()
+    _, _, ShopOrder, _, _ = _models()
     page = request.args.get("page", 1, type=int)
     orders = ShopOrder.query.order_by(ShopOrder.created_at.desc()).paginate(page=page, per_page=40)
     return render_template("admin/shop/orders_list.html", orders=orders)
@@ -1551,7 +1604,7 @@ def admin_orders_export_csv():
     if not _editor_required():
         abort(403)
 
-    _, _, ShopOrder, ShopOrderItem = _models()
+    _, _, ShopOrder, ShopOrderItem, _ = _models()
     orders = ShopOrder.query.filter_by(status="paid").order_by(ShopOrder.paid_at.desc(), ShopOrder.created_at.desc()).all()
 
     csv_buffer = StringIO()
@@ -1627,7 +1680,7 @@ def admin_orders_view(order_id):
     if not _editor_required():
         abort(403)
 
-    _, _, ShopOrder, ShopOrderItem = _models()
+    _, _, ShopOrder, ShopOrderItem, _ = _models()
     order = ShopOrder.query.get_or_404(order_id)
     items = ShopOrderItem.query.filter_by(order_id=order.id).all()
     return render_template("admin/shop/order_view.html", order=order, items=items)

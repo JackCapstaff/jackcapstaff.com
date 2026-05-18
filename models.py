@@ -252,6 +252,15 @@ def init_models(db):
 
         product = db.relationship('Product')
 
+    class PublishingQuote(db.Model):
+        """Saved publishing quote requests/results."""
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True, index=True)
+        customer_email = db.Column(db.String(255), index=True)
+        quote_payload = db.Column(db.Text, nullable=False)
+        total_gbp = db.Column(db.Float, nullable=False, default=0.0)
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
     
     return {
         'SiteSetting': SiteSetting,
@@ -264,4 +273,5 @@ def init_models(db):
         'Product': Product,
         'ShopOrder': ShopOrder,
         'ShopOrderItem': ShopOrderItem,
+        'PublishingQuote': PublishingQuote,
     }

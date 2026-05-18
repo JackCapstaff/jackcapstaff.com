@@ -134,6 +134,154 @@ def _safe_int(value, default=0, minimum=None):
     return out
 
 
+PUBLISHING_SETTING_FIELDS = {
+    "cost_a4": "publishing_cost_a4",
+    "cost_a3": "publishing_cost_a3",
+    "ink_cost_a4": "publishing_ink_cost_a4",
+    "ink_cost_a3": "publishing_ink_cost_a3",
+    "photo_paper_surcharge": "publishing_photo_paper_surcharge",
+    "acetate_cost": "publishing_acetate_cost",
+    "labour_per_job": "publishing_labour_per_job",
+    "markup_multiplier": "publishing_markup_multiplier",
+}
+
+
+def _load_publishing_settings():
+    settings = dict(PUBLISHING_DEFAULT_SETTINGS)
+    SiteSettingModel = getattr(app, "SiteSetting", None)
+    if SiteSettingModel is None:
+        return settings
+
+    for field, key in PUBLISHING_SETTING_FIELDS.items():
+        default_val = float(PUBLISHING_DEFAULT_SETTINGS[field])
+        row = SiteSettingModel.query.filter_by(key=key).first()
+        if not row or not row.value:
+            settings[field] = default_val
+            continue
+        try:
+            settings[field] = float(row.value)
+        except (TypeError, ValueError):
+            settings[field] = default_val
+    return settings
+
+
+def _serialize_quote_payload(items, totals, request_email):
+    return {
+        "customer_email": request_email,
+        "items": items,
+        "totals": {
+            "total_pages": int(totals.get("total_pages") or 0),
+            "total_sheets": int(totals.get("total_sheets") or 0),
+            "grand_total": round(float(totals.get("grand_total") or 0.0), 2),
+        },
+        "breakdowns": totals.get("breakdowns") or [],
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def _send_publishing_quote_email(customer_email, quote_payload):
+    if not customer_email:
+        return False, "No recipient email provided."
+
+    totals = quote_payload.get("totals") or {}
+    breakdowns = quote_payload.get("breakdowns") or []
+
+    lines = []
+    for b in breakdowns:
+        lines.append(
+            f"- {b.get('file', 'file')} | {b.get('pages_per_copy', 0)} pages x{b.get('qty', 0)} | "
+            f"{b.get('print_type', '')} | {b.get('binding', '')} | GBP {float(b.get('line_total') or 0.0):.2f}"
+        )
+
+    subject = "Your publishing print quote"
+    text_body = (
+        "Thanks for requesting a publishing quote.\n\n"
+        + "\n".join(lines)
+        + "\n\n"
+        + f"Total pages: {int(totals.get('total_pages') or 0)}\n"
+        + f"Total sheets: {int(totals.get('total_sheets') or 0)}\n"
+        + f"Grand total: GBP {float(totals.get('grand_total') or 0.0):.2f}\n"
+    )
+    html_body = (
+        "<p>Thanks for requesting a publishing quote.</p>"
+        "<ul>"
+        + "".join(
+            [
+                f"<li>{html.escape(str(b.get('file', 'file')))} | "
+                f"{int(b.get('pages_per_copy') or 0)} pages x{int(b.get('qty') or 0)} | "
+                f"{html.escape(str(b.get('print_type', '')))} | "
+                f"{html.escape(str(b.get('binding', '')))} | "
+                f"GBP {float(b.get('line_total') or 0.0):.2f}</li>"
+                for b in breakdowns
+            ]
+        )
+        + "</ul>"
+        + f"<p><strong>Total pages:</strong> {int(totals.get('total_pages') or 0)}<br>"
+        + f"<strong>Total sheets:</strong> {int(totals.get('total_sheets') or 0)}<br>"
+        + f"<strong>Grand total:</strong> GBP {float(totals.get('grand_total') or 0.0):.2f}</p>"
+    )
+
+    # Brevo first, SMTP fallback.
+    if app.config.get('BREVO_API_KEY', '').strip():
+        api_key = app.config.get('BREVO_API_KEY', '').strip()
+        from_email = app.config.get('BREVO_FROM_EMAIL', '').strip() or app.config.get('CONTACT_FROM_EMAIL', '').strip()
+        from_name = app.config.get('BREVO_FROM_NAME', '').strip() or app.config.get('SITE_TITLE', 'Jack Capstaff')
+        payload = {
+            'sender': {'name': from_name, 'email': from_email},
+            'to': [{'email': customer_email}],
+            'subject': subject,
+            'htmlContent': html_body,
+            'textContent': text_body,
+        }
+        try:
+            response = requests.post(
+                'https://api.brevo.com/v3/smtp/email',
+                headers={
+                    'accept': 'application/json',
+                    'api-key': api_key,
+                    'content-type': 'application/json',
+                },
+                json=payload,
+                timeout=20,
+            )
+            if response.status_code < 400:
+                return True, 'sent'
+        except Exception:
+            app.logger.exception('Brevo publishing quote email failed')
+
+    smtp_host = app.config.get('SMTP_HOST', '').strip()
+    from_email = app.config.get('CONTACT_FROM_EMAIL', '').strip()
+    if not smtp_host or not from_email:
+        return False, 'Email settings are not configured.'
+
+    mail = EmailMessage()
+    mail['Subject'] = subject
+    mail['From'] = from_email
+    mail['To'] = customer_email
+    mail.set_content(text_body)
+    mail.add_alternative(html_body, subtype='html')
+
+    try:
+        if app.config['SMTP_USE_TLS']:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                if app.config.get('SMTP_USERNAME'):
+                    server.login(app.config['SMTP_USERNAME'], app.config['SMTP_PASSWORD'])
+                server.send_message(mail)
+        else:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                if app.config.get('SMTP_USERNAME'):
+                    server.login(app.config['SMTP_USERNAME'], app.config['SMTP_PASSWORD'])
+                server.send_message(mail)
+    except Exception as exc:
+        app.logger.exception('SMTP publishing quote email failed')
+        return False, str(exc)
+
+    return True, 'sent'
+
+
 def load_rehearsal_schedule_app():
     app_path = os.path.join(REHEARSAL_SCHEDULE_ROOT, 'app.py')
     if not os.path.exists(app_path):
@@ -215,6 +363,7 @@ Testimonial = models_dict['Testimonial']
 Product = models_dict['Product']
 ShopOrder = models_dict['ShopOrder']
 ShopOrderItem = models_dict['ShopOrderItem']
+PublishingQuote = models_dict['PublishingQuote']
 # Expose models and db to app context for access in blueprints
 app.db = db
 app.SiteSetting = SiteSetting
@@ -227,6 +376,7 @@ app.Testimonial = Testimonial
 app.Product = Product
 app.ShopOrder = ShopOrder
 app.ShopOrderItem = ShopOrderItem
+app.PublishingQuote = PublishingQuote
 
 
 # Import and register admin blueprint
@@ -891,8 +1041,13 @@ def publishing():
         'acetate': 'None',
         'paper_type': 'Standard',
         'paper_grade': '120gsm',
+        'customer_email': current_user.email if current_user.is_authenticated else '',
     }
     quote = None
+    recent_quotes = []
+
+    if current_user.is_authenticated:
+        recent_quotes = PublishingQuote.query.filter_by(user_id=current_user.id).order_by(PublishingQuote.created_at.desc()).limit(10).all()
 
     if request.method == 'POST':
         form_data.update({k: (request.form.get(k) or form_data.get(k, '')) for k in form_data.keys()})
@@ -902,26 +1057,18 @@ def publishing():
             flash('Publishing quote engine is not available on the server yet.', 'danger')
             return render_template('Publishing.html', form_data=form_data, quote=None)
 
-        upload = request.files.get('score_pdf')
-        if not upload or not upload.filename:
-            flash('Please upload a PDF score/set file.', 'warning')
-            return render_template('Publishing.html', form_data=form_data, quote=None)
+        uploads = [f for f in request.files.getlist('score_pdfs') if f and f.filename]
+        if not uploads:
+            single_upload = request.files.get('score_pdf')
+            if single_upload and single_upload.filename:
+                uploads = [single_upload]
 
-        filename = (upload.filename or '').lower()
-        if not filename.endswith('.pdf'):
-            flash('Please upload a valid PDF file.', 'warning')
+        if not uploads:
+            flash('Please upload at least one PDF score/set file.', 'warning')
             return render_template('Publishing.html', form_data=form_data, quote=None)
 
         if PdfReader is None:
             flash('PDF reader dependency is unavailable.', 'danger')
-            return render_template('Publishing.html', form_data=form_data, quote=None)
-
-        try:
-            upload.stream.seek(0)
-            pages = len(PdfReader(upload.stream).pages)
-        except Exception:
-            app.logger.exception('Failed reading uploaded PDF for publishing quote')
-            flash('We could not read that PDF. Please try another file.', 'danger')
             return render_template('Publishing.html', form_data=form_data, quote=None)
 
         qty = _safe_int(request.form.get('qty'), default=1, minimum=1)
@@ -932,43 +1079,94 @@ def publishing():
         acetate = request.form.get('acetate', 'None')
         paper_type = request.form.get('paper_type', 'Standard')
         paper_grade = request.form.get('paper_grade', '120gsm')
+        customer_email = (request.form.get('customer_email') or '').strip().lower()
 
-        item = {
-            'file_name': secure_filename(upload.filename) or 'uploaded-score.pdf',
-            'pages': pages,
-            'qty': qty,
-            'type': print_type,
-            'binding': binding,
-            'front_cover': front_cover,
-            'back_cover': back_cover,
-            'acetate': acetate,
-            'paper_type': paper_type,
-            'paper_grade': paper_grade,
-        }
+        items = []
+        for upload in uploads:
+            filename = (upload.filename or '').lower()
+            if not filename.endswith('.pdf'):
+                flash(f'{upload.filename} is not a valid PDF file.', 'warning')
+                return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes)
 
-        try:
-            totals = engine.calculate_totals([item], PUBLISHING_DEFAULT_SETTINGS)
-            line = (totals.get('breakdowns') or [{}])[0]
-            quote = {
+            try:
+                upload.stream.seek(0)
+                pages = len(PdfReader(upload.stream).pages)
+            except Exception:
+                app.logger.exception('Failed reading uploaded PDF for publishing quote')
+                flash(f'We could not read {upload.filename}. Please try another PDF.', 'danger')
+                return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes)
+
+            items.append({
+                'file_name': secure_filename(upload.filename or '') or 'uploaded-score.pdf',
                 'pages': pages,
                 'qty': qty,
-                'file_name': item['file_name'],
-                'unit_price': float(line.get('unit_price') or 0.0),
-                'line_total': float(line.get('line_total') or 0.0),
-                'materials_subtotal': float(line.get('materials_subtotal') or 0.0),
-                'labour': float(line.get('labour') or 0.0),
-                'sheets_per_copy': int(line.get('sheets_per_copy') or 0),
-                'total_sheets': int(line.get('total_sheets') or 0),
+                'type': print_type,
+                'binding': binding,
+                'front_cover': front_cover,
+                'back_cover': back_cover,
+                'acetate': acetate,
+                'paper_type': paper_type,
+                'paper_grade': paper_grade,
+            })
+
+        try:
+            settings = _load_publishing_settings()
+            totals = engine.calculate_totals(items, settings)
+            quote = {
+                'qty': qty,
+                'files_count': len(items),
+                'breakdowns': totals.get('breakdowns') or [],
+                'total_pages': int(totals.get('total_pages') or 0),
+                'total_sheets': int(totals.get('total_sheets') or 0),
+                'line_total': float(totals.get('grand_total') or 0.0),
                 'print_type': print_type,
-                'binding': str(line.get('binding') or binding),
+                'binding': binding,
                 'paper_type': paper_type,
                 'paper_grade': paper_grade,
             }
+
+            quote_payload = _serialize_quote_payload(items, totals, customer_email)
+
+            if current_user.is_authenticated:
+                saved = PublishingQuote(
+                    user_id=current_user.id,
+                    customer_email=customer_email or current_user.email,
+                    quote_payload=json.dumps(quote_payload),
+                    total_gbp=float(totals.get('grand_total') or 0.0),
+                )
+                db.session.add(saved)
+                db.session.commit()
+
+            if request.form.get('email_quote') == '1':
+                if not customer_email:
+                    flash('Enter an email address to send the quote.', 'warning')
+                else:
+                    sent, detail = _send_publishing_quote_email(customer_email, quote_payload)
+                    if sent:
+                        flash('Quote emailed successfully.', 'success')
+                    else:
+                        flash(f'Quote generated but email failed: {detail}', 'warning')
+
         except Exception:
             app.logger.exception('Publishing quote calculation failed')
             flash('Quote calculation failed. Please try again.', 'danger')
 
-    return render_template('Publishing.html', form_data=form_data, quote=quote)
+    return render_template('Publishing.html', form_data=form_data, quote=quote, recent_quotes=recent_quotes)
+
+
+@app.route('/publishing/quotes')
+@login_required
+def publishing_quotes():
+    records = PublishingQuote.query.filter_by(user_id=current_user.id).order_by(PublishingQuote.created_at.desc()).all()
+    parsed = []
+    for rec in records:
+        payload = {}
+        try:
+            payload = json.loads(rec.quote_payload or '{}')
+        except (TypeError, ValueError):
+            payload = {}
+        parsed.append({'record': rec, 'payload': payload})
+    return render_template('publishing_quotes.html', quotes=parsed)
 
 
 @app.route('/News')

@@ -26,6 +26,50 @@
         <div class="form-text mt-2">Orders above the threshold get free shipping. Leave at 0 for no free shipping.</div>
     </div>
 </form>
+
+<form method="POST" action="{{ url_for('shop.admin_update_publishing_settings') }}" class="mb-4">
+    <div class="card card-body bg-light mb-3">
+        <h5 class="mb-3">Publishing Quote Pricing</h5>
+        <div class="row g-3 align-items-center">
+            <div class="col-md-3">
+                <label class="form-label mb-0">A4 Sheet Cost</label>
+                <input type="number" step="0.001" min="0" class="form-control" name="cost_a4" value="{{ publishing_settings.cost_a4 }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">A3 Sheet Cost</label>
+                <input type="number" step="0.001" min="0" class="form-control" name="cost_a3" value="{{ publishing_settings.cost_a3 }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">A4 Ink Cost</label>
+                <input type="number" step="0.001" min="0" class="form-control" name="ink_cost_a4" value="{{ publishing_settings.ink_cost_a4 }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">A3 Ink Cost</label>
+                <input type="number" step="0.001" min="0" class="form-control" name="ink_cost_a3" value="{{ publishing_settings.ink_cost_a3 }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Photo Paper Surcharge</label>
+                <input type="number" step="0.001" min="0" class="form-control" name="photo_paper_surcharge" value="{{ publishing_settings.photo_paper_surcharge }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Acetate Cost</label>
+                <input type="number" step="0.001" min="0" class="form-control" name="acetate_cost" value="{{ publishing_settings.acetate_cost }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Labour Per Job</label>
+                <input type="number" step="0.001" min="0" class="form-control" name="labour_per_job" value="{{ publishing_settings.labour_per_job }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Markup Multiplier</label>
+                <input type="number" step="0.01" min="1" class="form-control" name="markup_multiplier" value="{{ publishing_settings.markup_multiplier }}">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Update Publishing Pricing</button>
+            </div>
+        </div>
+        <div class="form-text mt-2">These values drive the Publishing quote calculator.</div>
+    </div>
+</form>
 <div class="card">
     <div class="table-responsive">
         <table class="table table-hover mb-0">

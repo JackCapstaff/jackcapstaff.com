@@ -11,11 +11,15 @@
 
     <section class="wrapper style5">
         <div class="inner">
+            {% if current_user.is_authenticated %}
+            <p style="margin-bottom:1rem;"><a href="{{ url_for('publishing_quotes') }}">View my saved publishing quotes</a></p>
+            {% endif %}
             <form method="POST" enctype="multipart/form-data" style="max-width:900px;">
                 <div class="row gtr-uniform">
                     <div class="col-12">
-                        <label for="score_pdf"><strong>PDF File</strong></label>
-                        <input id="score_pdf" type="file" name="score_pdf" accept="application/pdf" required>
+                        <label for="score_pdfs"><strong>PDF Files (single score or full set)</strong></label>
+                        <input id="score_pdfs" type="file" name="score_pdfs" accept="application/pdf" multiple required>
+                        <small>Tip: Upload multiple PDFs to quote a full set in one go.</small>
                     </div>
 
                     <div class="col-6 col-12-xsmall">
@@ -86,6 +90,17 @@
                         </select>
                     </div>
 
+                    <div class="col-6 col-12-xsmall">
+                        <label for="customer_email">Email quote to</label>
+                        <input id="customer_email" type="email" name="customer_email" value="{{ form_data.customer_email }}" placeholder="name@example.com">
+                    </div>
+
+                    <div class="col-6 col-12-xsmall" style="display:flex; align-items:flex-end;">
+                        <label style="display:flex; gap:0.5rem; align-items:center; margin:0;">
+                            <input type="checkbox" name="email_quote" value="1"> Send me this quote by email
+                        </label>
+                    </div>
+
                     <div class="col-12">
                         <button class="button primary" type="submit">Get Quote</button>
                     </div>
@@ -95,13 +110,45 @@
             {% if quote %}
             <hr>
             <h3>Quote Result</h3>
-            <p><strong>File:</strong> {{ quote.file_name }}</p>
-            <p><strong>Pages:</strong> {{ quote.pages }} per copy</p>
+            <p><strong>Files:</strong> {{ quote.files_count }}</p>
             <p><strong>Quantity:</strong> {{ quote.qty }}</p>
             <p><strong>Format:</strong> {{ quote.print_type }}</p>
-            <p><strong>Unit Price:</strong> £{{ '%.2f'|format(quote.unit_price) }}</p>
+            <p><strong>Total Pages:</strong> {{ quote.total_pages }}</p>
+            <p><strong>Total Sheets:</strong> {{ quote.total_sheets }}</p>
             <p><strong>Total:</strong> £{{ '%.2f'|format(quote.line_total) }}</p>
+            <div style="overflow-x:auto; margin-top:1rem;">
+                <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(0,0,0,0.15);">
+                            <th style="text-align:left; padding:0.5rem;">File</th>
+                            <th style="text-align:left; padding:0.5rem;">Pages</th>
+                            <th style="text-align:left; padding:0.5rem;">Qty</th>
+                            <th style="text-align:left; padding:0.5rem;">Line Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in quote.breakdowns %}
+                        <tr style="border-bottom:1px solid rgba(0,0,0,0.1);">
+                            <td style="padding:0.5rem;">{{ line.file }}</td>
+                            <td style="padding:0.5rem;">{{ line.pages_per_copy }}</td>
+                            <td style="padding:0.5rem;">{{ line.qty }}</td>
+                            <td style="padding:0.5rem;">£{{ '%.2f'|format(line.line_total) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
             <p style="color:#666;"><small>Estimate includes material, labour, and markup from your calculator defaults.</small></p>
+            {% endif %}
+
+            {% if current_user.is_authenticated and recent_quotes %}
+            <hr>
+            <h3>Recent Saved Quotes</h3>
+            <ul>
+                {% for rec in recent_quotes %}
+                <li>{{ rec.created_at.strftime('%d %b %Y %H:%M') }} - £{{ '%.2f'|format(rec.total_gbp) }}</li>
+                {% endfor %}
+            </ul>
             {% endif %}
         </div>
     </section>
