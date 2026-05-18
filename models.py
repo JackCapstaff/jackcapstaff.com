@@ -9,6 +9,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 def init_models(db):
     """Initialize database models with SQLAlchemy instance"""
     
+    class SiteSetting(db.Model):
+        """Key-value store for site-wide settings (e.g., shipping fee, free delivery threshold)."""
+        id = db.Column(db.Integer, primary_key=True)
+        key = db.Column(db.String(64), unique=True, nullable=False, index=True)
+        value = db.Column(db.String(255), nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
     class User(UserMixin, db.Model):
         """User model with role-based permissions"""
         id = db.Column(db.Integer, primary_key=True)
@@ -185,6 +193,7 @@ def init_models(db):
         description = db.Column(db.Text)
         cover_image_url = db.Column(db.String(512))
         pdf_file_url = db.Column(db.String(512))
+        youtube_url = db.Column(db.String(512))
         price_pdf_cents = db.Column(db.Integer)
         price_print_cents = db.Column(db.Integer)
         has_pdf = db.Column(db.Boolean, default=True, nullable=False)
@@ -245,6 +254,7 @@ def init_models(db):
 
     
     return {
+        'SiteSetting': SiteSetting,
         'User': User,
         'NewsItem': NewsItem,
         'Event': Event,

@@ -147,6 +147,7 @@ login_manager.login_view = 'login'
 # Initialize models with database instance
 from models import init_models
 models_dict = init_models(db)
+SiteSetting = models_dict['SiteSetting']
 User = models_dict['User']
 NewsItem = models_dict['NewsItem']
 Event = models_dict['Event']
@@ -158,6 +159,7 @@ ShopOrder = models_dict['ShopOrder']
 ShopOrderItem = models_dict['ShopOrderItem']
 # Expose models and db to app context for access in blueprints
 app.db = db
+app.SiteSetting = SiteSetting
 app.User = User
 app.NewsItem = NewsItem
 app.Event = Event
