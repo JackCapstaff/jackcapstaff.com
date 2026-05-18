@@ -22,6 +22,27 @@
                         <small>Tip: Upload multiple PDFs to quote a full set in one go.</small>
                     </div>
 
+                    <div class="col-12">
+                        <h4 style="margin:0.5rem 0;">Per-file settings</h4>
+                        <div style="overflow-x:auto;">
+                            <table style="width:100%; border-collapse:collapse;" id="file-settings-table">
+                                <thead>
+                                    <tr style="border-bottom:1px solid rgba(0,0,0,0.15);">
+                                        <th style="text-align:left; padding:0.5rem;">File</th>
+                                        <th style="text-align:left; padding:0.5rem;">Preset</th>
+                                        <th style="text-align:left; padding:0.5rem;">Qty</th>
+                                        <th style="text-align:left; padding:0.5rem;">Print Type</th>
+                                        <th style="text-align:left; padding:0.5rem;">Binding</th>
+                                        <th style="text-align:left; padding:0.5rem;">Acetate</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="file-settings-body">
+                                    <tr><td colspan="6" style="padding:0.5rem; color:#666;">Choose files to configure per-file settings.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div class="col-6 col-12-xsmall">
                         <label for="qty">Quantity</label>
                         <input id="qty" type="number" min="1" name="qty" value="{{ form_data.qty }}">
@@ -153,4 +174,91 @@
         </div>
     </section>
 </article>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+(function () {
+    const fileInput = document.getElementById('score_pdfs');
+    const tbody = document.getElementById('file-settings-body');
+
+    function printTypeOptions(selected) {
+        const opts = ['A3 Single-sided', 'A3 Double-sided', 'A3 Booklet', 'A4 Single-sided', 'A4 Double-sided', 'A4 Booklet'];
+        return opts.map((opt) => `<option value="${opt}" ${selected === opt ? 'selected' : ''}>${opt}</option>`).join('');
+    }
+
+    function bindingOptions(selected) {
+        const opts = ['None', 'Staple', 'Plastic Comb', 'Wire Comb'];
+        return opts.map((opt) => `<option value="${opt}" ${selected === opt ? 'selected' : ''}>${opt}</option>`).join('');
+    }
+
+    function acetateOptions(selected) {
+        const opts = ['None', 'Front', 'Back', 'Both'];
+        return opts.map((opt) => `<option value="${opt}" ${selected === opt ? 'selected' : ''}>${opt}</option>`).join('');
+    }
+
+    function applyPreset(row, preset) {
+        const printType = row.querySelector('select[name="item_print_type"]');
+        const binding = row.querySelector('select[name="item_binding"]');
+        const acetate = row.querySelector('select[name="item_acetate"]');
+        if (!printType || !binding || !acetate) {
+            return;
+        }
+        if (preset === 'score') {
+            printType.value = 'A3 Double-sided';
+            binding.value = 'Wire Comb';
+            acetate.value = 'Front';
+        } else if (preset === 'parts') {
+            printType.value = 'A3 Booklet';
+            binding.value = 'Staple';
+            acetate.value = 'None';
+        }
+    }
+
+    function buildRows(files) {
+        tbody.innerHTML = '';
+        if (!files || !files.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="padding:0.5rem; color:#666;">Choose files to configure per-file settings.</td></tr>';
+            return;
+        }
+
+        Array.from(files).forEach((file, idx) => {
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
+            tr.innerHTML = `
+                <td style="padding:0.5rem;">${file.name}</td>
+                <td style="padding:0.5rem;">
+                    <select name="item_preset">
+                        <option value="score">Score</option>
+                        <option value="parts">Parts</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </td>
+                <td style="padding:0.5rem;">
+                    <input type="number" name="item_qty" min="1" value="1" style="max-width:90px;">
+                </td>
+                <td style="padding:0.5rem;">
+                    <select name="item_print_type">${printTypeOptions('A3 Double-sided')}</select>
+                </td>
+                <td style="padding:0.5rem;">
+                    <select name="item_binding">${bindingOptions('Wire Comb')}</select>
+                </td>
+                <td style="padding:0.5rem;">
+                    <select name="item_acetate">${acetateOptions('Front')}</select>
+                </td>
+            `;
+            tbody.appendChild(tr);
+
+            const presetSelect = tr.querySelector('select[name="item_preset"]');
+            presetSelect.addEventListener('change', () => applyPreset(tr, presetSelect.value));
+
+            // Default each new row to Score preset.
+            applyPreset(tr, 'score');
+        });
+    }
+
+    fileInput.addEventListener('change', () => buildRows(fileInput.files));
+})();
+</script>
 {% endblock %}

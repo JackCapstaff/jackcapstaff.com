@@ -134,6 +134,23 @@ def _safe_int(value, default=0, minimum=None):
     return out
 
 
+def _list_value(values, idx, default=""):
+    if idx < len(values):
+        value = (values[idx] or "").strip()
+        if value:
+            return value
+    return default
+
+
+def _apply_publishing_preset(preset, print_type, binding, acetate):
+    p = (preset or "").strip().lower()
+    if p == "score":
+        return "A3 Double-sided", "Wire Comb", "Front"
+    if p == "parts":
+        return "A3 Booklet", "Staple", "None"
+    return print_type, binding, acetate
+
+
 PUBLISHING_SETTING_FIELDS = {
     "cost_a4": "publishing_cost_a4",
     "cost_a3": "publishing_cost_a3",
@@ -1072,17 +1089,23 @@ def publishing():
             return render_template('Publishing.html', form_data=form_data, quote=None)
 
         qty = _safe_int(request.form.get('qty'), default=1, minimum=1)
-        print_type = request.form.get('print_type', 'A4 Double-sided')
-        binding = request.form.get('binding', 'None')
+        default_print_type = request.form.get('print_type', 'A4 Double-sided')
+        default_binding = request.form.get('binding', 'None')
         front_cover = request.form.get('front_cover', 'None')
         back_cover = request.form.get('back_cover', 'None')
-        acetate = request.form.get('acetate', 'None')
+        default_acetate = request.form.get('acetate', 'None')
         paper_type = request.form.get('paper_type', 'Standard')
         paper_grade = request.form.get('paper_grade', '120gsm')
         customer_email = (request.form.get('customer_email') or '').strip().lower()
 
+        item_qty_list = request.form.getlist('item_qty')
+        item_print_type_list = request.form.getlist('item_print_type')
+        item_binding_list = request.form.getlist('item_binding')
+        item_acetate_list = request.form.getlist('item_acetate')
+        item_preset_list = request.form.getlist('item_preset')
+
         items = []
-        for upload in uploads:
+        for idx, upload in enumerate(uploads):
             filename = (upload.filename or '').lower()
             if not filename.endswith('.pdf'):
                 flash(f'{upload.filename} is not a valid PDF file.', 'warning')
@@ -1096,17 +1119,31 @@ def publishing():
                 flash(f'We could not read {upload.filename}. Please try another PDF.', 'danger')
                 return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes)
 
+            file_qty = _safe_int(_list_value(item_qty_list, idx, str(qty)), default=qty, minimum=1)
+            file_print_type = _list_value(item_print_type_list, idx, default_print_type)
+            file_binding = _list_value(item_binding_list, idx, default_binding)
+            file_acetate = _list_value(item_acetate_list, idx, default_acetate)
+            file_preset = _list_value(item_preset_list, idx, "custom")
+
+            file_print_type, file_binding, file_acetate = _apply_publishing_preset(
+                file_preset,
+                file_print_type,
+                file_binding,
+                file_acetate,
+            )
+
             items.append({
                 'file_name': secure_filename(upload.filename or '') or 'uploaded-score.pdf',
                 'pages': pages,
-                'qty': qty,
-                'type': print_type,
-                'binding': binding,
+                'qty': file_qty,
+                'type': file_print_type,
+                'binding': file_binding,
                 'front_cover': front_cover,
                 'back_cover': back_cover,
-                'acetate': acetate,
+                'acetate': file_acetate,
                 'paper_type': paper_type,
                 'paper_grade': paper_grade,
+                'preset': file_preset,
             })
 
         try:
@@ -1119,8 +1156,8 @@ def publishing():
                 'total_pages': int(totals.get('total_pages') or 0),
                 'total_sheets': int(totals.get('total_sheets') or 0),
                 'line_total': float(totals.get('grand_total') or 0.0),
-                'print_type': print_type,
-                'binding': binding,
+                'print_type': default_print_type,
+                'binding': default_binding,
                 'paper_type': paper_type,
                 'paper_grade': paper_grade,
             }
