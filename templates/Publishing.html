@@ -251,6 +251,14 @@
                                     </select>
                                 </div>
                                 <div>
+                                    <label for="quote_title">Quote Name</label>
+                                    <input id="quote_title" type="text" name="quote_title" value="{{ form_data.quote_title }}" placeholder="e.g. Brass Band Set - Spring Concert">
+                                </div>
+                                <div>
+                                    <label for="customer_name">Customer Name</label>
+                                    <input id="customer_name" type="text" name="customer_name" value="{{ form_data.customer_name }}" placeholder="Band / organisation contact">
+                                </div>
+                                <div>
                                     <label for="customer_email">Email quote to</label>
                                     <input id="customer_email" type="email" name="customer_email" value="{{ form_data.customer_email }}" placeholder="name@example.com">
                                 </div>
@@ -287,9 +295,18 @@
                     </div>
 
                     <div class="publishing-actions">
+                        <form method="POST" action="{{ url_for('publishing_pay') }}">
+                            <input type="hidden" name="quote_payload" id="pay-quote-payload">
+                            <input type="hidden" name="quote_title" id="pay-quote-title">
+                            <input type="hidden" name="customer_name" id="pay-customer-name">
+                            <input type="hidden" name="customer_email" id="pay-customer-email">
+                            <button type="submit" class="button primary" id="pay-quote-btn" disabled>Pay for Quote</button>
+                        </form>
+
                         {% if current_user.is_authenticated %}
                         <form method="POST" action="{{ url_for('publishing_save_quote') }}">
                             <input type="hidden" name="quote_payload" id="save-quote-payload">
+                            <input type="hidden" name="quote_title" id="save-quote-title">
                             <button type="submit" class="button" id="save-quote-btn" disabled>Save Quote</button>
                         </form>
                         {% else %}
@@ -298,6 +315,7 @@
 
                         <form method="POST" action="{{ url_for('publishing_export_csv') }}">
                             <input type="hidden" name="quote_payload" id="export-quote-payload">
+                            <input type="hidden" name="quote_title" id="export-quote-title">
                             <button type="submit" class="button" id="export-quote-btn" disabled>Export Quote CSV</button>
                         </form>
                     </div>
@@ -331,11 +349,21 @@
     const tbody = document.getElementById('file-settings-body');
     const status = document.getElementById('publishing-status');
     const refreshButton = document.getElementById('refresh-quote-btn');
+    const payPayloadInput = document.getElementById('pay-quote-payload');
+    const payTitleInput = document.getElementById('pay-quote-title');
+    const payCustomerNameInput = document.getElementById('pay-customer-name');
+    const payCustomerEmailInput = document.getElementById('pay-customer-email');
+    const payButton = document.getElementById('pay-quote-btn');
     const savePayloadInput = document.getElementById('save-quote-payload');
+    const saveTitleInput = document.getElementById('save-quote-title');
     const exportPayloadInput = document.getElementById('export-quote-payload');
+    const exportTitleInput = document.getElementById('export-quote-title');
     const saveButton = document.getElementById('save-quote-btn');
     const exportButton = document.getElementById('export-quote-btn');
     const quoteMeta = document.getElementById('quote-meta');
+    const quoteTitleField = document.getElementById('quote_title');
+    const customerNameField = document.getElementById('customer_name');
+    const customerEmailField = document.getElementById('customer_email');
     const autoQtyRules = {{ (auto_qty_rules or [])|tojson }};
     const initialQuote = {{ (quote or {})|tojson }};
 
@@ -364,11 +392,37 @@
 
     function setActionState(enabled, payload) {
         const serialized = payload ? JSON.stringify(payload) : '';
+        const quoteTitle = quoteTitleField ? quoteTitleField.value : '';
+        const customerName = customerNameField ? customerNameField.value : '';
+        const customerEmail = customerEmailField ? customerEmailField.value : '';
+
+        if (payPayloadInput) {
+            payPayloadInput.value = serialized;
+        }
+        if (payTitleInput) {
+            payTitleInput.value = quoteTitle;
+        }
+        if (payCustomerNameInput) {
+            payCustomerNameInput.value = customerName;
+        }
+        if (payCustomerEmailInput) {
+            payCustomerEmailInput.value = customerEmail;
+        }
+        if (payButton) {
+            payButton.disabled = !enabled;
+        }
+
         if (savePayloadInput) {
             savePayloadInput.value = serialized;
         }
+        if (saveTitleInput) {
+            saveTitleInput.value = quoteTitle;
+        }
         if (exportPayloadInput) {
             exportPayloadInput.value = serialized;
+        }
+        if (exportTitleInput) {
+            exportTitleInput.value = quoteTitle;
         }
         if (saveButton) {
             saveButton.disabled = !enabled;
@@ -561,7 +615,7 @@
 
     fileInput.addEventListener('change', () => buildRows(fileInput.files));
     refreshButton.addEventListener('click', previewQuote);
-    ['qty', 'print_type', 'binding', 'acetate', 'front_cover', 'back_cover', 'paper_type', 'paper_grade'].forEach((id) => {
+    ['quote_title', 'customer_name', 'customer_email', 'qty', 'print_type', 'binding', 'acetate', 'front_cover', 'back_cover', 'paper_type', 'paper_grade'].forEach((id) => {
         const field = document.getElementById(id);
         if (!field) {
             return;

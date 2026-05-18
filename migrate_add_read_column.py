@@ -140,6 +140,18 @@ def init_database():
                         else:
                             print(f"   OK shop_order_item.{col_name} already exists")
 
+                    if not _column_exists_postgres(connection, "publishing_quote", "title"):
+                        print("   Adding publishing_quote.title...")
+                        try:
+                            connection.execute(db.text("ALTER TABLE publishing_quote ADD COLUMN title VARCHAR(255)"))
+                            connection.commit()
+                            print("   OK publishing_quote.title added")
+                        except Exception as e:
+                            print(f"   WARN could not add publishing_quote.title: {e}")
+                            connection.rollback()
+                    else:
+                        print("   OK publishing_quote.title already exists")
+
                 elif dialect == "sqlite":
                     print("\nSQLite specific setup...")
 
@@ -233,6 +245,19 @@ def init_database():
                                 connection.rollback()
                         else:
                             print(f"   OK shop_order_item.{col_name} already exists")
+
+                    publishing_quote_columns = _sqlite_table_columns(connection, "publishing_quote")
+                    if "title" not in publishing_quote_columns:
+                        print("   Adding publishing_quote.title...")
+                        try:
+                            connection.execute(db.text("ALTER TABLE publishing_quote ADD COLUMN title VARCHAR(255)"))
+                            connection.commit()
+                            print("   OK publishing_quote.title added")
+                        except Exception as e:
+                            print(f"   WARN could not add publishing_quote.title: {e}")
+                            connection.rollback()
+                    else:
+                        print("   OK publishing_quote.title already exists")
 
             finally:
                 connection.close()

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Print Cost Calculator</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="container">
+      <h1>Print Cost Calculator</h1>
+      <form action="/quote" method="post" enctype="multipart/form-data">
+        <label>Upload PDF(s)
+          <input type="file" name="files" accept="application/pdf" multiple>
+        </label>
+        <label>Print format
+          <select name="print_type">
+            <option>A4 Single-sided</option>
+            <option selected>A4 Double-sided</option>
+            <option>A4 Booklet</option>
+            <option>A3 Single-sided</option>
+            <option>A3 Double-sided</option>
+            <option>A3 Booklet</option>
+          </select>
+        </label>
+        <label>Quantity
+          <input type="number" name="qty" value="100" min="1" required>
+        </label>
+        <label>Pages (per copy)
+          <input type="number" name="pages" value="4" min="1" required>
+        </label>
+        <label>Color sides
+          <select name="color_sides">
+            <option value="0">Black & White</option>
+            <option value="1">One side color</option>
+            <option value="2">Both sides color</option>
+          </select>
+        </label>
+        <label>Paper type
+          <select name="paper_type">
+            <option value="standard">Standard</option>
+            <option value="premium">Premium (Photo)</option>
+          </select>
+        </label>
+        <label>Paper grade
+          <select name="paper_grade">
+            <option>80gsm</option>
+            <option>100gsm</option>
+            <option>110gsm</option>
+            <option selected>120gsm</option>
+          </select>
+        </label>
+        <label>Binding
+          <select name="binding">
+            <option>None</option>
+            <option>Staple</option>
+            <option>Plastic Comb</option>
+            <option>Wire Comb</option>
+            <option>Perfect Spine</option>
+          </select>
+        </label>
+        <label>Front cover
+          <select name="front_cover">
+            <option>None</option>
+            <option>Card 300gsm (B/W)</option>
+            <option>Card 300gsm (Colour)</option>
+          </select>
+        </label>
+        <label>Back cover
+          <select name="back_cover">
+            <option>None</option>
+            <option>Card 300gsm (B/W)</option>
+            <option>Card 300gsm (Colour)</option>
+          </select>
+        </label>
+        <label>Acetate
+          <select name="acetate">
+            <option>None</option>
+            <option>Front</option>
+            <option>Back</option>
+            <option>Both</option>
+          </select>
+        </label>
+        <label>Lamination
+          <select name="lamination">
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </label>
+        <button type="submit">Get Quote</button>
+      </form>
+    </main>
+  </body>
+</html>

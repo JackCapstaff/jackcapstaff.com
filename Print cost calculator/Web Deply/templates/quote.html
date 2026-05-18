@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Your Quote</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="container">
+      <h1>Quote</h1>
+      <div class="quote">
+        <h2>Breakdown</h2>
+        {% if totals and totals.breakdowns %}
+          {% for b in totals.breakdowns %}
+            <div class="breakdown">
+              <h3>{{ b.file or b.file_name }}</h3>
+              <p>Qty: {{ b.qty }} | Pages/copy: {{ b.pages_per_copy }} | Sheets/copy: {{ b.sheets_per_copy }}</p>
+              <p>Format: {{ b.print_type }} | Binding: {{ b.binding }} | Paper: {{ b.paper_type }} {{ b.paper_grade }}</p>
+              <ul>
+                <li>Sheet cost: £{{ b.sheet_cost }}</li>
+                <li>Ink cost: £{{ b.ink_cost }}</li>
+                <li>Front cover: £{{ b.front_cover_cost }}</li>
+                <li>Back cover: £{{ b.back_cover_cost }}</li>
+                <li>Binding cost: £{{ b.binding_cost }}</li>
+                <li>Acetate: £{{ b.acetate_cost }}</li>
+                <li>Labour: £{{ b.labour }}</li>
+                <li><strong>Line total: £{{ b.line_total }}</strong></li>
+              </ul>
+            </div>
+          {% endfor %}
+          <h3>Grand total: £{{ totals.grand_total }}</h3>
+        {% else %}
+          <p>No breakdown available.</p>
+        {% endif %}
+      </div>
+
+      <h2>Place Order</h2>
+      <form action="/submit-order" method="post">
+        <input type="hidden" name="qty" value="{{ form.qty or (totals.breakdowns[0].qty if totals.breakdowns) }}">
+        <input type="hidden" name="pages" value="{{ form.pages or (totals.breakdowns[0].pages_per_copy if totals.breakdowns) }}">
+        <input type="hidden" name="color_sides" value="0">
+        <input type="hidden" name="paper_type" value="{{ form.paper_type or (totals.breakdowns[0].paper_type if totals.breakdowns) }}">
+        <input type="hidden" name="binding" value="{{ form.binding or (totals.breakdowns[0].binding if totals.breakdowns) }}">
+        <input type="hidden" name="lamination" value="no">
+        <input type="hidden" name="unit_price" value="{{ totals.grand_total }}">
+        <input type="hidden" name="total" value="{{ totals.grand_total }}">
+
+        <label>Name
+          <input type="text" name="name" required>
+        </label>
+        <label>Email
+          <input type="email" name="email" required>
+        </label>
+        <button type="submit">Submit Order</button>
+      </form>
+
+      <p><a href="/">Back</a></p>
+    </main>
+  </body>
+</html>

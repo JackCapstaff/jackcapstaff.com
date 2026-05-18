@@ -17,19 +17,45 @@
                 <table style="width:100%; border-collapse:collapse;">
                     <thead>
                         <tr style="border-bottom:1px solid rgba(0,0,0,0.15);">
+                            <th style="text-align:left; padding:0.6rem;">Quote</th>
                             <th style="text-align:left; padding:0.6rem;">Date</th>
                             <th style="text-align:left; padding:0.6rem;">Files</th>
                             <th style="text-align:left; padding:0.6rem;">Total Pages</th>
                             <th style="text-align:left; padding:0.6rem;">Grand Total</th>
+                            <th style="text-align:left; padding:0.6rem;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in quotes %}
                         <tr style="border-bottom:1px solid rgba(0,0,0,0.1);">
+                            <td style="padding:0.6rem;">
+                                <strong>{{ row.payload.get('title') or row.record.title or '(Untitled quote)' }}</strong>
+                                <details style="margin-top:0.35rem;">
+                                    <summary style="cursor:pointer; color:#444;">View saved line specs</summary>
+                                    <div style="margin-top:0.5rem; font-size:0.92rem;">
+                                        {% for item in row.payload.get('items', []) %}
+                                        <div style="padding:0.3rem 0; border-bottom:1px solid rgba(0,0,0,0.06);">
+                                            <strong>{{ item.get('file_name', 'file') }}</strong><br>
+                                            Qty {{ item.get('qty', 0) }} | {{ item.get('type', '') }} | {{ item.get('binding', '') }} | Acetate {{ item.get('acetate', '') }} | {{ item.get('pages', 0) }} pages
+                                        </div>
+                                        {% else %}
+                                        <div>No saved line items.</div>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            </td>
                             <td style="padding:0.6rem;">{{ row.record.created_at.strftime('%d %b %Y %H:%M') }}</td>
                             <td style="padding:0.6rem;">{{ (row.payload.get('items', []))|length }}</td>
                             <td style="padding:0.6rem;">{{ (row.payload.get('totals', {})).get('total_pages', 0) }}</td>
                             <td style="padding:0.6rem;">£{{ '%.2f'|format(row.record.total_gbp or 0) }}</td>
+                            <td style="padding:0.6rem;">
+                                <form method="POST" action="{{ url_for('publishing_pay') }}" style="margin:0;">
+                                    <input type="hidden" name="quote_payload" value="{{ row.payload|tojson|forceescape }}">
+                                    <input type="hidden" name="quote_title" value="{{ row.payload.get('title') or row.record.title or '' }}">
+                                    <input type="hidden" name="customer_email" value="{{ row.payload.get('customer_email') or row.record.customer_email or '' }}">
+                                    <button type="submit" class="button small">Pay</button>
+                                </form>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from urllib.parse import parse_qs, urljoin, urlparse
 import uuid
+import secrets
 
 import requests
 
@@ -32,6 +33,11 @@ try:
     import cloudinary.uploader
 except Exception:
     cloudinary = None
+
+try:
+    import stripe
+except Exception:
+    stripe = None
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -221,8 +227,9 @@ def _load_publishing_auto_qty_rules():
     return _parse_publishing_auto_qty_rules(row.value if row else "")
 
 
-def _serialize_quote_payload(items, totals, request_email):
+def _serialize_quote_payload(items, totals, request_email, quote_title=""):
     return {
+        "title": (quote_title or "").strip(),
         "customer_email": request_email,
         "items": items,
         "totals": {
@@ -313,6 +320,7 @@ def _calculate_publishing_quote(uploads, form):
     paper_type = form.get('paper_type', 'Standard')
     paper_grade = form.get('paper_grade', '120gsm')
     customer_email = (form.get('customer_email') or '').strip().lower()
+    quote_title = (form.get('quote_title') or '').strip()
 
     item_qty_list = form.getlist('item_qty')
     item_print_type_list = form.getlist('item_print_type')
@@ -364,7 +372,7 @@ def _calculate_publishing_quote(uploads, form):
     totals = engine.calculate_totals(items, settings)
     totals = _apply_quote_rounding(totals)
     quote = _quote_summary_from_totals(qty, default_print_type, default_binding, paper_type, paper_grade, totals)
-    quote_payload = _serialize_quote_payload(items, totals, customer_email)
+    quote_payload = _serialize_quote_payload(items, totals, customer_email, quote_title=quote_title)
     return quote, quote_payload
 
 
@@ -372,6 +380,7 @@ def _csv_response_for_quote_payload(quote_payload):
     output = io.StringIO()
     writer = csv.writer(output)
     totals = quote_payload.get('totals') or {}
+    quote_title = (quote_payload.get('title') or '').strip()
     writer.writerow(['File', 'Pages per copy', 'Qty', 'Print type', 'Binding', 'Acetate', 'Line total GBP'])
     for line in quote_payload.get('breakdowns') or []:
         writer.writerow([
@@ -388,9 +397,11 @@ def _csv_response_for_quote_payload(quote_payload):
     writer.writerow(['Total sheets', int(totals.get('total_sheets') or 0)])
     writer.writerow(['Grand total GBP', f"{float(totals.get('grand_total') or 0.0):.2f}"])
 
+    csv_filename = secure_filename(quote_title) if quote_title else 'publishing-quote'
+
     response = make_response(output.getvalue())
     response.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    response.headers['Content-Disposition'] = 'attachment; filename=publishing-quote.csv'
+    response.headers['Content-Disposition'] = f'attachment; filename={csv_filename}.csv'
     return response
 
 
@@ -497,6 +508,130 @@ def _send_publishing_quote_email(customer_email, quote_payload):
     return True, 'sent'
 
 
+def _resolve_stripe_api_key():
+    return os.environ.get('STRIPE_SECRET_KEY', '').strip()
+
+
+def _create_publishing_order(quote_payload, customer_name=''):
+    total_gbp = float((quote_payload.get('totals') or {}).get('grand_total') or 0.0)
+    customer_email = (quote_payload.get('customer_email') or '').strip().lower()
+    title = (quote_payload.get('title') or '').strip()
+    if total_gbp <= 0:
+        return None, 'Quote total must be greater than zero.'
+    if not customer_email:
+        return None, 'Customer email is required before payment.'
+
+    order = PublishingOrder(
+        order_number=f"PQ{datetime.utcnow().strftime('%Y%m%d')}{secrets.randbelow(9000)+1000}",
+        status='pending',
+        user_id=current_user.id if current_user.is_authenticated else None,
+        title=title or None,
+        customer_name=(customer_name or '').strip() or None,
+        customer_email=customer_email,
+        quote_payload=json.dumps(quote_payload),
+        total_gbp=total_gbp,
+    )
+    db.session.add(order)
+    db.session.commit()
+    return order, None
+
+
+def _send_publishing_order_admin_email(order):
+    try:
+        payload = json.loads(order.quote_payload or '{}')
+    except (TypeError, ValueError):
+        payload = {}
+    lines = []
+    for item in payload.get('items') or []:
+        lines.append(
+            f"- {item.get('file_name', 'file')} | {int(item.get('pages') or 0)} pages x{int(item.get('qty') or 0)} | "
+            f"{item.get('type', '')} | {item.get('binding', '')} | acetate: {item.get('acetate', '')}"
+        )
+
+    subject = f"New paid publishing order ({order.order_number})"
+    text_body = (
+        "A publishing order has been paid.\n\n"
+        f"Order: {order.order_number}\n"
+        f"Quote: {order.title or '(untitled quote)'}\n"
+        f"Customer: {(order.customer_name or '').strip()} <{order.customer_email}>\n"
+        f"Total: GBP {float(order.total_gbp or 0.0):.2f}\n\n"
+        "Line items:\n"
+        + ("\n".join(lines) if lines else "(none)")
+    )
+    html_body = (
+        "<p>A publishing order has been paid.</p>"
+        f"<p><strong>Order:</strong> {html.escape(order.order_number)}<br>"
+        f"<strong>Quote:</strong> {html.escape(order.title or '(untitled quote)')}<br>"
+        f"<strong>Customer:</strong> {html.escape((order.customer_name or '').strip())} &lt;{html.escape(order.customer_email)}&gt;<br>"
+        f"<strong>Total:</strong> GBP {float(order.total_gbp or 0.0):.2f}</p>"
+        "<p><strong>Line items:</strong></p><ul>"
+        + ''.join([f"<li>{html.escape(line)}</li>" for line in lines])
+        + "</ul>"
+    )
+
+    to_email = (app.config.get('CONTACT_TO_EMAIL') or 'jack@jackcapstaff.com').strip()
+    if not to_email:
+        return False, 'No admin recipient configured.'
+
+    if app.config.get('BREVO_API_KEY', '').strip():
+        api_key = app.config.get('BREVO_API_KEY', '').strip()
+        from_email = app.config.get('BREVO_FROM_EMAIL', '').strip() or app.config.get('CONTACT_FROM_EMAIL', '').strip()
+        from_name = app.config.get('BREVO_FROM_NAME', '').strip() or app.config.get('SITE_TITLE', 'Jack Capstaff')
+        try:
+            response = requests.post(
+                'https://api.brevo.com/v3/smtp/email',
+                headers={
+                    'accept': 'application/json',
+                    'api-key': api_key,
+                    'content-type': 'application/json',
+                },
+                json={
+                    'sender': {'name': from_name, 'email': from_email},
+                    'to': [{'email': to_email}],
+                    'subject': subject,
+                    'textContent': text_body,
+                    'htmlContent': html_body,
+                },
+                timeout=20,
+            )
+            if response.status_code < 400:
+                return True, 'sent'
+        except Exception:
+            app.logger.exception('Brevo publishing order email failed')
+
+    smtp_host = app.config.get('SMTP_HOST', '').strip()
+    from_email = app.config.get('CONTACT_FROM_EMAIL', '').strip()
+    if not smtp_host or not from_email:
+        return False, 'Email settings are not configured.'
+
+    mail = EmailMessage()
+    mail['Subject'] = subject
+    mail['From'] = from_email
+    mail['To'] = to_email
+    mail.set_content(text_body)
+    mail.add_alternative(html_body, subtype='html')
+
+    try:
+        if app.config['SMTP_USE_TLS']:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                if app.config.get('SMTP_USERNAME'):
+                    server.login(app.config['SMTP_USERNAME'], app.config['SMTP_PASSWORD'])
+                server.send_message(mail)
+        else:
+            with smtplib.SMTP(smtp_host, app.config['SMTP_PORT']) as server:
+                if app.config.get('SMTP_USERNAME'):
+                    server.login(app.config['SMTP_USERNAME'], app.config['SMTP_PASSWORD'])
+                server.send_message(mail)
+    except Exception as exc:
+        app.logger.exception('SMTP publishing order email failed')
+        return False, str(exc)
+
+    return True, 'sent'
+
+
 def load_rehearsal_schedule_app():
     app_path = os.path.join(REHEARSAL_SCHEDULE_ROOT, 'app.py')
     if not os.path.exists(app_path):
@@ -579,6 +714,7 @@ Product = models_dict['Product']
 ShopOrder = models_dict['ShopOrder']
 ShopOrderItem = models_dict['ShopOrderItem']
 PublishingQuote = models_dict['PublishingQuote']
+PublishingOrder = models_dict['PublishingOrder']
 # Expose models and db to app context for access in blueprints
 app.db = db
 app.SiteSetting = SiteSetting
@@ -592,6 +728,7 @@ app.Product = Product
 app.ShopOrder = ShopOrder
 app.ShopOrderItem = ShopOrderItem
 app.PublishingQuote = PublishingQuote
+app.PublishingOrder = PublishingOrder
 
 
 # Import and register admin blueprint
@@ -1248,6 +1385,8 @@ def media():
 @app.route('/publishing', methods=['GET', 'POST'])
 def publishing():
     form_data = {
+        'quote_title': '',
+        'customer_name': current_user.name if current_user.is_authenticated else '',
         'qty': '1',
         'print_type': 'A4 Double-sided',
         'binding': 'None',
@@ -1312,6 +1451,7 @@ def publishing_preview():
 @login_required
 def publishing_save_quote():
     quote_payload_raw = (request.form.get('quote_payload') or '').strip()
+    quote_title = (request.form.get('quote_title') or '').strip()
     if not quote_payload_raw:
         flash('Generate a quote before saving it.', 'warning')
         return redirect(url_for('publishing'))
@@ -1322,9 +1462,13 @@ def publishing_save_quote():
         flash('Quote data was invalid. Please refresh the quote and try again.', 'warning')
         return redirect(url_for('publishing'))
 
+    if quote_title:
+        quote_payload['title'] = quote_title
+
     total_gbp = float((quote_payload.get('totals') or {}).get('grand_total') or 0.0)
     saved = PublishingQuote(
         user_id=current_user.id,
+        title=(quote_payload.get('title') or '').strip() or None,
         customer_email=(quote_payload.get('customer_email') or current_user.email or '').strip().lower(),
         quote_payload=json.dumps(quote_payload),
         total_gbp=total_gbp,
@@ -1338,6 +1482,7 @@ def publishing_save_quote():
 @app.route('/publishing/export.csv', methods=['POST'])
 def publishing_export_csv():
     quote_payload_raw = (request.form.get('quote_payload') or '').strip()
+    quote_title = (request.form.get('quote_title') or '').strip()
     if not quote_payload_raw:
         flash('Generate a quote before exporting it.', 'warning')
         return redirect(url_for('publishing'))
@@ -1348,7 +1493,141 @@ def publishing_export_csv():
         flash('Quote data was invalid. Please refresh the quote and try again.', 'warning')
         return redirect(url_for('publishing'))
 
+    if quote_title:
+        quote_payload['title'] = quote_title
+
     return _csv_response_for_quote_payload(quote_payload)
+
+
+@app.route('/publishing/pay', methods=['POST'])
+def publishing_pay():
+    quote_payload_raw = (request.form.get('quote_payload') or '').strip()
+    quote_title = (request.form.get('quote_title') or '').strip()
+    customer_name = (request.form.get('customer_name') or '').strip()
+    customer_email = (request.form.get('customer_email') or '').strip().lower()
+
+    if not quote_payload_raw:
+        flash('Generate a quote before starting payment.', 'warning')
+        return redirect(url_for('publishing'))
+
+    try:
+        quote_payload = json.loads(quote_payload_raw)
+    except (TypeError, ValueError):
+        flash('Quote data was invalid. Please refresh the quote and try again.', 'warning')
+        return redirect(url_for('publishing'))
+
+    if quote_title:
+        quote_payload['title'] = quote_title
+    if customer_email:
+        quote_payload['customer_email'] = customer_email
+
+    if stripe is None:
+        flash('Card payments are not available right now.', 'warning')
+        return redirect(url_for('publishing'))
+
+    api_key = _resolve_stripe_api_key()
+    if not api_key:
+        flash('Stripe is not configured yet.', 'warning')
+        return redirect(url_for('publishing'))
+
+    stripe.api_key = api_key
+    order, error_msg = _create_publishing_order(quote_payload, customer_name=customer_name)
+    if error_msg:
+        flash(error_msg, 'warning')
+        return redirect(url_for('publishing'))
+    if order is None:
+        flash('Could not create publishing order. Please try again.', 'danger')
+        return redirect(url_for('publishing'))
+
+    amount_pence = max(30, int(round(float(order.total_gbp or 0.0) * 100)))
+    line_name = order.title or 'Publishing print order'
+
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode='payment',
+            payment_method_types=['card'],
+            success_url=url_for('publishing_pay_success', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=url_for('publishing_pay_cancel', _external=True),
+            customer_email=order.customer_email,
+            metadata={'publishing_order_id': str(order.id)},
+            line_items=[{
+                'quantity': 1,
+                'price_data': {
+                    'currency': 'gbp',
+                    'unit_amount': amount_pence,
+                    'product_data': {
+                        'name': line_name,
+                        'description': f'Order {order.order_number}',
+                    },
+                },
+            }],
+        )
+    except Exception:
+        db.session.delete(order)
+        db.session.commit()
+        app.logger.exception('Failed creating Stripe checkout for publishing order')
+        flash('Could not start payment checkout. Please try again.', 'danger')
+        return redirect(url_for('publishing'))
+
+    order.stripe_checkout_session_id = checkout_session.id
+    db.session.commit()
+    checkout_url = checkout_session.url
+    if not checkout_url:
+        flash('Payment checkout URL was not returned by Stripe.', 'danger')
+        return redirect(url_for('publishing'))
+    return redirect(checkout_url)
+
+
+@app.route('/publishing/pay/success')
+def publishing_pay_success():
+    session_id = (request.args.get('session_id') or '').strip()
+    if not session_id:
+        flash('Payment session could not be confirmed.', 'warning')
+        return redirect(url_for('publishing'))
+
+    order = PublishingOrder.query.filter_by(stripe_checkout_session_id=session_id).first()
+    if not order:
+        flash('Publishing order could not be found.', 'danger')
+        return redirect(url_for('publishing'))
+
+    if stripe is None:
+        flash('Stripe is unavailable for confirmation.', 'warning')
+        return redirect(url_for('publishing'))
+
+    api_key = _resolve_stripe_api_key()
+    if not api_key:
+        flash('Stripe is not configured yet.', 'warning')
+        return redirect(url_for('publishing'))
+
+    stripe.api_key = api_key
+    try:
+        checkout_session = stripe.checkout.Session.retrieve(session_id)
+    except Exception:
+        app.logger.exception('Failed retrieving Stripe checkout session for publishing order')
+        flash('Could not verify payment status yet. Please check again shortly.', 'warning')
+        return redirect(url_for('publishing'))
+
+    if checkout_session.payment_status != 'paid':
+        flash('Payment is not complete yet.', 'warning')
+        return redirect(url_for('publishing'))
+
+    order.status = 'paid'
+    order.paid_at = datetime.utcnow()
+    order.stripe_payment_intent_id = str(checkout_session.payment_intent or '')
+
+    if not order.admin_email_sent:
+        sent, _detail = _send_publishing_order_admin_email(order)
+        order.admin_email_sent = bool(sent)
+
+    db.session.commit()
+    flash('Payment complete. Your order has been received.', 'success')
+    return redirect(url_for('publishing_quotes'))
+
+
+@app.route('/publishing/pay/cancel')
+def publishing_pay_cancel():
+    flash('Payment cancelled. Your quote is still available to edit or save.', 'warning')
+    return redirect(url_for('publishing'))
 
 
 @app.route('/publishing/quotes')
@@ -1362,6 +1641,8 @@ def publishing_quotes():
             payload = json.loads(rec.quote_payload or '{}')
         except (TypeError, ValueError):
             payload = {}
+        if rec.title and not payload.get('title'):
+            payload['title'] = rec.title
         parsed.append({'record': rec, 'payload': payload})
     return render_template('publishing_quotes.html', quotes=parsed)
 

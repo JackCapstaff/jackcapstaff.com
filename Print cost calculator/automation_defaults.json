@@ -1,0 +1,46 @@
+{
+    "cello": {
+        "preset": "A3 Booklet Part",
+        "qty": 6
+    },
+    "clarinet": {
+        "preset": "A3 Booklet Part",
+        "qty": 1
+    },
+    "trumpet": {
+        "preset": "A3 Booklet Part",
+        "qty": 1
+    },
+    "flute": {
+        "preset": "A3 Booklet Part",
+        "qty": 1
+    },
+    "score": {
+        "preset": "A3 Score",
+        "qty": 1
+    },
+    "solo cornet": {
+        "preset": "A3 Booklet Part",
+        "qty": 4
+    },
+    "2nd cornet": {
+        "preset": "A3 Booklet Part",
+        "qty": 2
+    },
+    "3rd cornet": {
+        "preset": "A3 Booklet Part",
+        "qty": 2
+    },
+    "violin": {
+        "preset": "A3 Booklet Part",
+        "qty": 7
+    },
+    "viola": {
+        "preset": "A3 Booklet Part",
+        "qty": 5
+    },
+    "bass": {
+        "preset": "A3 Booklet Part",
+        "qty": 4
+    }
+}

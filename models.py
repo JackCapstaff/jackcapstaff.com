@@ -256,10 +256,30 @@ def init_models(db):
         """Saved publishing quote requests/results."""
         id = db.Column(db.Integer, primary_key=True)
         user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True, index=True)
+        title = db.Column(db.String(255), index=True)
         customer_email = db.Column(db.String(255), index=True)
         quote_payload = db.Column(db.Text, nullable=False)
         total_gbp = db.Column(db.Float, nullable=False, default=0.0)
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    class PublishingOrder(db.Model):
+        """Paid publishing quote order records."""
+        id = db.Column(db.Integer, primary_key=True)
+        order_number = db.Column(db.String(32), unique=True, nullable=False, index=True)
+        status = db.Column(db.String(32), default='pending', nullable=False, index=True)
+        stripe_checkout_session_id = db.Column(db.String(255), unique=True, index=True)
+        stripe_payment_intent_id = db.Column(db.String(255), index=True)
+        quote_id = db.Column(db.Integer, db.ForeignKey('publishing_quote.id'), index=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
+        title = db.Column(db.String(255), index=True)
+        customer_name = db.Column(db.String(255))
+        customer_email = db.Column(db.String(255), nullable=False, index=True)
+        quote_payload = db.Column(db.Text, nullable=False)
+        total_gbp = db.Column(db.Float, nullable=False, default=0.0)
+        admin_email_sent = db.Column(db.Boolean, default=False, nullable=False)
+        paid_at = db.Column(db.DateTime)
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     
     return {
@@ -274,4 +294,5 @@ def init_models(db):
         'ShopOrder': ShopOrder,
         'ShopOrderItem': ShopOrderItem,
         'PublishingQuote': PublishingQuote,
+        'PublishingOrder': PublishingOrder,
     }

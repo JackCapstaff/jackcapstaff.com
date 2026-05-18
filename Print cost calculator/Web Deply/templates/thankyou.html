@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Order Received</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="container">
+      <h1>Thanks — order received</h1>
+      <p>Order timestamp: {{ order.timestamp }}</p>
+      <p>Total: £{{ order.pricing.total }}</p>
+      <p>We'll contact you at {{ order.customer.email }}</p>
+      <p><a href="/">Make another quote</a></p>
+    </main>
+  </body>
+</html>

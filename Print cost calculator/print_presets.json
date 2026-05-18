@@ -1,0 +1,34 @@
+{
+    "A3 Booklet Part": {
+        "type_var": "A3 Booklet",
+        "binding_var": "Staple",
+        "front_cover_var": "None",
+        "back_cover_var": "None",
+        "acetate_var": "None",
+        "paper_type_var": "Standard"
+    },
+    "A3 Score": {
+        "type_var": "A3 Double-sided",
+        "binding_var": "Wire Comb",
+        "front_cover_var": "Card 450gsm (Colour)",
+        "back_cover_var": "Card 450gsm (Colour)",
+        "acetate_var": "None",
+        "paper_type_var": "Standard"
+    },
+    "a4 part": {
+        "type_var": "A4 Single-sided",
+        "binding_var": "None",
+        "front_cover_var": "",
+        "back_cover_var": "",
+        "acetate_var": "",
+        "paper_type_var": ""
+    },
+    "a4 bock": {
+        "type_var": "A4 Single-sided",
+        "binding_var": "",
+        "front_cover_var": "",
+        "back_cover_var": "",
+        "acetate_var": "",
+        "paper_type_var": ""
+    }
+}
