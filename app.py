@@ -162,6 +162,8 @@ PUBLISHING_SETTING_FIELDS = {
     "markup_multiplier": "publishing_markup_multiplier",
 }
 
+PUBLISHING_AUTO_QTY_SETTING_KEY = "publishing_auto_qty_rules"
+
 
 def _load_publishing_settings():
     settings = dict(PUBLISHING_DEFAULT_SETTINGS)
@@ -180,6 +182,42 @@ def _load_publishing_settings():
         except (TypeError, ValueError):
             settings[field] = default_val
     return settings
+
+
+def _parse_publishing_auto_qty_rules(raw_rules):
+    rules = []
+    for raw_line in (raw_rules or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        separator = None
+        for token in ("=", ":", ","):
+            if token in line:
+                separator = token
+                break
+        if separator is None:
+            continue
+
+        keyword_raw, qty_raw = line.split(separator, 1)
+        keyword = (keyword_raw or "").strip().lower()
+        if not keyword:
+            continue
+        qty = _safe_int((qty_raw or "").strip(), default=0, minimum=0)
+        if qty < 1:
+            continue
+
+        rules.append({"keyword": keyword, "qty": qty})
+    return rules
+
+
+def _load_publishing_auto_qty_rules():
+    SiteSettingModel = getattr(app, "SiteSetting", None)
+    if SiteSettingModel is None:
+        return []
+
+    row = SiteSettingModel.query.filter_by(key=PUBLISHING_AUTO_QTY_SETTING_KEY).first()
+    return _parse_publishing_auto_qty_rules(row.value if row else "")
 
 
 def _serialize_quote_payload(items, totals, request_email):
@@ -1062,6 +1100,7 @@ def publishing():
     }
     quote = None
     recent_quotes = []
+    auto_qty_rules = _load_publishing_auto_qty_rules()
 
     if current_user.is_authenticated:
         recent_quotes = PublishingQuote.query.filter_by(user_id=current_user.id).order_by(PublishingQuote.created_at.desc()).limit(10).all()
@@ -1072,7 +1111,7 @@ def publishing():
         engine = _load_print_engine_calculator()
         if engine is None:
             flash('Publishing quote engine is not available on the server yet.', 'danger')
-            return render_template('Publishing.html', form_data=form_data, quote=None)
+            return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
 
         uploads = [f for f in request.files.getlist('score_pdfs') if f and f.filename]
         if not uploads:
@@ -1082,11 +1121,11 @@ def publishing():
 
         if not uploads:
             flash('Please upload at least one PDF score/set file.', 'warning')
-            return render_template('Publishing.html', form_data=form_data, quote=None)
+            return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
 
         if PdfReader is None:
             flash('PDF reader dependency is unavailable.', 'danger')
-            return render_template('Publishing.html', form_data=form_data, quote=None)
+            return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
 
         qty = _safe_int(request.form.get('qty'), default=1, minimum=1)
         default_print_type = request.form.get('print_type', 'A4 Double-sided')
@@ -1117,7 +1156,7 @@ def publishing():
             except Exception:
                 app.logger.exception('Failed reading uploaded PDF for publishing quote')
                 flash(f'We could not read {upload.filename}. Please try another PDF.', 'danger')
-                return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes)
+                return render_template('Publishing.html', form_data=form_data, quote=None, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
 
             file_qty = _safe_int(_list_value(item_qty_list, idx, str(qty)), default=qty, minimum=1)
             file_print_type = _list_value(item_print_type_list, idx, default_print_type)
@@ -1188,7 +1227,7 @@ def publishing():
             app.logger.exception('Publishing quote calculation failed')
             flash('Quote calculation failed. Please try again.', 'danger')
 
-    return render_template('Publishing.html', form_data=form_data, quote=quote, recent_quotes=recent_quotes)
+    return render_template('Publishing.html', form_data=form_data, quote=quote, recent_quotes=recent_quotes, auto_qty_rules=auto_qty_rules)
 
 
 @app.route('/publishing/quotes')

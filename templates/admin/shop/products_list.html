@@ -64,6 +64,11 @@
                 <input type="number" step="0.01" min="1" class="form-control" name="markup_multiplier" value="{{ publishing_settings.markup_multiplier }}">
             </div>
             <div class="col-12">
+                <label class="form-label mb-0">Auto Qty Rules (one per line)</label>
+                <textarea class="form-control" name="auto_qty_rules" rows="5" placeholder="score=1&#10;violin=7&#10;flute=2">{{ publishing_settings.auto_qty_rules }}</textarea>
+                <div class="form-text">Format each line as keyword=qty. If a filename contains the keyword, that qty is suggested.</div>
+            </div>
+            <div class="col-12">
                 <button type="submit" class="btn btn-primary">Update Publishing Pricing</button>
             </div>
         </div>

@@ -182,6 +182,7 @@
 (function () {
     const fileInput = document.getElementById('score_pdfs');
     const tbody = document.getElementById('file-settings-body');
+    const autoQtyRules = {{ (auto_qty_rules or [])|tojson }};
 
     function printTypeOptions(selected) {
         const opts = ['A3 Single-sided', 'A3 Double-sided', 'A3 Booklet', 'A4 Single-sided', 'A4 Double-sided', 'A4 Booklet'];
@@ -198,18 +199,43 @@
         return opts.map((opt) => `<option value="${opt}" ${selected === opt ? 'selected' : ''}>${opt}</option>`).join('');
     }
 
+    function inferPreset(fileName) {
+        const n = (fileName || '').toLowerCase();
+        const scoreTokens = ['full score', 'conductor', 'cond', 'score'];
+        return scoreTokens.some((token) => n.includes(token)) ? 'score' : 'parts';
+    }
+
+    function suggestedQty(fileName, preset) {
+        const n = (fileName || '').toLowerCase();
+        for (const rule of autoQtyRules) {
+            const keyword = (rule && rule.keyword ? String(rule.keyword) : '').toLowerCase().trim();
+            const qty = Number(rule && rule.qty ? rule.qty : 0);
+            if (!keyword || !Number.isFinite(qty) || qty < 1) {
+                continue;
+            }
+            if (n.includes(keyword)) {
+                return Math.floor(qty);
+            }
+        }
+        return preset === 'score' ? 1 : 1;
+    }
+
     function applyPreset(row, preset) {
+        const fileName = row.getAttribute('data-file-name') || '';
+        const qtyInput = row.querySelector('input[name="item_qty"]');
         const printType = row.querySelector('select[name="item_print_type"]');
         const binding = row.querySelector('select[name="item_binding"]');
         const acetate = row.querySelector('select[name="item_acetate"]');
-        if (!printType || !binding || !acetate) {
+        if (!qtyInput || !printType || !binding || !acetate) {
             return;
         }
         if (preset === 'score') {
+            qtyInput.value = String(suggestedQty(fileName, preset));
             printType.value = 'A3 Double-sided';
             binding.value = 'Wire Comb';
             acetate.value = 'Front';
         } else if (preset === 'parts') {
+            qtyInput.value = String(suggestedQty(fileName, preset));
             printType.value = 'A3 Booklet';
             binding.value = 'Staple';
             acetate.value = 'None';
@@ -226,17 +252,20 @@
         Array.from(files).forEach((file, idx) => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
+            tr.setAttribute('data-file-name', file.name || '');
+            const inferredPreset = inferPreset(file.name || '');
+            const inferredQty = suggestedQty(file.name || '', inferredPreset);
             tr.innerHTML = `
                 <td style="padding:0.5rem;">${file.name}</td>
                 <td style="padding:0.5rem;">
                     <select name="item_preset">
-                        <option value="score">Score</option>
-                        <option value="parts">Parts</option>
+                        <option value="score" ${inferredPreset === 'score' ? 'selected' : ''}>Score</option>
+                        <option value="parts" ${inferredPreset === 'parts' ? 'selected' : ''}>Parts</option>
                         <option value="custom">Custom</option>
                     </select>
                 </td>
                 <td style="padding:0.5rem;">
-                    <input type="number" name="item_qty" min="1" value="1" style="max-width:90px;">
+                    <input type="number" name="item_qty" min="1" value="${inferredQty}" style="max-width:90px;">
                 </td>
                 <td style="padding:0.5rem;">
                     <select name="item_print_type">${printTypeOptions('A3 Double-sided')}</select>
@@ -253,8 +282,7 @@
             const presetSelect = tr.querySelector('select[name="item_preset"]');
             presetSelect.addEventListener('change', () => applyPreset(tr, presetSelect.value));
 
-            // Default each new row to Score preset.
-            applyPreset(tr, 'score');
+            applyPreset(tr, inferredPreset);
         });
     }
 

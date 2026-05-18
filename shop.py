@@ -1371,6 +1371,7 @@ def admin_products_list():
         'acetate_cost': get_setting('publishing_acetate_cost', '0.60'),
         'labour_per_job': get_setting('publishing_labour_per_job', '0.25'),
         'markup_multiplier': get_setting('publishing_markup_multiplier', '1.25'),
+        'auto_qty_rules': get_setting('publishing_auto_qty_rules', 'score=1\nviolin=7'),
     }
 
     return render_template(
@@ -1422,6 +1423,8 @@ def admin_update_publishing_settings():
         'publishing_markup_multiplier': request.form.get('markup_multiplier', '1.25'),
     }
 
+    auto_qty_rules = (request.form.get('auto_qty_rules') or '').strip()
+
     for key, raw_value in setting_fields.items():
         value = (raw_value or '').strip()
         if not value:
@@ -1438,6 +1441,14 @@ def admin_update_publishing_settings():
         else:
             row.value = value
         row.updated_at = datetime.utcnow()
+
+    qty_rules_row = SiteSetting.query.filter_by(key='publishing_auto_qty_rules').first()
+    if not qty_rules_row:
+        qty_rules_row = SiteSetting(key='publishing_auto_qty_rules', value=auto_qty_rules)
+        db.session.add(qty_rules_row)
+    else:
+        qty_rules_row.value = auto_qty_rules
+    qty_rules_row.updated_at = datetime.utcnow()
 
     db.session.commit()
     flash("Publishing pricing settings updated.", "success")
