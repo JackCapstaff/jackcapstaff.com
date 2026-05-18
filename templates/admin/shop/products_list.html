@@ -8,6 +8,24 @@
 {% endblock %}
 
 {% block content %}
+<form method="POST" action="{{ url_for('shop.admin_update_shipping_settings') }}" class="mb-4">
+    <div class="card card-body bg-light mb-3">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-4">
+                <label class="form-label mb-0">Shipping Fee (GBP)</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="shipping_fee" value="{{ shipping_fee|default('5.00') }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label mb-0">Free Delivery Threshold (GBP)</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="free_delivery_threshold" value="{{ free_delivery_threshold|default('0.00') }}">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">Update Shipping Settings</button>
+            </div>
+        </div>
+        <div class="form-text mt-2">Orders above the threshold get free shipping. Leave at 0 for no free shipping.</div>
+    </div>
+</form>
 <div class="card">
     <div class="table-responsive">
         <table class="table table-hover mb-0">

@@ -17,6 +17,11 @@
         <div class="card">
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data">
+                                        <div class="mb-3">
+                                            <label class="form-label">YouTube URL</label>
+                                            <input class="form-control" name="youtube_url" value="{{ product.youtube_url if product else '' }}">
+                                            <small class="text-muted">Optional: Add a YouTube video for this product (full URL).</small>
+                                        </div>
                     <div class="mb-3">
                         <label class="form-label">Title *</label>
                         <input class="form-control" name="title" required value="{{ product.title if product else '' }}">

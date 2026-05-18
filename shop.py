@@ -57,6 +57,7 @@ def _models():
         current_app.Product,
         current_app.ShopOrder,
         current_app.ShopOrderItem,
+        getattr(current_app, 'SiteSetting', None),
     )
 
 
@@ -855,7 +856,37 @@ def shop_product_preview(slug):
 def shop_cart():
     items, total_cents = _cart_with_products()
     has_physical_items = any(row.get("delivery_format") == "print" for row in items)
-    return render_template("shop/cart.html", items=items, total_cents=total_cents, has_physical_items=has_physical_items)
+    shipping_cents = 0
+    shipping_fee_gbp = 5.00
+    free_delivery_gbp = 0.00
+    _, _, _, _, SiteSetting = _models()
+    if SiteSetting:
+        s_fee = SiteSetting.query.filter_by(key='shipping_fee_gbp').first()
+        s_thresh = SiteSetting.query.filter_by(key='free_delivery_threshold_gbp').first()
+        try:
+            shipping_fee_gbp = float(s_fee.value) if s_fee and s_fee.value else 5.00
+        except Exception:
+            shipping_fee_gbp = 5.00
+        try:
+            free_delivery_gbp = float(s_thresh.value) if s_thresh and s_thresh.value else 0.00
+        except Exception:
+            free_delivery_gbp = 0.00
+    product_total_gbp = (total_cents or 0) / 100.0
+    if has_physical_items:
+        if free_delivery_gbp > 0 and product_total_gbp >= free_delivery_gbp:
+            shipping_cents = 0
+        else:
+            shipping_cents = int(round(shipping_fee_gbp * 100))
+    return render_template(
+        "shop/cart.html",
+        items=items,
+        total_cents=total_cents,
+        has_physical_items=has_physical_items,
+        shipping_cents=shipping_cents,
+        shipping_fee_gbp=shipping_fee_gbp,
+        free_delivery_gbp=free_delivery_gbp,
+        product_total_gbp=product_total_gbp,
+    )
 
 
 @shop_bp.route("/shop/cart/add", methods=["POST"])
@@ -935,7 +966,29 @@ def shop_checkout_create():
     cart_items, _ = _cart_with_products()
     has_physical_items = any(row.get("delivery_format") == "print" for row in cart_items)
     shipping_region = (request.form.get("shipping_region") or "domestic").strip().lower()
-    shipping_cents = 500 if has_physical_items else 0
+    shipping_fee_gbp = 5.00
+    free_delivery_gbp = 0.00
+    _, _, _, _, SiteSetting = _models()
+    if SiteSetting:
+        s_fee = SiteSetting.query.filter_by(key='shipping_fee_gbp').first()
+        s_thresh = SiteSetting.query.filter_by(key='free_delivery_threshold_gbp').first()
+        try:
+            shipping_fee_gbp = float(s_fee.value) if s_fee and s_fee.value else 5.00
+        except Exception:
+            shipping_fee_gbp = 5.00
+        try:
+            free_delivery_gbp = float(s_thresh.value) if s_thresh and s_thresh.value else 0.00
+        except Exception:
+            free_delivery_gbp = 0.00
+    shipping_cents = 0
+    product_total_gbp = sum(
+        (row["unit_price_cents"] or 0) * (row["quantity"] or 1) for row in cart_items
+    ) / 100.0
+    if has_physical_items:
+        if free_delivery_gbp > 0 and product_total_gbp >= free_delivery_gbp:
+            shipping_cents = 0
+        else:
+            shipping_cents = int(round(shipping_fee_gbp * 100))
 
     if has_physical_items and shipping_region != "domestic":
         flash("International shipping for printed copies is quoted manually. Please contact us for a quote.", "warning")
@@ -1296,11 +1349,45 @@ def admin_products_list():
     if not _editor_required():
         abort(403)
 
-    _, Product, _, _ = _models()
+    _, Product, _, _, SiteSetting = _models()
     page = request.args.get("page", 1, type=int)
     products = Product.query.order_by(Product.sort_order.asc(), Product.created_at.desc()).paginate(page=page, per_page=30)
-    return render_template("admin/shop/products_list.html", products=products)
 
+    # Load shipping settings
+    def get_setting(key, default):
+        s = SiteSetting.query.filter_by(key=key).first() if SiteSetting else None
+        return s.value if s else default
+    shipping_fee = get_setting('shipping_fee_gbp', '5.00')
+    free_delivery_threshold = get_setting('free_delivery_threshold_gbp', '0.00')
+
+    return render_template(
+        "admin/shop/products_list.html",
+        products=products,
+        shipping_fee=shipping_fee,
+        free_delivery_threshold=free_delivery_threshold,
+    )
+
+@shop_bp.route("/admin/shop/shipping-settings", methods=["POST"])
+@login_required
+def admin_update_shipping_settings():
+    if not _editor_required():
+        abort(403)
+    db, _, _, _, SiteSetting = _models()
+    fee = (request.form.get("shipping_fee") or "5.00").strip()
+    threshold = (request.form.get("free_delivery_threshold") or "0.00").strip()
+    def set_setting(key, value):
+        s = SiteSetting.query.filter_by(key=key).first()
+        if not s:
+            s = SiteSetting(key=key, value=value)
+            db.session.add(s)
+        else:
+            s.value = value
+        s.updated_at = datetime.utcnow()
+        db.session.commit()
+    set_setting('shipping_fee_gbp', fee)
+    set_setting('free_delivery_threshold_gbp', threshold)
+    flash("Shipping settings updated.", "success")
+    return redirect(url_for("shop.admin_products_list"))
 
 @shop_bp.route("/admin/shop/create", methods=["GET", "POST"])
 @login_required
@@ -1308,7 +1395,7 @@ def admin_products_create():
     if not _editor_required():
         abort(403)
 
-    db, Product, _, _ = _models()
+    db, Product, _, _, _ = _models()
 
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
@@ -1333,6 +1420,8 @@ def admin_products_create():
         elif not cover_image_url and pdf_file_url:
             cover_image_url = _generate_cover_from_pdf(pdf_file_url, slug_hint=slug)
 
+        youtube_url = _clean_optional_text(request.form.get("youtube_url"))
+
         product = Product(
             title=title,
             slug=slug,
@@ -1340,6 +1429,7 @@ def admin_products_create():
             description=_clean_optional_text(request.form.get("description")),
             cover_image_url=cover_image_url,
             pdf_file_url=pdf_file_url,
+            youtube_url=youtube_url,
             has_pdf=request.form.get("has_pdf") == "on",
             has_print=request.form.get("has_print") == "on",
             price_pdf_cents=max(0, _parse_price_to_cents(request.form.get("price_pdf") or "0")),
@@ -1362,7 +1452,7 @@ def admin_products_edit(product_id):
     if not _editor_required():
         abort(403)
 
-    db, Product, _, _ = _models()
+    db, Product, _, _, _ = _models()
     product = Product.query.get_or_404(product_id)
 
     if request.method == "POST":
@@ -1391,6 +1481,8 @@ def admin_products_edit(product_id):
         if not cover_image_url and product.pdf_file_url:
             cover_image_url = _generate_cover_from_pdf(product.pdf_file_url, slug_hint=product.slug)
         product.cover_image_url = cover_image_url
+
+        product.youtube_url = _clean_optional_text(request.form.get("youtube_url"))
 
         product.has_pdf = request.form.get("has_pdf") == "on"
         product.has_print = request.form.get("has_print") == "on"
