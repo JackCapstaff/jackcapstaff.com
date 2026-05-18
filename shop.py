@@ -607,19 +607,61 @@ def _send_order_emails(order):
     invoice_bytes = _build_invoice_pdf(order, items)
     invoice_attachment = [{"filename": _safe_pdf_name(order.order_number, "invoice"), "data": invoice_bytes}]
 
+    raw_name = (order.customer_name or "").strip()
+    first_name = raw_name.split()[0] if raw_name else "there"
+    greeting_text = f"Dear {first_name},"
+
+    signature_name = os.environ.get("SHOP_EMAIL_SIGNATURE_NAME", "Jack Capstaff").strip() or "Jack Capstaff"
+    signature_role = os.environ.get("SHOP_EMAIL_SIGNATURE_ROLE", "Music Director").strip() or "Music Director"
+    signature_phone = os.environ.get("SHOP_EMAIL_SIGNATURE_PHONE", "07805 165 842").strip() or "07805 165 842"
+    signature_email = (
+        os.environ.get("SHOP_EMAIL_SIGNATURE_EMAIL", "").strip()
+        or os.environ.get("SHOP_SELLER_EMAIL", "").strip()
+        or "jack@jackcapstaff.com"
+    )
+    signature_website = os.environ.get("SHOP_EMAIL_SIGNATURE_WEBSITE", "www.jackcapstaff.com").strip() or "www.jackcapstaff.com"
+    signature_image_url = os.environ.get("SHOP_EMAIL_SIGNATURE_IMAGE_URL", "").strip()
+
+    signoff_text = (
+        "Kind regards,\n\n"
+        f"{signature_name}\n"
+        f"{signature_role}\n"
+        f"M {signature_phone}\n"
+        f"E {signature_email}\n"
+        f"W {signature_website}"
+    )
+
+    signoff_html = (
+        "<p>Kind regards,</p>"
+        f"<p><strong>{signature_name}</strong><br>{signature_role}<br>"
+        f"M {signature_phone}<br>"
+        f"E <a href=\"mailto:{signature_email}\">{signature_email}</a><br>"
+        f"W <a href=\"https://{signature_website.replace('https://', '').replace('http://', '')}\">{signature_website}</a></p>"
+    )
+    if signature_image_url:
+        signoff_html += (
+            f"<p><img src=\"{signature_image_url}\" alt=\"{signature_name} signature\" "
+            "style=\"max-width:260px;height:auto;display:block;\"></p>"
+        )
+
     subject_customer = f"Your order receipt ({order.order_number})"
     text_customer = (
-        f"Thank you for your order.\n\nOrder: {order.order_number}\n"
+        f"{greeting_text}\n\n"
+        "Thank you for your order.\n\n"
+        f"Order: {order.order_number}\n"
         f"Total: {_format_money(order.total_cents, order.currency)}\n\nItems:\n{items_text}\n\n"
         f"Digital downloads:\n{downloads_text}\n\n"
-        f"Security note: download links expire and each PDF can be downloaded up to {download_limit} times.\n"
+        f"Security note: download links expire and each PDF can be downloaded up to {download_limit} times.\n\n"
+        f"{signoff_text}\n"
     )
     html_customer = (
+        f"<p>{greeting_text}</p>"
         f"<p>Thank you for your order.</p><p><strong>Order:</strong> {order.order_number}<br>"
         f"<strong>Total:</strong> {_format_money(order.total_cents, order.currency)}</p>"
         f"<p><strong>Items</strong><br>{items_text.replace(chr(10), '<br>')}</p>"
         f"<p><strong>Digital downloads</strong><br>{downloads_text.replace(chr(10), '<br>')}</p>"
         f"<p><em>Security note: download links expire and each PDF can be downloaded up to {download_limit} times.</em></p>"
+        f"{signoff_html}"
     )
     customer_ok = _send_email(subject_customer, order.customer_email, text_customer, html_customer, attachments=invoice_attachment)
 
