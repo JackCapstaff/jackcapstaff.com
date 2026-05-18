@@ -1261,6 +1261,11 @@ def shop_stripe_webhook():
         except (TypeError, ValueError):
             order_id = 0
 
+        try:
+            publishing_order_id = int(session_obj.get("metadata", {}).get("publishing_order_id", 0) or 0)
+        except (TypeError, ValueError):
+            publishing_order_id = 0
+
         db, _, ShopOrder, ShopOrderItem, _ = _models()
         order = ShopOrder.query.get(order_id)
         if order:
@@ -1292,6 +1297,33 @@ def shop_stripe_webhook():
                     _send_order_emails(order)
                 except Exception:
                     current_app.logger.exception("Order email processing failed in Stripe webhook")
+
+        PublishingOrder = getattr(current_app, "PublishingOrder", None)
+        if PublishingOrder is not None and publishing_order_id:
+            publishing_order = PublishingOrder.query.get(publishing_order_id)
+            if publishing_order:
+                publishing_order.status = "paid"
+                publishing_order.stripe_payment_intent_id = session_obj.get("payment_intent")
+                publishing_order.total_gbp = float((session_obj.get("amount_total") or 0) / 100.0) or publishing_order.total_gbp
+                publishing_order.paid_at = datetime.utcnow()
+
+                customer_details = session_obj.get("customer_details") or {}
+                publishing_order.customer_name = customer_details.get("name") or publishing_order.customer_name
+                publishing_order.customer_email = (customer_details.get("email") or publishing_order.customer_email or "").strip().lower()
+
+                if not publishing_order.admin_email_sent:
+                    try:
+                        sender = getattr(current_app, "send_publishing_order_admin_email", None)
+                        if callable(sender):
+                            send_result = sender(publishing_order)
+                            if isinstance(send_result, tuple):
+                                publishing_order.admin_email_sent = bool(send_result[0])
+                            else:
+                                publishing_order.admin_email_sent = bool(send_result)
+                    except Exception:
+                        current_app.logger.exception("Publishing order email processing failed in Stripe webhook")
+
+                db.session.commit()
 
     return jsonify({"received": True})
 

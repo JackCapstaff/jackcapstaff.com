@@ -729,6 +729,7 @@ app.ShopOrder = ShopOrder
 app.ShopOrderItem = ShopOrderItem
 app.PublishingQuote = PublishingQuote
 app.PublishingOrder = PublishingOrder
+app.send_publishing_order_admin_email = _send_publishing_order_admin_email
 
 
 # Import and register admin blueprint
