@@ -2,6 +2,7 @@ import os
 import re
 import secrets
 import smtplib
+import json
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime
 from email.message import EmailMessage
@@ -664,8 +665,14 @@ def shop_stripe_webhook():
     except Exception:
         return jsonify({"error": "invalid webhook"}), 400
 
-    if event.get("type") == "checkout.session.completed":
-        session_obj = event["data"]["object"]
+    # Stripe SDK returns StripeObject instances; parse verified JSON for stable dict access.
+    try:
+        event_data = json.loads(payload)
+    except ValueError:
+        return jsonify({"error": "invalid payload"}), 400
+
+    if event_data.get("type") == "checkout.session.completed":
+        session_obj = ((event_data.get("data") or {}).get("object") or {})
         try:
             order_id = int(session_obj.get("metadata", {}).get("order_id", 0) or 0)
         except (TypeError, ValueError):
