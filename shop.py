@@ -721,7 +721,8 @@ def _create_pending_order_from_cart(customer_email: str):
 
 @shop_bp.app_context_processor
 def inject_shop_helpers():
-    return {"format_money": _format_money}
+    cart_count = sum(item.get("quantity", 1) for item in _cart_items())
+    return {"format_money": _format_money, "cart_item_count": cart_count}
 
 
 @shop_bp.route("/shop")
