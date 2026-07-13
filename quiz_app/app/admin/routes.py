@@ -27,7 +27,7 @@ def _admin_required(f):
     @wraps(f)
     @login_required
     def decorated_function(*args, **kwargs):
-        if not current_user.is_admin:
+        if not current_user.is_admin():
             flash("Admin access required.", "error")
             return redirect(url_for("quiz_main.dashboard"))
         return f(*args, **kwargs)

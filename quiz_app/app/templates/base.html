@@ -18,7 +18,7 @@
                     {% if current_user.is_authenticated %}
                         <li><a href="{{ url_for('quiz_main.dashboard') }}">Dashboard</a></li>
                         <li><a href="{{ url_for('quiz_results.history') }}">History</a></li>
-                        {% if current_user.is_admin %}
+                        {% if current_user.is_admin() %}
                             <li><a href="{{ url_for('quiz_admin.index') }}">Admin</a></li>
                         {% endif %}
                         <li class="nav-user">
