@@ -1,0 +1,120 @@
+{% extends "quiz/base.html" %}
+
+{% block title %}{{ 'Edit' if mode == 'edit' else 'Add' }} Question - Quiz App{% endblock %}
+
+{% set f = form or {} %}
+{% macro fval(name, fallback='') -%}
+{{ f.get(name) if (form and f.get(name) is not none) else fallback }}
+{%- endmacro %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2>{{ 'Edit Question' if mode == 'edit' else 'Add Question' }}</h2>
+    {% if mode == 'edit' %}
+        <p style="color:#666;">Editing <strong>{{ question.external_question_id }}</strong> in the active bank.</p>
+    {% else %}
+        <p style="color:#666;">This question is added to the current active bank (a new bank is created if none exists).</p>
+    {% endif %}
+
+    <form method="POST" style="margin: 20px 0;">
+        {{ csrf_token() if csrf_token is defined else '' }}
+
+        <div style="margin:15px 0;">
+            <label><strong>Question ID</strong> *</label><br>
+            <input type="text" name="external_question_id" required style="width:100%; max-width:400px;"
+                   value="{{ fval('external_question_id', question.external_question_id if question else '') }}">
+        </div>
+
+        <div style="margin:15px 0;">
+            <label><strong>Subject / Primary Topic</strong> *</label><br>
+            {% set sel_subject = (f.get('subject_id')|int) if (form and f.get('subject_id')) else (question.subject_id if question else 0) %}
+            <select name="subject_id" required style="width:100%; max-width:400px;">
+                <option value="">-- select subject --</option>
+                {% for s in subjects %}
+                    <option value="{{ s.id }}" {% if sel_subject == s.id %}selected{% endif %}>
+                        {{ s.paper }} &middot; {{ s.full_name }}
+                    </option>
+                {% endfor %}
+            </select>
+            <div style="color:#666; font-size:0.9em;">Paper and topic are taken from the selected subject.</div>
+        </div>
+
+        <div style="margin:15px 0;">
+            <label><strong>Subtopic</strong> (optional)</label><br>
+            <input type="text" name="subtopic" style="width:100%; max-width:400px;"
+                   value="{{ fval('subtopic', question.subtopic if question else '') }}">
+        </div>
+
+        <div style="margin:15px 0;">
+            <label><strong>Question text</strong> *</label><br>
+            <textarea name="question_text" required rows="5" style="width:100%;">{{ fval('question_text', question.question_text if question else '') }}</textarea>
+        </div>
+
+        <fieldset style="margin:15px 0; border:1px solid #ddd; padding:15px; border-radius:4px;">
+            <legend><strong>Answer options</strong> (SQE uses five; at least two required)</legend>
+            {% for L in option_letters %}
+                {% set ln = L|lower %}
+                {% set edit_val = (question['answer_' ~ ln] if question else '') %}
+                <div style="margin:8px 0;">
+                    <label style="display:inline-block; width:80px;">Answer {{ L }}{% if L in ['A','B'] %} *{% endif %}</label>
+                    <input type="text" name="answer_{{ ln }}" style="width:100%; max-width:600px;"
+                           value="{{ fval('answer_' ~ ln, edit_val or '') }}">
+                </div>
+            {% endfor %}
+            <div style="margin:12px 0 0;">
+                <label><strong>Correct Answer</strong> *</label>
+                {% set sel_correct = (f.get('correct_answer')) if (form and f.get('correct_answer')) else (question.correct_answer if question else '') %}
+                <select name="correct_answer" required>
+                    <option value="">--</option>
+                    {% for L in option_letters %}
+                        <option value="{{ L }}" {% if sel_correct == L %}selected{% endif %}>{{ L }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </fieldset>
+
+        <div style="margin:15px 0;">
+            <label><strong>Explanation</strong> (optional)</label><br>
+            <textarea name="explanation" rows="3" style="width:100%;">{{ fval('explanation', question.explanation if question else '') }}</textarea>
+        </div>
+
+        <div style="margin:15px 0;">
+            <label><strong>Authority</strong> (optional, e.g. case or statute)</label><br>
+            <input type="text" name="authority" style="width:100%; max-width:600px;"
+                   value="{{ fval('authority', question.authority if question else '') }}">
+        </div>
+
+        <div style="margin:15px 0; display:flex; gap:20px; flex-wrap:wrap;">
+            <div>
+                <label><strong>Difficulty</strong></label><br>
+                {% set sel_diff = (f.get('difficulty')) if (form and f.get('difficulty')) else (question.difficulty if question else '') %}
+                <select name="difficulty">
+                    <option value="">--</option>
+                    {% for d in ['easy', 'medium', 'hard'] %}
+                        <option value="{{ d }}" {% if sel_diff == d %}selected{% endif %}>{{ d|capitalize }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label><strong>Review status</strong></label><br>
+                {% set sel_rs = (f.get('review_status')) if (form and f.get('review_status')) else (question.review_status if question else 'Draft') %}
+                <select name="review_status">
+                    {% for rs in review_statuses %}
+                        <option value="{{ rs }}" {% if sel_rs == rs %}selected{% endif %}>{{ rs }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label><strong>Active</strong></label><br>
+                {% set is_active = (form and f.get('active')) or (not form and question and question.active) or (not form and not question) %}
+                <label><input type="checkbox" name="active" {% if is_active %}checked{% endif %}> Available to tests</label>
+            </div>
+        </div>
+
+        <div style="margin:25px 0;">
+            <button type="submit" class="btn btn-primary">{{ 'Save changes' if mode == 'edit' else 'Add question' }}</button>
+            <a href="{{ url_for('quiz_admin.list_questions') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

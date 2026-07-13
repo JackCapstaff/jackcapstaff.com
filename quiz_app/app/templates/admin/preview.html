@@ -36,17 +36,34 @@
     {% endif %}
 
     {% if active_bank %}
-        <div style="background: #ffe0e0; padding: 20px; border-radius: 4px; margin: 20px 0;">
-            <strong>⚠️ Warning:</strong> Confirming this import will replace the current active question bank 
-            ({{ active_bank.question_count }} questions from {{ active_bank.filename }}).
-        </div>
+        {% if import_mode == "append" %}
+            <div style="background: #e0f0ff; padding: 20px; border-radius: 4px; margin: 20px 0;">
+                <strong>➕ Append mode:</strong> These questions will be <strong>added</strong> to the current
+                active bank ({{ active_bank.question_count }} questions from {{ active_bank.filename }}).
+                Any incoming question whose <em>Question ID</em> already exists will be skipped.
+            </div>
+        {% else %}
+            <div style="background: #ffe0e0; padding: 20px; border-radius: 4px; margin: 20px 0;">
+                <strong>⚠️ Replace mode:</strong> Confirming will <strong>replace</strong> the current active
+                question bank ({{ active_bank.question_count }} questions from {{ active_bank.filename }}).
+                The existing questions will be archived, not deleted.
+            </div>
+        {% endif %}
     {% endif %}
 
     <div style="margin: 30px 0;">
         <form method="POST" action="{{ url_for('quiz_admin.confirm_import_route', token=staged.token) }}" style="display: inline;">
-            <button type="submit" class="btn btn-lg btn-primary" onclick="return confirm('Replace the active question bank?');">
-                Confirm & Activate
-            </button>
+            {{ csrf_token() if csrf_token is defined else '' }}
+            <input type="hidden" name="import_mode" value="{{ import_mode }}">
+            {% if import_mode == "append" %}
+                <button type="submit" class="btn btn-lg btn-primary" onclick="return confirm('Append these questions to the active bank?');">
+                    Confirm & Append
+                </button>
+            {% else %}
+                <button type="submit" class="btn btn-lg btn-primary" onclick="return confirm('Replace the active question bank?');">
+                    Confirm & Replace
+                </button>
+            {% endif %}
         </form>
         <a href="{{ url_for('quiz_admin.upload_questions') }}" class="btn btn-secondary">Cancel</a>
     </div>

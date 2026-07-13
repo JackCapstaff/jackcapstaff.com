@@ -818,12 +818,81 @@ def stage_import(file_bytes: bytes, original_filename: str, user_id: int) -> Imp
     return result
 
 
-def confirm_import(token: str, user_id: int) -> QuestionBankImport:
+def _question_from_staged(sq: StagedQuestion, bank_id: int) -> Question:
+    """Build a live Question (without options) from a staged question row."""
+    return Question(
+        bank_import_id=bank_id,
+        external_question_id=sq.external_question_id,
+        question_format=sq.question_format,
+        paper=sq.paper,
+        subject_id=sq.subject_id,
+        subtopic=sq.subtopic,
+        logical_key=sq.logical_key,
+        topic=sq.topic,
+        topic_key=sq.topic_key,
+        question_text=sq.question_text,
+        # Flat answer columns kept for compat (SQE5 also has them populated)
+        answer_a=sq.answer_a,
+        answer_b=sq.answer_b,
+        answer_c=sq.answer_c,
+        answer_d=sq.answer_d,
+        answer_e=sq.answer_e,
+        correct_answer=sq.correct_answer,
+        explanation=sq.explanation,
+        explanation_source=sq.explanation_source,
+        explanation_author=sq.explanation_author,
+        explanation_independent=sq.explanation_independent,
+        source_type=sq.source_type,
+        source_set=sq.source_set,
+        source_question_id=sq.source_question_id,
+        source_version=sq.source_version,
+        source_url=sq.source_url,
+        source_notice=sq.source_notice,
+        authority=sq.authority,
+        candidate_correct_pct=sq.candidate_correct_pct,
+        law_cutoff_date=sq.law_cutoff_date,
+        valid_from=sq.valid_from,
+        valid_to=sq.valid_to,
+        last_reviewed=sq.last_reviewed,
+        reviewed_by=sq.reviewed_by,
+        review_status=sq.review_status,
+        difficulty=sq.difficulty,
+        language=sq.language,
+        notes=sq.notes,
+        active=sq.active,
+        image_url=sq.image_url,
+        reference=sq.reference,
+        last_updated=sq.last_updated,
+        content_fingerprint=sq.content_fingerprint,
+    )
+
+
+def recompute_bank_counts(bank: QuestionBankImport) -> None:
+    """Recalculate the denormalised counts on a QuestionBankImport from its questions."""
+    questions = list(bank.questions)
+    bank.question_count = len(questions)
+    bank.topic_count = len({q.topic_key for q in questions})
+    bank.flk1_count = sum(1 for q in questions if q.paper == "FLK1")
+    bank.flk2_count = sum(1 for q in questions if q.paper == "FLK2")
+    bank.active_count = sum(1 for q in questions if q.active)
+    bank.inactive_count = sum(1 for q in questions if not q.active)
+    bank.row_count = len(questions)
+
+
+def confirm_import(token: str, user_id: int, mode: str = "replace") -> QuestionBankImport:
     """
-    Atomically replace the active question bank from a staged import.
+    Import a staged upload into the live question bank.
+
+    mode="replace" (default): create a new bank and deactivate all previous banks.
+    mode="append": add the staged questions into the currently active bank, skipping
+    any whose Question ID already exists there. Falls back to "replace" behaviour if
+    there is no active bank yet.
 
     Raises ValueError if the token is invalid, expired, or not owned by user_id.
     """
+    if mode not in ("replace", "append"):
+        raise ValueError(f"Unknown import mode: {mode!r}")
+
     staged = db.session.execute(
         db.select(StagedImport).where(StagedImport.token == token)
     ).scalar_one_or_none()
@@ -843,7 +912,40 @@ def confirm_import(token: str, user_id: int) -> QuestionBankImport:
         db.session.commit()
         raise ValueError("Staged import has expired.")
 
-    # Build QuestionBankImport record
+    active_bank = db.session.execute(
+        db.select(QuestionBankImport).where(QuestionBankImport.active == True)  # noqa: E712
+    ).scalar_one_or_none()
+
+    # ---- Append into the existing active bank ----
+    if mode == "append" and active_bank is not None:
+        existing_ids = {q.external_question_id for q in active_bank.questions}
+        for sq in staged.staged_questions:
+            if sq.external_question_id in existing_ids:
+                continue  # skip duplicates by Question ID
+            q = _question_from_staged(sq, active_bank.id)
+            db.session.add(q)
+            db.session.flush()
+            for so in sq.options:
+                db.session.add(
+                    QuestionOption(
+                        question_id=q.id,
+                        source_label=so.source_label,
+                        option_text=so.option_text,
+                        is_correct=so.is_correct,
+                        source_order=so.source_order,
+                    )
+                )
+            existing_ids.add(sq.external_question_id)
+
+        db.session.flush()
+        db.session.refresh(active_bank)
+        recompute_bank_counts(active_bank)
+        active_bank.filename = f"{active_bank.filename} + {staged.filename}"
+        staged.status = "confirmed"
+        db.session.commit()
+        return active_bank
+
+    # ---- Replace: build a fresh active bank ----
     bank_import = QuestionBankImport(
         importer_user_id=user_id,
         filename=staged.filename,
@@ -864,51 +966,7 @@ def confirm_import(token: str, user_id: int) -> QuestionBankImport:
 
     # Insert new questions and their normalised options
     for sq in staged.staged_questions:
-        q = Question(
-            bank_import_id=bank_import.id,
-            external_question_id=sq.external_question_id,
-            question_format=sq.question_format,
-            paper=sq.paper,
-            subject_id=sq.subject_id,
-            subtopic=sq.subtopic,
-            logical_key=sq.logical_key,
-            topic=sq.topic,
-            topic_key=sq.topic_key,
-            question_text=sq.question_text,
-            # Flat answer columns kept for compat (SQE5 also has them populated)
-            answer_a=sq.answer_a,
-            answer_b=sq.answer_b,
-            answer_c=sq.answer_c,
-            answer_d=sq.answer_d,
-            answer_e=sq.answer_e,
-            correct_answer=sq.correct_answer,
-            explanation=sq.explanation,
-            explanation_source=sq.explanation_source,
-            explanation_author=sq.explanation_author,
-            explanation_independent=sq.explanation_independent,
-            source_type=sq.source_type,
-            source_set=sq.source_set,
-            source_question_id=sq.source_question_id,
-            source_version=sq.source_version,
-            source_url=sq.source_url,
-            source_notice=sq.source_notice,
-            authority=sq.authority,
-            candidate_correct_pct=sq.candidate_correct_pct,
-            law_cutoff_date=sq.law_cutoff_date,
-            valid_from=sq.valid_from,
-            valid_to=sq.valid_to,
-            last_reviewed=sq.last_reviewed,
-            reviewed_by=sq.reviewed_by,
-            review_status=sq.review_status,
-            difficulty=sq.difficulty,
-            language=sq.language,
-            notes=sq.notes,
-            active=sq.active,
-            image_url=sq.image_url,
-            reference=sq.reference,
-            last_updated=sq.last_updated,
-            content_fingerprint=sq.content_fingerprint,
-        )
+        q = _question_from_staged(sq, bank_import.id)
         db.session.add(q)
         db.session.flush()
 
@@ -1026,6 +1084,93 @@ def get_active_bank_as_csv() -> str:
                 q.law_cutoff_date.isoformat() if q.law_cutoff_date else "",
             ]
         )
+    return output.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Template CSV (for admins to download and fill in)
+# ---------------------------------------------------------------------------
+
+# Canonical header order used by the downloadable template. Required columns are
+# listed first, followed by the most useful optional columns.
+TEMPLATE_HEADERS = [
+    "Question ID",
+    "Paper",
+    "Primary Topic",
+    "Subtopic",
+    "Question",
+    "Answer A",
+    "Answer B",
+    "Answer C",
+    "Answer D",
+    "Answer E",
+    "Correct Answer",
+    "Explanation",
+    "Authority",
+    "Source Type",
+    "Source Set",
+    "Review Status",
+    "Difficulty",
+    "Active",
+]
+
+_TEMPLATE_EXAMPLE_ROWS = [
+    [
+        "MYSET-FLK1-001",
+        "FLK1",
+        "Contract Law",
+        "Formation",
+        "A buyer emails an offer to purchase goods. Before the seller responds, the buyer "
+        "emails again withdrawing the offer. The seller then emails acceptance of the first "
+        "offer. Has a binding contract been formed?",
+        "Yes, because the acceptance matched the original offer",
+        "No, because the offer was revoked before it was accepted",
+        "Yes, because email acceptance is instantaneous",
+        "No, because offers must be made in writing under seal",
+        "Yes, because the seller relied on the offer",
+        "B",
+        "An offer can be revoked at any time before acceptance, provided the revocation is "
+        "communicated to the offeree. Here the revocation reached the seller first.",
+        "Byrne v Van Tienhoven (1880)",
+        "Original Practice",
+        "My Question Set v1",
+        "Draft",
+        "medium",
+        "true",
+    ],
+    [
+        "MYSET-FLK2-001",
+        "FLK2",
+        "Land Law",
+        "Co-ownership",
+        "Two friends buy a house together contributing equally and hold it as joint tenants. "
+        "One later serves a valid written notice of severance on the other. What is the effect?",
+        "The legal estate is severed into two separate titles",
+        "The friends now hold the equitable interest as tenants in common in equal shares",
+        "The notice has no effect because severance requires a court order",
+        "The property must be sold immediately",
+        "The serving party forfeits their share",
+        "B",
+        "A written notice of severance under s.36(2) LPA 1925 severs the equitable joint "
+        "tenancy, so the parties hold as tenants in common; the legal estate remains a joint tenancy.",
+        "Law of Property Act 1925, s.36(2)",
+        "Original Practice",
+        "My Question Set v1",
+        "Draft",
+        "medium",
+        "true",
+    ],
+]
+
+
+def get_template_csv(include_examples: bool = True) -> str:
+    """Return a fillable SQE question CSV template as a string."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(TEMPLATE_HEADERS)
+    if include_examples:
+        for row in _TEMPLATE_EXAMPLE_ROWS:
+            writer.writerow(row)
     return output.getvalue()
 
 

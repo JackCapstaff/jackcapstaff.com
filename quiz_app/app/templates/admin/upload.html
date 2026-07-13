@@ -3,24 +3,68 @@
 {% block title %}Upload Questions - Quiz App{% endblock %}
 
 {% block content %}
-<div style="max-width: 800px; margin: 0 auto;">
+<div style="max-width: 900px; margin: 0 auto;">
     <h2>Upload Question Bank</h2>
-    <p>Upload a CSV or TSV file with the following columns:</p>
-    <ul>
-        <li>Question ID (required)</li>
-        <li>Topic (required)</li>
-        <li>Question (required)</li>
-        <li>Answer A, B, C, D (required)</li>
-        <li>Correct Answer (A/B/C/D, required)</li>
-        <li>Explanation, Difficulty, Active, Image URL, Reference, Last Updated (optional)</li>
-    </ul>
+    <p>Questions use the <strong>SQE five-option format</strong> (Answer A&ndash;E). Upload a
+       <code>.csv</code> (or tab-separated <code>.tsv</code>) file using the columns below.</p>
+
+    <div style="margin: 20px 0;">
+        <a href="{{ url_for('quiz_admin.download_template') }}" class="btn btn-primary">⬇ Download CSV template</a>
+        <span style="color:#666;">&nbsp;Includes the header row and two worked example rows to overwrite.</span>
+    </div>
+
+    <div style="background: #f9f9f9; padding: 20px; border-radius: 4px; margin: 20px 0;">
+        <h4>Required columns</h4>
+        <ul>
+            <li><strong>Question ID</strong> &mdash; a unique reference, e.g. <code>MYSET-FLK1-001</code></li>
+            <li><strong>Paper</strong> &mdash; <code>FLK1</code> or <code>FLK2</code></li>
+            <li><strong>Primary Topic</strong> &mdash; must match a subject name for that paper
+                (e.g. <em>Contract Law</em>, <em>Land Law</em>, <em>Business Law and Practice</em>)</li>
+            <li><strong>Question</strong> &mdash; the scenario / question text</li>
+            <li><strong>Answer A, Answer B, Answer C, Answer D, Answer E</strong> &mdash; all five options</li>
+            <li><strong>Correct Answer</strong> &mdash; one letter, <code>A</code>&ndash;<code>E</code></li>
+        </ul>
+        <h4>Optional columns</h4>
+        <ul>
+            <li><strong>Subtopic</strong>, <strong>Explanation</strong>, <strong>Authority</strong></li>
+            <li><strong>Source Type</strong>, <strong>Source Set</strong>, <strong>Source Question ID</strong></li>
+            <li><strong>Review Status</strong> &mdash; Draft, Legally Reviewed, Review Due, Official Source, Retired</li>
+            <li><strong>Difficulty</strong> &mdash; easy / medium / hard</li>
+            <li><strong>Active</strong> &mdash; true / false (defaults to true)</li>
+        </ul>
+        <p style="color:#666; margin-bottom:0;"><em>Legacy four-option files (Topic + Answer A&ndash;D, no Paper)
+           are still accepted for backward compatibility.</em></p>
+    </div>
 
     <form method="POST" enctype="multipart/form-data" style="margin: 30px 0;">
+        {{ csrf_token() if csrf_token is defined else '' }}
         <div style="margin: 20px 0;">
-            <label for="file">Select CSV or TSV file:</label><br>
+            <label for="file"><strong>Select CSV or TSV file:</strong></label><br>
             <input type="file" id="file" name="file" accept=".csv,.tsv,.txt" required style="margin-top: 10px;">
         </div>
-        <button type="submit" class="btn btn-primary">Upload</button>
+
+        <div style="margin: 20px 0; background:#fff; border:1px solid #ddd; border-radius:4px; padding:15px;">
+            <strong>How should this import be applied?</strong>
+            <div style="margin-top:10px;">
+                <label style="display:block; margin:6px 0;">
+                    <input type="radio" name="import_mode" value="replace" checked>
+                    <strong>Replace</strong> &mdash; make this the whole active bank (previous bank is archived).
+                </label>
+                <label style="display:block; margin:6px 0;">
+                    <input type="radio" name="import_mode" value="append">
+                    <strong>Append</strong> &mdash; add these questions to the current active bank
+                    (duplicate Question IDs are skipped).
+                </label>
+            </div>
+            {% if active_bank %}
+                <p style="color:#666; margin:8px 0 0;">Current active bank:
+                   <strong>{{ active_bank.question_count }}</strong> questions ({{ active_bank.filename }}).</p>
+            {% else %}
+                <p style="color:#666; margin:8px 0 0;">No active bank yet &mdash; either mode will create the first one.</p>
+            {% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-primary">Upload &amp; Preview</button>
         <a href="{{ url_for('quiz_admin.index') }}" class="btn btn-secondary">Cancel</a>
     </form>
 
@@ -30,8 +74,10 @@
             <li>File size must not exceed 10 MB</li>
             <li>File must be UTF-8 encoded</li>
             <li>All required columns must be present</li>
-            <li>All rows must have valid data</li>
+            <li>Primary Topic must match a seeded subject for the given paper</li>
         </ul>
+        <p style="margin-bottom:0;">Prefer to edit in the browser?
+           <a href="{{ url_for('quiz_admin.list_questions') }}">Manage questions individually &rarr;</a></p>
     </div>
 </div>
 {% endblock %}

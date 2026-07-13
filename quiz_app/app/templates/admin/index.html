@@ -26,6 +26,7 @@
     <div style="margin: 30px 0;">
         <h3>Question Bank Management</h3>
         <a href="{{ url_for('quiz_admin.upload_questions') }}" class="btn btn-primary">Upload New Question Bank</a>
+        <a href="{{ url_for('quiz_admin.list_questions') }}" class="btn btn-secondary">Manage Questions</a>
         {% if active_bank %}
             <a href="{{ url_for('quiz_admin.export_current_bank') }}" class="btn btn-secondary">Export Current Bank</a>
         {% endif %}

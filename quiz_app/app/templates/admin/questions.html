@@ -1,0 +1,96 @@
+{% extends "quiz/base.html" %}
+
+{% block title %}Manage Questions - Quiz App{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    <h2>Manage Questions</h2>
+
+    {% if active_bank %}
+        <p>Active bank: <strong>{{ active_bank.filename }}</strong> &mdash;
+           {{ active_bank.question_count }} questions across {{ active_bank.topic_count }} topics.</p>
+    {% else %}
+        <p>No active question bank yet. Add a question below or
+           <a href="{{ url_for('quiz_admin.upload_questions') }}">upload a CSV</a>.</p>
+    {% endif %}
+
+    <div style="margin: 20px 0;">
+        <a href="{{ url_for('quiz_admin.new_question') }}" class="btn btn-primary">+ Add question</a>
+        <a href="{{ url_for('quiz_admin.upload_questions') }}" class="btn btn-secondary">Upload CSV</a>
+        {% if active_bank %}
+            <a href="{{ url_for('quiz_admin.export_current_bank') }}" class="btn btn-secondary">Export CSV</a>
+        {% endif %}
+        <a href="{{ url_for('quiz_admin.index') }}" class="btn btn-secondary">Back to dashboard</a>
+    </div>
+
+    <form method="GET" style="background:#f9f9f9; padding:15px; border-radius:4px; margin:20px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+        <div>
+            <label for="paper">Paper</label><br>
+            <select name="paper" id="paper">
+                <option value="">All</option>
+                <option value="FLK1" {% if filter_paper == "FLK1" %}selected{% endif %}>FLK1</option>
+                <option value="FLK2" {% if filter_paper == "FLK2" %}selected{% endif %}>FLK2</option>
+            </select>
+        </div>
+        <div>
+            <label for="subject_id">Subject</label><br>
+            <select name="subject_id" id="subject_id">
+                <option value="">All</option>
+                {% for s in subjects %}
+                    <option value="{{ s.id }}" {% if filter_subject_id == s.id %}selected{% endif %}>
+                        {{ s.paper }} &middot; {{ s.full_name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="q">Search text</label><br>
+            <input type="text" name="q" id="q" value="{{ search }}" placeholder="question contains...">
+        </div>
+        <div>
+            <button type="submit" class="btn btn-secondary">Filter</button>
+            <a href="{{ url_for('quiz_admin.list_questions') }}" class="btn btn-secondary">Reset</a>
+        </div>
+    </form>
+
+    <p><strong>{{ questions|length }}</strong> question(s) shown.</p>
+
+    <table class="table" style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="background:#f0f0f0;">
+                <th style="padding:8px; text-align:left;">ID</th>
+                <th style="padding:8px; text-align:left;">Paper</th>
+                <th style="padding:8px; text-align:left;">Topic</th>
+                <th style="padding:8px; text-align:left;">Question</th>
+                <th style="padding:8px; text-align:center;">Opts</th>
+                <th style="padding:8px; text-align:center;">Ans</th>
+                <th style="padding:8px; text-align:center;">Active</th>
+                <th style="padding:8px; text-align:left;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for q in questions %}
+                <tr style="border-bottom:1px solid #ddd;">
+                    <td style="padding:8px;">{{ q.external_question_id }}</td>
+                    <td style="padding:8px;">{{ q.paper or '-' }}</td>
+                    <td style="padding:8px;">{{ q.topic }}{% if q.subtopic %}<br><small style="color:#666;">{{ q.subtopic }}</small>{% endif %}</td>
+                    <td style="padding:8px;">{{ q.question_text[:110] }}{% if q.question_text|length > 110 %}&hellip;{% endif %}</td>
+                    <td style="padding:8px; text-align:center;">{{ q.options|length if q.options else ([q.answer_a, q.answer_b, q.answer_c, q.answer_d, q.answer_e]|select|list|length) }}</td>
+                    <td style="padding:8px; text-align:center;"><strong>{{ q.correct_answer or '-' }}</strong></td>
+                    <td style="padding:8px; text-align:center;">{% if q.active %}✅{% else %}❌{% endif %}</td>
+                    <td style="padding:8px; white-space:nowrap;">
+                        <a href="{{ url_for('quiz_admin.edit_question', question_id=q.id) }}" class="btn btn-secondary" style="padding:4px 8px;">Edit</a>
+                        <form method="POST" action="{{ url_for('quiz_admin.delete_question', question_id=q.id) }}" style="display:inline;"
+                              onsubmit="return confirm('Delete question {{ q.external_question_id }}?');">
+                            {{ csrf_token() if csrf_token is defined else '' }}
+                            <button type="submit" class="btn btn-secondary" style="padding:4px 8px; color:#a00;">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="8" style="padding:16px; text-align:center; color:#666;">No questions match.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
