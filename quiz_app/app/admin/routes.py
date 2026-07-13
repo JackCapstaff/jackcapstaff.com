@@ -30,7 +30,7 @@ def _admin_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_admin:
             flash("Admin access required.", "error")
-            return redirect(url_for("main.dashboard"))
+            return redirect(url_for("quiz_main.dashboard"))
         return f(*args, **kwargs)
 
     return decorated_function
@@ -59,12 +59,12 @@ def upload_questions():
     if request.method == "POST":
         if "file" not in request.files:
             flash("No file part.", "error")
-            return redirect(url_for("admin.upload_questions"))
+            return redirect(url_for("quiz_admin.upload_questions"))
 
         file = request.files["file"]
         if file.filename == "":
             flash("No file selected.", "error")
-            return redirect(url_for("admin.upload_questions"))
+            return redirect(url_for("quiz_admin.upload_questions"))
 
         # Save temporary file
         filename = secure_filename(file.filename)
@@ -76,14 +76,14 @@ def upload_questions():
         if result.has_errors:
             for err in result.errors:
                 flash(f"Row {err.row}, {err.field}: {err.message}", "error")
-            return redirect(url_for("admin.upload_questions"))
+            return redirect(url_for("quiz_admin.upload_questions"))
 
         staged = StagedImport.query.filter_by(token=result.token).first()
         if not staged:
             flash("Import staging failed.", "error")
-            return redirect(url_for("admin.upload_questions"))
+            return redirect(url_for("quiz_admin.upload_questions"))
 
-        return redirect(url_for("admin.preview_import", token=staged.token))
+        return redirect(url_for("quiz_admin.preview_import", token=staged.token))
 
     return render_template("admin/upload.html")
 
@@ -96,17 +96,17 @@ def preview_import(token):
 
     if staged.user_id != current_user.id:
         flash("Access denied.", "error")
-        return redirect(url_for("admin.index"))
+        return redirect(url_for("quiz_admin.index"))
 
     if staged.status != "pending":
         flash("This import is no longer available.", "error")
-        return redirect(url_for("admin.index"))
+        return redirect(url_for("quiz_admin.index"))
 
     if staged.expires_at < datetime.now(timezone.utc):
         staged.status = "expired"
         db.session.commit()
         flash("This import has expired.", "error")
-        return redirect(url_for("admin.index"))
+        return redirect(url_for("quiz_admin.index"))
 
     active_bank = QuestionBankImport.query.filter_by(active=True).first()
 
@@ -127,10 +127,10 @@ def confirm_import_route(token):
             f"Question bank activated: {new_bank.question_count} questions from {new_bank.topic_count} topics.",
             "success",
         )
-        return redirect(url_for("admin.index"))
+        return redirect(url_for("quiz_admin.index"))
     except ValueError as e:
         flash(f"Cannot confirm import: {str(e)}", "error")
-        return redirect(url_for("admin.index"))
+        return redirect(url_for("quiz_admin.index"))
 
 
 @admin_bp.route("/export")
@@ -140,7 +140,7 @@ def export_current_bank():
     active_bank = QuestionBankImport.query.filter_by(active=True).first()
     if not active_bank:
         flash("No active question bank.", "error")
-        return redirect(url_for("admin.index"))
+        return redirect(url_for("quiz_admin.index"))
 
     # Generate CSV
     lines = [
@@ -179,11 +179,13 @@ def toggle_user_active(user_id):
 
     if user.id == current_user.id:
         flash("Cannot deactivate yourself.", "error")
-        return redirect(url_for("admin.manage_users"))
+        return redirect(url_for("quiz_admin.manage_users"))
 
     user.active = not user.active
     db.session.commit()
 
     status = "activated" if user.active else "deactivated"
     flash(f"User {user.username} has been {status}.", "success")
-    return redirect(url_for("admin.manage_users"))
+    return redirect(url_for("quiz_admin.manage_users"))
+
+

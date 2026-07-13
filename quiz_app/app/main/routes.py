@@ -10,7 +10,7 @@ from ..models.question import QuestionBankImport
 def index():
     """Home page."""
     if current_user.is_authenticated:
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
     return render_template("index.html")
 
 
@@ -45,3 +45,5 @@ def dashboard():
         avg_score=avg_score,
         total_completed=len(completed_sessions),
     )
+
+

@@ -11,7 +11,7 @@ from .forms import LoginForm, RegisterForm, ChangePasswordForm
 def login():
     """Log in an existing user."""
     if current_user.is_authenticated:
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     form = LoginForm()
     if form.validate_on_submit():
@@ -19,11 +19,11 @@ def login():
 
         if user is None or not user.check_password(form.password.data):
             flash("Invalid username or password.", "error")
-            return redirect(url_for("auth.login"))
+            return redirect(url_for("quiz_auth.login"))
 
         if not user.active:
             flash("This account has been deactivated.", "error")
-            return redirect(url_for("auth.login"))
+            return redirect(url_for("quiz_auth.login"))
 
         login_user(user, remember=form.remember_me.data)
         next_page = request.args.get("next")
@@ -31,7 +31,7 @@ def login():
             # Simple URL validation: must be relative and start with /
             if next_page.startswith('/') and not next_page.startswith('//'):
                 return redirect(next_page)
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     return render_template("auth/login.html", form=form)
 
@@ -41,10 +41,10 @@ def register():
     """Register a new user."""
     if not current_app.config["REGISTRATION_ENABLED"]:
         flash("Registration is currently disabled.", "warning")
-        return redirect(url_for("auth.login"))
+        return redirect(url_for("quiz_auth.login"))
 
     if current_user.is_authenticated:
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     form = RegisterForm()
     if form.validate_on_submit():
@@ -58,7 +58,7 @@ def register():
         db.session.commit()
 
         flash("Account created successfully. You can now log in.", "success")
-        return redirect(url_for("auth.login"))
+        return redirect(url_for("quiz_auth.login"))
 
     return render_template("auth/register.html", form=form)
 
@@ -69,7 +69,7 @@ def logout():
     """Log out the current user."""
     logout_user()
     flash("You have been logged out.", "info")
-    return redirect(url_for("auth.login"))
+    return redirect(url_for("quiz_auth.login"))
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])
@@ -80,12 +80,14 @@ def change_password():
     if form.validate_on_submit():
         if not current_user.check_password(form.current_password.data):
             flash("Current password is incorrect.", "error")
-            return redirect(url_for("auth.change_password"))
+            return redirect(url_for("quiz_auth.change_password"))
 
         current_user.set_password(form.new_password.data)
         db.session.commit()
 
         flash("Your password has been changed successfully.", "success")
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     return render_template("auth/change_password.html", form=form)
+
+

@@ -16,11 +16,11 @@ def view_result(session_id):
 
     if session_obj.user_id != current_user.id:
         flash("Access denied.", "error")
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     if not session_obj.is_complete:
         flash("This test is not yet submitted.", "info")
-        return redirect(url_for("testing.take_test", session_id=session_id))
+        return redirect(url_for("quiz_testing.take_test", session_id=session_id))
 
     # Compute performance by topic
     topic_stats = {}
@@ -46,11 +46,11 @@ def review_test(session_id):
 
     if session_obj.user_id != current_user.id:
         flash("Access denied.", "error")
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     if not session_obj.is_complete:
         flash("This test is not yet submitted.", "info")
-        return redirect(url_for("testing.take_test", session_id=session_id))
+        return redirect(url_for("quiz_testing.take_test", session_id=session_id))
 
     # Filter for incorrect and unanswered questions
     incorrect = [
@@ -128,3 +128,5 @@ def analytics():
     }
 
     return render_template("results/analytics.html", stats=stats)
+
+

@@ -34,7 +34,7 @@ def start_test():
 
         if test_mode not in ("fresh", "adaptive"):
             flash("Invalid test mode.", "error")
-            return redirect(url_for("main.dashboard"))
+            return redirect(url_for("quiz_main.dashboard"))
 
         # Validate time limit
         min_limit = current_app.config["MIN_TIME_LIMIT_MINUTES"]
@@ -45,13 +45,13 @@ def start_test():
 
         if timed and (time_limit_minutes < min_limit or time_limit_minutes > max_limit):
             flash(f"Time limit must be between {min_limit} and {max_limit} minutes.", "error")
-            return redirect(url_for("main.dashboard"))
+            return redirect(url_for("quiz_main.dashboard"))
 
         # Get active question bank
         active_bank = QuestionBankImport.query.filter_by(active=True).first()
         if not active_bank:
             flash("No active question bank. Please upload one.", "error")
-            return redirect(url_for("main.dashboard"))
+            return redirect(url_for("quiz_main.dashboard"))
 
         # Select questions
         seed = random.randint(0, 2**31 - 1)
@@ -72,11 +72,11 @@ def start_test():
                 )
         except ValueError as e:
             flash(str(e), "error")
-            return redirect(url_for("main.dashboard"))
+            return redirect(url_for("quiz_main.dashboard"))
 
         if not selected_qs:
             flash("Not enough questions available. Please adjust filters.", "error")
-            return redirect(url_for("main.dashboard"))
+            return redirect(url_for("quiz_main.dashboard"))
 
         # Create test session
         session_obj = TestSession(
@@ -126,7 +126,7 @@ def start_test():
             )
         db.session.commit()
 
-        return redirect(url_for("testing.take_test", session_id=session_obj.id))
+        return redirect(url_for("quiz_testing.take_test", session_id=session_obj.id))
 
     # GET: Show test start form
     active_bank = QuestionBankImport.query.filter_by(active=True).first()
@@ -153,7 +153,7 @@ def take_test(session_id):
 
     if session_obj.user_id != current_user.id:
         flash("Access denied.", "error")
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     # Check if expired
     if session_obj.timed and session_obj.is_expired_now():
@@ -163,7 +163,7 @@ def take_test(session_id):
             session_obj.submitted_at = datetime.now(timezone.utc)
             _finalize_session_scores(session_obj)
             db.session.commit()
-        return redirect(url_for("results.view_result", session_id=session_id))
+        return redirect(url_for("quiz_results.view_result", session_id=session_id))
 
     return render_template(
         "testing/take_test.html",
@@ -212,7 +212,7 @@ def submit_test(session_id):
 
     if session_obj.user_id != current_user.id or not session_obj.is_editable:
         flash("Cannot submit this session.", "error")
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("quiz_main.dashboard"))
 
     # Mark as submitted
     session_obj.status = "submitted"
@@ -225,7 +225,7 @@ def submit_test(session_id):
     db.session.commit()
 
     flash("Test submitted successfully.", "success")
-    return redirect(url_for("results.view_result", session_id=session_id))
+    return redirect(url_for("quiz_results.view_result", session_id=session_id))
 
 
 def _finalize_session_scores(session_obj: TestSession) -> None:
@@ -236,3 +236,5 @@ def _finalize_session_scores(session_obj: TestSession) -> None:
             tsq.is_correct = False
         else:
             tsq.is_correct = tsq.selected_answer == tsq.correct_answer
+
+
