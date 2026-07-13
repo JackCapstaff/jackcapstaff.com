@@ -776,29 +776,79 @@ def _load_quiz_app_early():
 
 quiz_app_instance = _load_quiz_app_early()
 
-# Define /quiz redirect route BEFORE applying DispatcherMiddleware
-# This ensures the main app can handle /quiz and redirect to /quiz/
+# Route for /quiz - delegates to quiz app instance if available
 @app.route('/quiz')
-def quiz_redirect():
-    return redirect('/quiz/')
+@app.route('/quiz/')
+def quiz_index():
+    """Proxy requests to the quiz app."""
+    if quiz_app_instance is None:
+        abort(503)  # Service Unavailable if quiz app failed to load
+    
+    # Use quiz app's test client to proxy the request
+    with quiz_app_instance.test_client() as client:
+        # Get the path from the current request (just "/" for /quiz or /quiz/)
+        path = request.path.replace('/quiz', '', 1) or '/'
+        
+        # Build query string
+        qs = f"?{request.query_string.decode()}" if request.query_string else ""
+        
+        # Proxy the request
+        resp = client.get(f"{path}{qs}")
+        
+        # Return the response
+        response = make_response(resp.data)
+        response.status_code = resp.status_code
+        for header, value in resp.headers:
+            if header not in ('Content-Length', 'Content-Encoding'):
+                response.headers[header] = value
+        return response
 
-# Build middleware dict with quiz and rehearsal-schedule apps
-middleware_dict = {}
+# Proxy all /quiz/* routes to the quiz app
+@app.route('/quiz/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+def quiz_proxy(path):
+    """Proxy all sub-routes to the quiz app."""
+    if quiz_app_instance is None:
+        abort(503)
+    
+    with quiz_app_instance.test_client() as client:
+        # Build the full path for the quiz app
+        full_path = f"/{path}"
+        
+        # Build query string
+        qs = f"?{request.query_string.decode()}" if request.query_string else ""
+        
+        # Proxy the request with the correct method
+        method_map = {
+            'GET': client.get,
+            'POST': client.post,
+            'PUT': client.put,
+            'DELETE': client.delete,
+            'PATCH': client.patch,
+        }
+        
+        method_func = method_map.get(request.method, client.get)
+        
+        # For POST/PUT/PATCH, include the request data
+        if request.method in ('POST', 'PUT', 'PATCH'):
+            resp = method_func(f"{full_path}{qs}", data=request.get_data(), content_type=request.content_type)
+        else:
+            resp = method_func(f"{full_path}{qs}")
+        
+        # Return the response
+        response = make_response(resp.data)
+        response.status_code = resp.status_code
+        for header, value in resp.headers:
+            if header not in ('Content-Length', 'Content-Encoding'):
+                response.headers[header] = value
+        return response
+
+# Load rehearsal schedule middleware if needed
 if rehearsal_schedule_app is not None:
-    middleware_dict[REHEARSAL_SCHEDULE_PREFIX] = rehearsal_schedule_app
+    middleware_dict = {REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app}
     sys.stderr.write(f"[MIDDLEWARE] Mounted rehearsal-schedule at {REHEARSAL_SCHEDULE_PREFIX}\n")
     sys.stderr.flush()
-if quiz_app_instance is not None:
-    middleware_dict['/quiz'] = quiz_app_instance
-    sys.stderr.write(f"[MIDDLEWARE] Mounted quiz app at /quiz\n")
-    sys.stderr.flush()
-
-if middleware_dict:
-    sys.stderr.write(f"[MIDDLEWARE] Final middleware mounts: {list(middleware_dict.keys())}\n")
-    sys.stderr.flush()
     app.wsgi_app = DispatcherMiddleware(app.wsgi_app, middleware_dict)
-else:
-    sys.stderr.write("[MIDDLEWARE] No apps to mount in middleware\n")
+    sys.stderr.write(f"[MIDDLEWARE] Mounted using DispatcherMiddleware\n")
     sys.stderr.flush()
 
 
