@@ -742,12 +742,17 @@ app.register_blueprint(shop_bp)
 
 rehearsal_schedule_app = load_rehearsal_schedule_app()
 
-# DISABLED: Quiz app integration was causing SQLAlchemy initialization errors
-# This needs to be restructured to avoid database sharing conflicts
-# For now, quiz functionality is disabled until a proper solution is implemented
-
-sys.stderr.write(f"[QUIZ] Quiz app integration is currently disabled\n")
-sys.stderr.flush()
+# Register quiz app blueprints with /quiz prefix
+try:
+    from quiz_app.register_blueprints import register_quiz_blueprints
+    register_quiz_blueprints(app, db, login_manager)
+    # Import quiz models for Flask-Migrate discovery
+    from quiz_app.app.models import user as quiz_user, question as quiz_question, session as quiz_session  # noqa: F401
+    sys.stderr.write(f"[QUIZ] Quiz app blueprints registered successfully at /quiz\n")
+    sys.stderr.flush()
+except Exception as e:
+    sys.stderr.write(f"[QUIZ] Failed to register quiz app: {e}\n")
+    sys.stderr.flush()
 
 # Load rehearsal schedule middleware if needed
 if rehearsal_schedule_app is not None:
