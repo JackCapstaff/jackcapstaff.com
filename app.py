@@ -776,6 +776,12 @@ def _load_quiz_app_early():
 
 quiz_app_instance = _load_quiz_app_early()
 
+# Define /quiz redirect route BEFORE applying DispatcherMiddleware
+# This ensures the main app can handle /quiz and redirect to /quiz/
+@app.route('/quiz')
+def quiz_redirect():
+    return redirect('/quiz/')
+
 # Build middleware dict with quiz and rehearsal-schedule apps
 middleware_dict = {}
 if rehearsal_schedule_app is not None:
