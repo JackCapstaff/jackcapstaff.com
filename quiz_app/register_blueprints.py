@@ -21,6 +21,26 @@ def register_quiz_blueprints(app, db, login_manager):
     quiz_extensions.db = db
     quiz_extensions.login_manager = login_manager
     quiz_extensions.User = app.User  # Also inject the main app's User model
+
+    # Apply quiz-specific config defaults onto the main app WITHOUT clobbering
+    # the main app's own settings (SECRET_KEY, DB URI, CSRF, session cookies).
+    # The quiz blueprints read these keys from current_app.config at runtime.
+    from quiz_app.app.config import BaseConfig as _QuizConfig
+    _excluded = {
+        "SECRET_KEY",
+        "SQLALCHEMY_DATABASE_URI",
+        "SQLALCHEMY_TRACK_MODIFICATIONS",
+        "WTF_CSRF_ENABLED",
+        "MAX_CONTENT_LENGTH",
+        "SESSION_COOKIE_HTTPONLY",
+        "SESSION_COOKIE_SECURE",
+        "SESSION_COOKIE_SAMESITE",
+        "REMEMBER_COOKIE_HTTPONLY",
+        "REMEMBER_COOKIE_SECURE",
+    }
+    for _key in dir(_QuizConfig):
+        if _key.isupper() and _key not in _excluded:
+            app.config.setdefault(_key, getattr(_QuizConfig, _key))
     
     # NOW import quiz models (they will use the injected db)
     # This must happen BEFORE importing blueprints so models are configured correctly
