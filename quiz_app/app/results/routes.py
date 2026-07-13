@@ -4,8 +4,24 @@ from flask_login import login_required, current_user
 from sqlalchemy import desc
 
 from . import results_bp
+from ..extensions import db
 from ..models.session import TestSession, TestSessionQuestion
 from ..models.question import QuestionBankImport
+
+SQE_MODES = ("sqe_blueprint", "sqe_adaptive", "sqe_simulation")
+
+
+def _compute_subject_stats(session_obj: TestSession) -> dict:
+    """Return {subject_name: {correct, total}} for SQE sessions."""
+    subject_stats: dict[str, dict] = {}
+    for tsq in session_obj.questions:
+        name = tsq.subject_name_snapshot or tsq.topic or "Unknown"
+        if name not in subject_stats:
+            subject_stats[name] = {"correct": 0, "total": 0}
+        subject_stats[name]["total"] += 1
+        if tsq.is_correct:
+            subject_stats[name]["correct"] += 1
+    return subject_stats
 
 
 @results_bp.route("/session/<int:session_id>")
@@ -22,19 +38,36 @@ def view_result(session_id):
         flash("This test is not yet submitted.", "info")
         return redirect(url_for("quiz_testing.take_test", session_id=session_id))
 
-    # Compute performance by topic
+    is_sqe = session_obj.mode in SQE_MODES
+
+    # Subject stats for SQE modes; topic stats for legacy modes
+    subject_stats = _compute_subject_stats(session_obj) if is_sqe else None
+
     topic_stats = {}
-    for tsq in session_obj.questions:
-        if tsq.topic_key not in topic_stats:
-            topic_stats[tsq.topic_key] = {"topic": tsq.topic, "correct": 0, "total": 0}
-        topic_stats[tsq.topic_key]["total"] += 1
-        if tsq.is_correct:
-            topic_stats[tsq.topic_key]["correct"] += 1
+    if not is_sqe:
+        for tsq in session_obj.questions:
+            if tsq.topic_key not in topic_stats:
+                topic_stats[tsq.topic_key] = {"topic": tsq.topic, "correct": 0, "total": 0}
+            topic_stats[tsq.topic_key]["total"] += 1
+            if tsq.is_correct:
+                topic_stats[tsq.topic_key]["correct"] += 1
+
+    # Collect source notices from questions (de-duplicated)
+    source_notices = list(
+        dict.fromkeys(
+            tsq.source_notice_snapshot
+            for tsq in session_obj.questions
+            if tsq.source_notice_snapshot
+        )
+    )
 
     return render_template(
         "results/result.html",
         session=session_obj,
         topic_stats=topic_stats,
+        subject_stats=subject_stats,
+        is_sqe=is_sqe,
+        source_notices=source_notices,
     )
 
 

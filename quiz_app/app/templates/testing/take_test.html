@@ -1,20 +1,30 @@
 {% extends "base.html" %}
 
-{% block title %}Take Test - Quiz App{% endblock %}
+{% block title %}Take Test - SQE Practice{% endblock %}
 
 {% block extra_css %}
 <style>
 .test-container { max-width: 900px; margin: 0 auto; }
-.test-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+.test-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.test-meta { font-size: 0.875rem; color: #666; margin: 4px 0 0; }
 .timer { font-size: 24px; font-weight: bold; }
 .timer.warning { color: #ff9800; }
 .timer.danger { color: #f44336; }
 .question-display { background: #f5f5f5; padding: 20px; border-radius: 4px; margin-bottom: 20px; }
-.answers { margin: 20px 0; }
-.answer-option { margin: 10px 0; }
+.question-display h3 { margin: 0 0 20px; line-height: 1.5; white-space: pre-wrap; }
+.answers { margin: 0; }
+.answer-option { margin: 8px 0; padding: 10px 14px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; transition: background 0.15s; }
+.answer-option:hover { background: #e8eaf6; }
+.answer-option.selected { background: #e3f2fd; border-color: #1976d2; }
 .answer-option input[type="radio"] { margin-right: 10px; }
-.question-nav { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+.question-nav { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0; align-items: center; }
 .question-nav button { min-width: 40px; padding: 8px 12px; }
+.progress-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0; }
+.progress-pill { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.progress-pill.answered { background: #1976d2; border-color: #1976d2; color: white; }
+.progress-pill.current { border-color: #f57c00; box-shadow: 0 0 0 2px #ffe082; }
+.sqe-badge { display: inline-block; font-size: 0.75rem; background: #1a237e; color: white; padding: 2px 8px; border-radius: 12px; margin-right: 6px; }
+.paper-badge { display: inline-block; font-size: 0.75rem; background: #004d40; color: white; padding: 2px 8px; border-radius: 12px; }
 </style>
 {% endblock %}
 
@@ -22,8 +32,16 @@
 <div class="test-container">
     <div class="test-header">
         <div>
-            <h2>{{ session.mode|title }} Test</h2>
-            <p>Question <span id="current-pos">{{ session.current_position + 1 }}</span> of {{ session.question_count }}</p>
+            {% if is_sqe_mode %}
+                <h2>
+                    <span class="sqe-badge">SQE Practice</span>
+                    {% if session.paper %}<span class="paper-badge">{{ session.paper }}</span>{% endif %}
+                    {{ session.mode | replace("_", " ") | title }}
+                </h2>
+            {% else %}
+                <h2>{{ session.mode | title }} Test</h2>
+            {% endif %}
+            <p class="test-meta">Question <span id="current-pos">{{ session.current_position + 1 }}</span> of {{ session.question_count }}</p>
         </div>
         {% if session.timed %}
             <div class="timer" id="timer">Time remaining: <span id="timer-value">--:--</span></div>
@@ -33,110 +51,160 @@
     {% set current_question = session.questions[session.current_position] if session.current_position < session.questions|length else none %}
     {% if current_question %}
         <div class="question-display">
-            {% if topic_visible %}
-                <p class="topic-label">{{ current_question.topic }}</p>
+            {% if topic_visible and current_question.subject_name_snapshot %}
+                <p class="test-meta">{{ current_question.subject_name_snapshot }}</p>
+            {% elif topic_visible and current_question.topic %}
+                <p class="test-meta">{{ current_question.topic }}</p>
             {% endif %}
             <h3>{{ current_question.question_text }}</h3>
-            
+
             <div class="answers">
                 <form id="answer-form">
-                    {% for letter, answer_text in [
-                        ('A', current_question.answer_a),
-                        ('B', current_question.answer_b),
-                        ('C', current_question.answer_c),
-                        ('D', current_question.answer_d)
-                    ] %}
-                        <div class="answer-option">
-                            <input type="radio" id="answer-{{ letter }}" name="answer" value="{{ letter }}" 
-                                   {% if current_question.selected_answer == letter %}checked{% endif %}>
-                            <label for="answer-{{ letter }}">{{ letter }}: {{ answer_text }}</label>
-                        </div>
-                    {% endfor %}
+                    {# SQE5: use snapshotted options if available, fall back to flat columns #}
+                    {% set opts = current_question.snapshot_options | list if current_question.snapshot_options else [] %}
+                    {% if opts %}
+                        {% for opt in opts | sort(attribute='display_order') %}
+                            <div class="answer-option {% if current_question.selected_answer == opt.display_letter %}selected{% endif %}"
+                                 onclick="selectOption(this, '{{ opt.display_letter }}')">
+                                <input type="radio" id="answer-{{ opt.display_letter }}" name="answer" value="{{ opt.display_letter }}"
+                                       {% if current_question.selected_answer == opt.display_letter %}checked{% endif %}>
+                                <label for="answer-{{ opt.display_letter }}" style="cursor:pointer">
+                                    <strong>{{ opt.display_letter }}.</strong> {{ opt.option_text }}
+                                </label>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        {# Legacy or flat-column SQE: A–D or A–E #}
+                        {% set answer_pairs = [
+                            ('A', current_question.answer_a),
+                            ('B', current_question.answer_b),
+                            ('C', current_question.answer_c),
+                            ('D', current_question.answer_d),
+                        ] %}
+                        {% if current_question.answer_e %}
+                            {% set answer_pairs = answer_pairs + [('E', current_question.answer_e)] %}
+                        {% endif %}
+                        {% for letter, answer_text in answer_pairs %}
+                            {% if answer_text %}
+                                <div class="answer-option {% if current_question.selected_answer == letter %}selected{% endif %}"
+                                     onclick="selectOption(this, '{{ letter }}')">
+                                    <input type="radio" id="answer-{{ letter }}" name="answer" value="{{ letter }}"
+                                           {% if current_question.selected_answer == letter %}checked{% endif %}>
+                                    <label for="answer-{{ letter }}" style="cursor:pointer">
+                                        <strong>{{ letter }}.</strong> {{ answer_text }}
+                                    </label>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
                 </form>
             </div>
         </div>
 
         <div class="question-nav">
             {% if session.current_position > 0 %}
-                <button class="btn btn-secondary" onclick="prevQuestion()">← Previous</button>
+                <button class="btn btn-secondary" onclick="navigate(-1)">← Previous</button>
             {% endif %}
             {% if session.current_position < session.question_count - 1 %}
-                <button class="btn btn-secondary" onclick="nextQuestion()">Next →</button>
+                <button class="btn btn-primary" onclick="navigate(1)">Next →</button>
             {% endif %}
-            <button class="btn btn-primary" onclick="submitTest()">Submit Test</button>
+            <button class="btn btn-danger" onclick="confirmSubmit()">Submit Test</button>
+        </div>
+
+        {# Question progress dots #}
+        <div class="progress-row" id="progress-row">
+            {% for q in session.questions %}
+                <div class="progress-pill {% if q.selected_answer %}answered{% endif %} {% if loop.index0 == session.current_position %}current{% endif %}"
+                     onclick="jumpTo({{ loop.index0 }})"
+                     title="Q{{ loop.index }}{% if q.selected_answer %} (answered){% endif %}">
+                    {{ loop.index }}
+                </div>
+            {% endfor %}
         </div>
     {% endif %}
 </div>
+
+<form id="nav-form" method="GET" action="" style="display:none">
+    <input type="hidden" name="pos" id="nav-pos">
+</form>
 
 <script>
 const sessionId = {{ session.id }};
 const isTimed = {{ 'true' if session.timed else 'false' }};
 const expiresAt = {% if session.expires_at %}'{{ session.expires_at.isoformat() }}'{% else %}null{% endif %};
+const submitUrl = '/quiz/test/session/' + sessionId + '/submit';
+const answerUrl = '/quiz/test/session/' + sessionId + '/answer';
+
+function selectOption(el, letter) {
+    document.querySelectorAll('.answer-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    const radio = el.querySelector('input[type="radio"]');
+    if (radio) radio.checked = true;
+}
 
 async function saveAnswer() {
     const form = document.getElementById('answer-form');
-    const formData = new FormData(form);
-    const answer = formData.get('answer');
+    const checked = form.querySelector('input[name="answer"]:checked');
+    const answer = checked ? checked.value : null;
     const position = parseInt(document.getElementById('current-pos').textContent) - 1;
-
     try {
-        const response = await fetch(`/test/session/${sessionId}/answer`, {
+        await fetch(answerUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ position, answer })
         });
-        if (!response.ok) console.error('Failed to save answer');
-    } catch (e) {
-        console.error('Save error:', e);
+    } catch (e) { console.error('Save error:', e); }
+}
+
+async function navigate(delta) {
+    await saveAnswer();
+    const pos = parseInt(document.getElementById('current-pos').textContent) - 1 + delta;
+    window.location.href = '/quiz/test/session/{{ session.id }}?pos=' + pos;
+}
+
+async function jumpTo(pos) {
+    await saveAnswer();
+    window.location.href = '/quiz/test/session/{{ session.id }}?pos=' + pos;
+}
+
+async function confirmSubmit() {
+    await saveAnswer();
+    const unanswered = document.querySelectorAll('.progress-pill:not(.answered)').length;
+    const msg = unanswered > 0
+        ? `You have ${unanswered} unanswered question(s). Submit anyway?`
+        : 'Submit your test now?';
+    if (confirm(msg)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = submitUrl;
+        const csrf = document.querySelector('meta[name="csrf-token"]');
+        if (csrf) {
+            const input = document.createElement('input');
+            input.type = 'hidden'; input.name = 'csrf_token'; input.value = csrf.content;
+            form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
     }
 }
 
-function nextQuestion() {
-    saveAnswer();
-    location.reload();
-}
-
-function prevQuestion() {
-    saveAnswer();
-    location.reload();
-}
-
-function submitTest() {
-    if (confirm('Are you sure you want to submit the test?')) {
-        saveAnswer();
-        document.location.href = `/test/session/${sessionId}/submit`;
-    }
-}
-
-// Auto-save on change
+// Auto-save on radio change
 document.querySelectorAll('input[name="answer"]').forEach(el => {
     el.addEventListener('change', saveAnswer);
 });
 
-// Update timer
+// Timer
 if (isTimed && expiresAt) {
     function updateTimer() {
-        const now = new Date().getTime();
-        const end = new Date(expiresAt).getTime();
-        const diff = end - now;
-        
-        if (diff <= 0) {
-            document.location.href = '/test/session/' + sessionId;
-            return;
-        }
-        
+        const diff = new Date(expiresAt).getTime() - Date.now();
+        if (diff <= 0) { window.location.reload(); return; }
         const mins = Math.floor(diff / 60000);
         const secs = Math.floor((diff % 60000) / 1000);
         const timerEl = document.getElementById('timer');
-        const valueEl = document.getElementById('timer-value');
-        valueEl.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-        
-        if (mins === 0 && secs < 60) {
-            timerEl.classList.add('warning');
-        }
-        if (mins === 0 && secs < 30) {
-            timerEl.classList.add('danger');
-        }
+        document.getElementById('timer-value').textContent =
+            String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0');
+        timerEl.classList.toggle('warning', mins < 10 && !(mins === 0 && secs < 30));
+        timerEl.classList.toggle('danger', mins === 0 && secs < 30);
     }
     updateTimer();
     setInterval(updateTimer, 1000);

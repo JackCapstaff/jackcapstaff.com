@@ -13,13 +13,25 @@ from flask import (
     current_app,
 )
 from flask_login import login_required, current_user
+from sqlalchemy import select
 
 from . import testing_bp
 from ..extensions import db
 from ..models.session import TestSession, TestSessionQuestion
-from ..models.question import QuestionBankImport, Question
+from ..models.question import QuestionBankImport, Question, FORMAT_SQE5
+from ..models.sqe import QuestionOption, TestSessionOption
+from ..models.specification import BlueprintProfile
 from ..services.question_selection import select_fresh_questions
 from ..services.adaptive_selection import select_adaptive_questions
+from ..services.blueprint_selection import select_sqe_questions, check_blueprint_coverage
+
+# SQE full-paper timing: 90 questions = 153 minutes
+SQE_FULL_PAPER_QUESTIONS = 90
+SQE_FULL_PAPER_MINUTES = 153  # 2h 33m per SRA spec
+
+SQE_MODES = ("sqe_blueprint", "sqe_adaptive", "sqe_simulation")
+LEGACY_MODES = ("fresh", "adaptive")
+ALL_MODES = LEGACY_MODES + SQE_MODES
 
 
 @testing_bp.route("/start", methods=["GET", "POST"])
@@ -31,10 +43,23 @@ def start_test():
         time_limit = request.form.get("time_limit")
         question_count = int(request.form.get("question_count", 25))
         topics = request.form.getlist("topics")
+        paper = request.form.get("paper")  # FLK1 or FLK2 for SQE modes
 
-        if test_mode not in ("fresh", "adaptive"):
+        if test_mode not in ALL_MODES:
             flash("Invalid test mode.", "error")
             return redirect(url_for("quiz_main.dashboard"))
+
+        is_sqe_mode = test_mode in SQE_MODES
+
+        # Validate paper for SQE modes
+        if is_sqe_mode and paper not in ("FLK1", "FLK2"):
+            flash("Please select FLK1 or FLK2 for SQE practice.", "error")
+            return redirect(url_for("quiz_testing.start_test"))
+
+        # SQE simulation: lock to 90 questions and full-paper timer
+        if test_mode == "sqe_simulation":
+            question_count = SQE_FULL_PAPER_QUESTIONS
+            time_limit = str(SQE_FULL_PAPER_MINUTES)
 
         # Validate time limit
         min_limit = current_app.config["MIN_TIME_LIMIT_MINUTES"]
@@ -45,7 +70,7 @@ def start_test():
 
         if timed and (time_limit_minutes < min_limit or time_limit_minutes > max_limit):
             flash(f"Time limit must be between {min_limit} and {max_limit} minutes.", "error")
-            return redirect(url_for("quiz_main.dashboard"))
+            return redirect(url_for("quiz_testing.start_test"))
 
         # Get active question bank
         active_bank = QuestionBankImport.query.filter_by(active=True).first()
@@ -53,68 +78,212 @@ def start_test():
             flash("No active question bank. Please upload one.", "error")
             return redirect(url_for("quiz_main.dashboard"))
 
-        # Select questions
         seed = random.randint(0, 2**31 - 1)
-        
-        try:
-            if test_mode == "fresh":
-                selected_qs = select_fresh_questions(
-                    requested=question_count,
-                    topic_keys=topics or None,
-                    seed=seed,
+
+        # ---------------------------------------------------------------
+        # SQE blueprint / adaptive / simulation modes
+        # ---------------------------------------------------------------
+        if is_sqe_mode:
+            profile = (
+                db.session.execute(
+                    select(BlueprintProfile).where(
+                        BlueprintProfile.paper == paper,
+                        BlueprintProfile.active == True,  # noqa: E712
+                    )
                 )
-            else:  # adaptive
-                selected_qs, _ = select_adaptive_questions(
-                    user_id=current_user.id,
-                    requested=question_count,
-                    topic_keys=topics or None,
-                    seed=seed,
-                )
-        except ValueError as e:
-            flash(str(e), "error")
-            return redirect(url_for("quiz_main.dashboard"))
-
-        if not selected_qs:
-            flash("Not enough questions available. Please adjust filters.", "error")
-            return redirect(url_for("quiz_main.dashboard"))
-
-        # Create test session
-        session_obj = TestSession(
-            user_id=current_user.id,
-            mode=test_mode,
-            question_count=len(selected_qs),
-            selected_topics=topics if topics else None,
-            timed=timed,
-            time_limit_seconds=time_limit_minutes * 60 if timed else None,
-            random_seed=seed,
-            bank_import_id=active_bank.id,
-            status="in_progress",
-        )
-        db.session.add(session_obj)
-        db.session.flush()
-
-        # Add questions to session
-        for idx, question in enumerate(selected_qs):
-            snapshot = TestSessionQuestion(
-                session_id=session_obj.id,
-                source_question_id=question.id,
-                bank_import_id=active_bank.id,
-                external_question_id=question.external_question_id,
-                topic=question.topic,
-                topic_key=question.topic_key,
-                question_text=question.question_text,
-                answer_a=question.answer_a,
-                answer_b=question.answer_b,
-                answer_c=question.answer_c,
-                answer_d=question.answer_d,
-                correct_answer=question.correct_answer,
-                explanation=question.explanation,
-                reference=question.reference,
-                difficulty=question.difficulty,
-                content_fingerprint=question.content_fingerprint,
-                display_position=idx,
+                .scalars()
+                .first()
             )
-            db.session.add(snapshot)
+            if not profile:
+                flash(f"No active blueprint profile found for {paper}.", "error")
+                return redirect(url_for("quiz_testing.start_test"))
+
+            # Check coverage before selecting
+            shortfalls = check_blueprint_coverage(profile, question_count, strict=False)
+            coverage_warnings = [
+                f"{code}: need {n} more questions" for code, n in shortfalls.items()
+            ]
+
+            try:
+                selected_items, allocation = select_sqe_questions(
+                    profile=profile,
+                    count=question_count,
+                    user_id=current_user.id,
+                    mode=test_mode,
+                    seed=seed,
+                    strict=(test_mode == "sqe_simulation"),
+                )
+            except ValueError as e:
+                flash(str(e), "error")
+                return redirect(url_for("quiz_testing.start_test"))
+
+            if not selected_items:
+                if allocation.shortfall_by_subject:
+                    detail = ", ".join(
+                        f"{k}: needs {v} more" for k, v in allocation.shortfall_by_subject.items()
+                    )
+                    flash(
+                        f"Not enough questions for strict blueprint. Shortfalls: {detail}.",
+                        "error",
+                    )
+                else:
+                    flash("Not enough questions available for this test.", "error")
+                return redirect(url_for("quiz_testing.start_test"))
+
+            # Load full Question objects for snapshotting
+            q_ids = [item.question_id for item in selected_items]
+            questions_by_id: dict[int, Question] = {
+                q.id: q
+                for q in db.session.execute(
+                    select(Question).where(Question.id.in_(q_ids))
+                ).scalars().all()
+            }
+
+            import json as _json
+            session_obj = TestSession(
+                user_id=current_user.id,
+                mode=test_mode,
+                paper=paper,
+                blueprint_profile_id=profile.id,
+                question_count=len(selected_items),
+                timed=timed,
+                time_limit_seconds=time_limit_minutes * 60 if timed else None,
+                random_seed=seed,
+                bank_import_id=active_bank.id,
+                status="in_progress",
+                blueprint_allocation_snapshot=_json.dumps(
+                    {
+                        sa.subject_code: sa.allocated
+                        for sa in allocation.allocations
+                    }
+                ),
+                is_strict_blueprint=(test_mode == "sqe_simulation"),
+            )
+            db.session.add(session_obj)
+            db.session.flush()
+
+            for item in selected_items:
+                q = questions_by_id.get(item.question_id)
+                if not q:
+                    continue
+
+                subject_name = q.subject.full_name if q.subject else None
+                tsq = TestSessionQuestion(
+                    session_id=session_obj.id,
+                    source_question_id=q.id,
+                    bank_import_id=active_bank.id,
+                    external_question_id=q.external_question_id,
+                    topic=q.topic,
+                    topic_key=q.topic_key,
+                    paper=q.paper,
+                    subject_id_snapshot=q.subject_id,
+                    subject_name_snapshot=subject_name,
+                    question_format=q.question_format or FORMAT_SQE5,
+                    question_text=q.question_text,
+                    answer_a=q.answer_a,
+                    answer_b=q.answer_b,
+                    answer_c=q.answer_c,
+                    answer_d=q.answer_d,
+                    answer_e=q.answer_e,
+                    correct_answer=q.correct_answer,
+                    explanation=q.explanation,
+                    reference=q.reference,
+                    difficulty=q.difficulty,
+                    content_fingerprint=q.content_fingerprint,
+                    display_position=item.display_position,
+                    source_type_snapshot=q.source_type,
+                    source_notice_snapshot=q.source_notice,
+                )
+                db.session.add(tsq)
+                db.session.flush()
+
+                # Snapshot QuestionOptions for SQE5 questions
+                if q.question_format == FORMAT_SQE5:
+                    options = db.session.execute(
+                        select(QuestionOption)
+                        .where(QuestionOption.question_id == q.id)
+                        .order_by(QuestionOption.source_order)
+                    ).scalars().all()
+                    display_letters = list("ABCDE")
+                    for opt_idx, opt in enumerate(options):
+                        tso = TestSessionOption(
+                            session_question_id=tsq.id,
+                            question_option_id=opt.id,
+                            display_letter=display_letters[opt_idx],
+                            option_text=opt.option_text,
+                            is_correct=opt.is_correct,
+                            display_order=opt_idx,
+                        )
+                        db.session.add(tso)
+
+            if coverage_warnings:
+                for w in coverage_warnings:
+                    flash(f"Coverage warning: {w}", "warning")
+            if allocation.warnings:
+                for w in allocation.warnings[:3]:
+                    flash(w, "warning")
+
+        # ---------------------------------------------------------------
+        # Legacy modes (fresh / adaptive)
+        # ---------------------------------------------------------------
+        else:
+            try:
+                if test_mode == "fresh":
+                    selected_qs = select_fresh_questions(
+                        requested=question_count,
+                        topic_keys=topics or None,
+                        seed=seed,
+                    )
+                else:  # adaptive
+                    selected_qs, _ = select_adaptive_questions(
+                        user_id=current_user.id,
+                        requested=question_count,
+                        topic_keys=topics or None,
+                        seed=seed,
+                    )
+            except ValueError as e:
+                flash(str(e), "error")
+                return redirect(url_for("quiz_main.dashboard"))
+
+            if not selected_qs:
+                flash("Not enough questions available. Please adjust filters.", "error")
+                return redirect(url_for("quiz_main.dashboard"))
+
+            session_obj = TestSession(
+                user_id=current_user.id,
+                mode=test_mode,
+                question_count=len(selected_qs),
+                selected_topics=topics if topics else None,
+                timed=timed,
+                time_limit_seconds=time_limit_minutes * 60 if timed else None,
+                random_seed=seed,
+                bank_import_id=active_bank.id,
+                status="in_progress",
+            )
+            db.session.add(session_obj)
+            db.session.flush()
+
+            for idx, question in enumerate(selected_qs):
+                snapshot = TestSessionQuestion(
+                    session_id=session_obj.id,
+                    source_question_id=question.id,
+                    bank_import_id=active_bank.id,
+                    external_question_id=question.external_question_id,
+                    topic=question.topic,
+                    topic_key=question.topic_key,
+                    question_text=question.question_text,
+                    answer_a=question.answer_a,
+                    answer_b=question.answer_b,
+                    answer_c=question.answer_c,
+                    answer_d=question.answer_d,
+                    correct_answer=question.correct_answer,
+                    explanation=question.explanation,
+                    reference=question.reference,
+                    difficulty=question.difficulty,
+                    content_fingerprint=question.content_fingerprint,
+                    display_position=idx,
+                )
+                db.session.add(snapshot)
 
         db.session.commit()
 
@@ -136,12 +305,27 @@ def start_test():
             set(q.topic_key for q in active_bank.questions.filter_by(active=True).all())
         )
 
+    # Load SQE blueprint profiles for display
+    flk1_profile = db.session.execute(
+        select(BlueprintProfile).where(
+            BlueprintProfile.paper == "FLK1", BlueprintProfile.active == True  # noqa: E712
+        )
+    ).scalars().first()
+    flk2_profile = db.session.execute(
+        select(BlueprintProfile).where(
+            BlueprintProfile.paper == "FLK2", BlueprintProfile.active == True  # noqa: E712
+        )
+    ).scalars().first()
+
     return render_template(
         "testing/start_test.html",
         active_bank=active_bank,
         topics=topics,
         min_limit=current_app.config["MIN_TIME_LIMIT_MINUTES"],
         max_limit=current_app.config["MAX_TIME_LIMIT_MINUTES"],
+        flk1_profile=flk1_profile,
+        flk2_profile=flk2_profile,
+        sqe_full_minutes=SQE_FULL_PAPER_MINUTES,
     )
 
 
@@ -165,10 +349,19 @@ def take_test(session_id):
             db.session.commit()
         return redirect(url_for("quiz_results.view_result", session_id=session_id))
 
+    # Update current_position from query param
+    pos = request.args.get("pos", type=int)
+    if pos is not None:
+        clamped = max(0, min(pos, session_obj.question_count - 1))
+        if session_obj.current_position != clamped:
+            session_obj.current_position = clamped
+            db.session.commit()
+
     return render_template(
         "testing/take_test.html",
         session=session_obj,
         topic_visible=current_app.config["TOPIC_VISIBLE_DURING_TEST"],
+        is_sqe_mode=session_obj.mode in SQE_MODES,
     )
 
 
@@ -183,9 +376,10 @@ def save_answer(session_id):
 
     data = request.get_json()
     position = data.get("position")
-    answer = data.get("answer")  # A, B, C, D, or None
+    answer = data.get("answer")  # A–E or None
 
-    if answer and answer not in ("A", "B", "C", "D"):
+    valid_answers = ("A", "B", "C", "D", "E")
+    if answer and answer not in valid_answers:
         return jsonify({"error": "Invalid answer"}), 400
 
     tsq = TestSessionQuestion.query.filter_by(
@@ -214,12 +408,10 @@ def submit_test(session_id):
         flash("Cannot submit this session.", "error")
         return redirect(url_for("quiz_main.dashboard"))
 
-    # Mark as submitted
     session_obj.status = "submitted"
     session_obj.submission_reason = "manual"
     session_obj.submitted_at = datetime.now(timezone.utc)
 
-    # Score all questions
     _finalize_session_scores(session_obj)
 
     db.session.commit()

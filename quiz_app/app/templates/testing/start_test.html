@@ -1,39 +1,104 @@
 {% extends "base.html" %}
 
-{% block title %}Start Test - Quiz App{% endblock %}
+{% block title %}Start Practice - SQE Study{% endblock %}
 
 {% block extra_css %}
 <style>
-.test-form { max-width: 600px; margin: 0 auto; }
+.test-form { max-width: 700px; margin: 0 auto; }
 .form-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; border-radius: 4px; }
+.form-section h3 { margin-top: 0; }
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mode-card { border: 2px solid #ddd; border-radius: 6px; padding: 14px 16px; cursor: pointer; transition: all 0.15s; }
+.mode-card:hover { border-color: #667eea; background: #f0f1ff; }
+.mode-card input[type="radio"] { margin-right: 8px; }
+.mode-card.sqe-mode { border-left: 4px solid #1a237e; }
+.mode-card.selected { border-color: #1976d2; background: #e3f2fd; }
+.mode-card strong { display: block; margin-bottom: 4px; }
+.mode-card small { color: #666; font-size: 0.8rem; }
+.paper-select { display: flex; gap: 16px; }
+.paper-btn { flex: 1; border: 2px solid #ddd; border-radius: 6px; padding: 12px; text-align: center; cursor: pointer; }
+.paper-btn:hover { border-color: #004d40; }
+.paper-btn input { margin-right: 6px; }
+.sim-note { background: #e8f5e9; border-left: 4px solid #2e7d32; padding: 10px 14px; border-radius: 0 4px 4px 0; font-size: 0.875rem; }
+#sqe-options { display: none; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="test-form">
-    <h2>Start a New Test</h2>
+    <h2>Start Practice</h2>
+
+    {% if not active_bank %}
+        <div class="alert alert-warning">No question bank is currently active. Please ask an administrator to upload questions.</div>
+    {% else %}
     <form method="POST" class="form">
-        <input type="hidden" name="mode" value="fresh">
-        
+        {{ csrf_token() if csrf_token is defined else '' }}
+
+        {# ----- Practice Mode ----- #}
         <div class="form-section">
-            <h3>Test Type</h3>
-            <div class="form-group radio">
-                <input type="radio" id="mode-fresh" name="mode" value="fresh" checked>
-                <label for="mode-fresh">Fresh Test (proportional topic mix)</label>
-            </div>
-            <div class="form-group radio">
-                <input type="radio" id="mode-adaptive" name="mode" value="adaptive">
-                <label for="mode-adaptive">Adaptive Test (focused on weak areas)</label>
+            <h3>Practice Mode</h3>
+            <div class="mode-cards">
+                <label class="mode-card" id="card-fresh">
+                    <input type="radio" name="mode" value="fresh" checked onchange="onModeChange(this)">
+                    <strong>General Fresh Practice</strong>
+                    <small>Proportional mix across all topics</small>
+                </label>
+                <label class="mode-card" id="card-adaptive">
+                    <input type="radio" name="mode" value="adaptive" onchange="onModeChange(this)">
+                    <strong>General Adaptive</strong>
+                    <small>Focused on your weaker topics</small>
+                </label>
+                {% if flk1_profile or flk2_profile %}
+                <label class="mode-card sqe-mode" id="card-sqe_blueprint">
+                    <input type="radio" name="mode" value="sqe_blueprint" onchange="onModeChange(this)">
+                    <strong>SQE Blueprint Practice</strong>
+                    <small>Blueprint-aligned subject allocation</small>
+                </label>
+                <label class="mode-card sqe-mode" id="card-sqe_adaptive">
+                    <input type="radio" name="mode" value="sqe_adaptive" onchange="onModeChange(this)">
+                    <strong>SQE Adaptive Practice</strong>
+                    <small>Blueprint base + weak-subject weighting</small>
+                </label>
+                <label class="mode-card sqe-mode" id="card-sqe_simulation" style="grid-column: 1 / -1;">
+                    <input type="radio" name="mode" value="sqe_simulation" onchange="onModeChange(this)">
+                    <strong>Full FLK Simulation</strong>
+                    <small>90 questions · {{ sqe_full_minutes }} min ({{ sqe_full_minutes // 60 }}h {{ sqe_full_minutes % 60 }}m) · strict blueprint bounds</small>
+                </label>
+                {% endif %}
             </div>
         </div>
 
-        <div class="form-section">
+        {# ----- SQE Options (paper, etc.) ----- #}
+        <div class="form-section" id="sqe-options">
+            <h3>Paper</h3>
+            <div class="paper-select">
+                {% if flk1_profile %}
+                <label class="paper-btn">
+                    <input type="radio" name="paper" value="FLK1" checked>
+                    <strong>FLK1</strong><br>
+                    <small>Business, Dispute, Contract, Tort, Legal System, Legal Services</small>
+                </label>
+                {% endif %}
+                {% if flk2_profile %}
+                <label class="paper-btn">
+                    <input type="radio" name="paper" value="FLK2">
+                    <strong>FLK2</strong><br>
+                    <small>Property, Land Law, Wills, Trusts, Criminal Liability, Criminal Practice</small>
+                </label>
+                {% endif %}
+            </div>
+        </div>
+
+        {# ----- Question Count ----- #}
+        <div class="form-section" id="count-section">
             <h3>Number of Questions</h3>
-            <div class="form-group">
-                <input type="number" name="question_count" value="25" min="5" max="100" class="form-control">
-            </div>
+            <input type="number" name="question_count" id="question_count" value="25" min="5" max="180" class="form-control">
+            <p id="sim-count-note" style="display:none" class="sim-note">
+                Full FLK simulation is fixed at 90 questions.
+            </p>
         </div>
 
+        {# ----- Time Limit ----- #}
         <div class="form-section">
             <h3>Time Limit</h3>
             <div class="form-group radio">
@@ -45,33 +110,72 @@
                 <label for="timed">Timed</label>
             </div>
             <div id="time-limit-input" style="display: none; margin-top: 10px;">
-                <label>Minutes ({{ min_limit }}-{{ max_limit }})</label>
+                <label>Minutes ({{ min_limit }}–{{ max_limit }})</label>
                 <input type="number" id="time-input" name="time_limit" min="{{ min_limit }}" max="{{ max_limit }}" value="30" class="form-control">
             </div>
+            <p id="sim-timer-note" style="display:none" class="sim-note">
+                Simulation timer is fixed at {{ sqe_full_minutes }} minutes ({{ sqe_full_minutes // 60 }}h {{ sqe_full_minutes % 60 }}m) per SRA specification.
+            </p>
         </div>
 
+        {# ----- Topics (legacy modes only) ----- #}
         {% if topics %}
-            <div class="form-section">
-                <h3>Topics (optional)</h3>
-                <p>Leave all unchecked to include all topics.</p>
+            <div class="form-section" id="topics-section">
+                <h3>Topics <small style="font-weight:normal">(optional — leave blank for all)</small></h3>
                 {% for topic in topics %}
                     <div class="form-group checkbox">
                         <input type="checkbox" id="topic-{{ loop.index }}" name="topics" value="{{ topic }}">
-                        <label for="topic-{{ loop.index }}">{{ topic }}</label>
+                        <label for="topic-{{ loop.index }}">{{ topic | replace("_", " ") | title }}</label>
                     </div>
                 {% endfor %}
             </div>
         {% endif %}
 
-        <button type="submit" class="btn btn-lg btn-primary">Start Test</button>
-        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Cancel</a>
+        <div style="display:flex; gap:12px; margin-top:24px;">
+            <button type="submit" class="btn btn-lg btn-primary">Start Practice</button>
+            <a href="{{ url_for('quiz_main.dashboard') }}" class="btn btn-lg btn-secondary">Cancel</a>
+        </div>
     </form>
+    {% endif %}
 </div>
 
 <script>
+function onModeChange(radio) {
+    const sqe = ['sqe_blueprint', 'sqe_adaptive', 'sqe_simulation'];
+    const isSQE = sqe.includes(radio.value);
+    const isSim = radio.value === 'sqe_simulation';
+
+    document.getElementById('sqe-options').style.display = isSQE ? 'block' : 'none';
+    document.getElementById('topics-section') && (document.getElementById('topics-section').style.display = isSQE ? 'none' : 'block');
+
+    // Simulation locks count and timer
+    const countInput = document.getElementById('question_count');
+    const simNote = document.getElementById('sim-count-note');
+    const timerNote = document.getElementById('sim-timer-note');
+    if (isSim) {
+        countInput.value = 90; countInput.disabled = true; simNote.style.display = 'block';
+        // Force timed
+        document.getElementById('timed').checked = true;
+        document.getElementById('time-limit-input').style.display = 'block';
+        document.getElementById('time-input').value = {{ sqe_full_minutes }};
+        document.getElementById('time-input').disabled = true;
+        timerNote.style.display = 'block';
+    } else {
+        countInput.disabled = false; simNote.style.display = 'none';
+        document.getElementById('time-input').disabled = false;
+        timerNote.style.display = 'none';
+    }
+
+    // Highlight selected card
+    document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+    radio.closest('.mode-card').classList.add('selected');
+}
+
+// Time limit toggle
 document.querySelectorAll('input[name="time_limit"]').forEach(el => {
     el.addEventListener('change', function() {
-        document.getElementById('time-limit-input').style.display = this.value === 'untimed' ? 'none' : 'block';
+        const show = this.value !== 'untimed';
+        document.getElementById('time-limit-input').style.display = show ? 'block' : 'none';
     });
 });
 </script>
