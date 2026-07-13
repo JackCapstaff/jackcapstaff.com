@@ -75,7 +75,7 @@
                     <li><strong>{{ area.name }}</strong> — {{ area.correct }}/{{ area.total }} ({{ "%.0f" | format(area.pct) }}%)</li>
                 {% endfor %}
             </ul>
-            <p style="margin:10px 0 0"><a href="{{ url_for('quiz_testing.start_test') }}">Start a focused practice session &rarr;</a></p>
+            <p style="margin:10px 0 0"><a href="{{ url_for('quiz_testing.start_test', mode='focused', subjects=focus_subject_ids, topics=focus_topic_keys) }}">Start a focused practice session on these areas &rarr;</a></p>
         </div>
     {% endif %}
 

@@ -393,6 +393,14 @@ def start_test():
     # Load SQE subjects (modules) that have questions, for focused practice
     subjects = get_active_subject_counts() if active_bank else []
 
+    # Prefill support: a results page can deep-link into focused practice with
+    # weak subjects/topics pre-selected (?mode=focused&subjects=..&topics=..).
+    preselect_mode = request.args.get("mode") if request.args.get("mode") in ALL_MODES else None
+    preselect_subject_ids = {
+        int(s) for s in request.args.getlist("subjects") if s.strip().isdigit()
+    }
+    preselect_topic_keys = set(request.args.getlist("topics"))
+
     return render_template(
         "testing/start_test.html",
         active_bank=active_bank,
@@ -403,6 +411,9 @@ def start_test():
         flk1_profile=flk1_profile,
         flk2_profile=flk2_profile,
         sqe_full_minutes=SQE_FULL_PAPER_MINUTES,
+        preselect_mode=preselect_mode,
+        preselect_subject_ids=preselect_subject_ids,
+        preselect_topic_keys=preselect_topic_keys,
     )
 
 

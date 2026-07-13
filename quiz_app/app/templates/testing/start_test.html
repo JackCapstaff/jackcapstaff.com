@@ -25,12 +25,18 @@
 {% endblock %}
 
 {% block content %}
+{% set focus_prefill = (preselect_mode == 'focused') %}
 <div class="test-form">
     <h2>Start Practice</h2>
 
     {% if not active_bank %}
         <div class="alert alert-warning">No question bank is currently active. Please ask an administrator to upload questions.</div>
     {% else %}
+    {% if focus_prefill %}
+        <div class="sim-note" style="margin-bottom:16px;">
+            Focused practice pre-loaded with your weak areas from the last test. Adjust the selection if you like, set the number of questions, and start.
+        </div>
+    {% endif %}
     <form method="POST" class="form">
         {{ csrf_token() if csrf_token is defined else '' }}
 
@@ -39,7 +45,7 @@
             <h3>Practice Mode</h3>
             <div class="mode-cards">
                 <label class="mode-card" id="card-fresh">
-                    <input type="radio" name="mode" value="fresh" checked onchange="onModeChange(this)">
+                    <input type="radio" name="mode" value="fresh" {{ '' if focus_prefill else 'checked' }} onchange="onModeChange(this)">
                     <strong>General Fresh Practice</strong>
                     <small>Proportional mix across all topics</small>
                 </label>
@@ -49,7 +55,7 @@
                     <small>Focused on your weaker topics</small>
                 </label>
                 <label class="mode-card" id="card-focused" style="grid-column: 1 / -1;">
-                    <input type="radio" name="mode" value="focused" onchange="onModeChange(this)">
+                    <input type="radio" name="mode" value="focused" {{ 'checked' if focus_prefill else '' }} onchange="onModeChange(this)">
                     <strong>Focused Practice</strong>
                     <small>Choose specific modules and/or topics to assess yourself on</small>
                 </label>
@@ -133,7 +139,7 @@
                     <p style="margin:8px 0 4px; font-weight:600; color:#1a237e;">FLK1</p>
                     {% for s in flk1_subjects %}
                         <div class="form-group checkbox">
-                            <input type="checkbox" id="subject-{{ s.id }}" name="subjects" value="{{ s.id }}">
+                            <input type="checkbox" id="subject-{{ s.id }}" name="subjects" value="{{ s.id }}" {{ 'checked' if s.id in (preselect_subject_ids or []) else '' }}>
                             <label for="subject-{{ s.id }}">{{ s.full_name }} <small style="color:#666">({{ s.count }})</small></label>
                         </div>
                     {% endfor %}
@@ -142,7 +148,7 @@
                     <p style="margin:12px 0 4px; font-weight:600; color:#004d40;">FLK2</p>
                     {% for s in flk2_subjects %}
                         <div class="form-group checkbox">
-                            <input type="checkbox" id="subject-{{ s.id }}" name="subjects" value="{{ s.id }}">
+                            <input type="checkbox" id="subject-{{ s.id }}" name="subjects" value="{{ s.id }}" {{ 'checked' if s.id in (preselect_subject_ids or []) else '' }}>
                             <label for="subject-{{ s.id }}">{{ s.full_name }} <small style="color:#666">({{ s.count }})</small></label>
                         </div>
                     {% endfor %}
@@ -156,7 +162,7 @@
                 <h3>Topics <small style="font-weight:normal" id="topics-hint">(optional — leave blank for all)</small></h3>
                 {% for topic in topics %}
                     <div class="form-group checkbox">
-                        <input type="checkbox" id="topic-{{ loop.index }}" name="topics" value="{{ topic }}">
+                        <input type="checkbox" id="topic-{{ loop.index }}" name="topics" value="{{ topic }}" {{ 'checked' if topic in (preselect_topic_keys or []) else '' }}>
                         <label for="topic-{{ loop.index }}">{{ topic | replace("_", " ") | title }}</label>
                     </div>
                 {% endfor %}
@@ -223,5 +229,11 @@ document.querySelectorAll('input[name="time_limit"]').forEach(el => {
         document.getElementById('time-limit-input').style.display = show ? 'block' : 'none';
     });
 });
+
+// Initialise sections based on the currently checked mode (handles prefill).
+(function initMode() {
+    const checked = document.querySelector('input[name="mode"]:checked');
+    if (checked) onModeChange(checked);
+})();
 </script>
 {% endblock %}

@@ -14,10 +14,10 @@ SQE_MODES = ("sqe_blueprint", "sqe_adaptive", "sqe_simulation")
 def _compute_area_breakdown(session_obj: TestSession) -> list[dict]:
     """Return a per-area breakdown for any mode.
 
-    Each entry: {name, correct, total, pct, share} where `share` is the
-    percentage of the whole test drawn from that area (its weighting) and
-    `pct` is the user's accuracy in that area. Sorted weakest-accuracy first
-    so areas needing work surface at the top.
+    Each entry: {name, correct, total, pct, share, subject_id, topic_key}
+    where `share` is the percentage of the whole test drawn from that area
+    (its weighting) and `pct` is the user's accuracy in that area. Sorted
+    weakest-accuracy first so areas needing work surface at the top.
     """
     areas: dict[str, dict] = {}
     total_questions = 0
@@ -25,7 +25,13 @@ def _compute_area_breakdown(session_obj: TestSession) -> list[dict]:
         total_questions += 1
         name = tsq.subject_name_snapshot or tsq.topic or "Unknown"
         if name not in areas:
-            areas[name] = {"name": name, "correct": 0, "total": 0}
+            areas[name] = {
+                "name": name,
+                "correct": 0,
+                "total": 0,
+                "subject_id": tsq.subject_id_snapshot,
+                "topic_key": tsq.topic_key,
+            }
         areas[name]["total"] += 1
         if tsq.is_correct:
             areas[name]["correct"] += 1
@@ -64,6 +70,13 @@ def view_result(session_id):
     # Areas needing work: below 70% accuracy, weakest first (already sorted)
     focus_areas = [a for a in area_breakdown if a["total"] >= 1 and a["pct"] < 70]
 
+    # Build query params to pre-populate a focused practice session with the
+    # weak areas. SQE sessions map to subject IDs (modules); others to topics.
+    focus_subject_ids = [a["subject_id"] for a in focus_areas if a.get("subject_id")]
+    focus_topic_keys = [
+        a["topic_key"] for a in focus_areas if not a.get("subject_id") and a.get("topic_key")
+    ]
+
     # Collect source notices from questions (de-duplicated)
     source_notices = list(
         dict.fromkeys(
@@ -78,6 +91,8 @@ def view_result(session_id):
         session=session_obj,
         area_breakdown=area_breakdown,
         focus_areas=focus_areas,
+        focus_subject_ids=focus_subject_ids,
+        focus_topic_keys=focus_topic_keys,
         is_sqe=is_sqe,
         source_notices=source_notices,
     )
