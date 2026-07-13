@@ -550,8 +550,10 @@ def init_database():
 
                     user_column_patches = [
                         ("name", 'ALTER TABLE "user" ADD COLUMN name VARCHAR(255)'),
+                        ("display_name", 'ALTER TABLE "user" ADD COLUMN display_name VARCHAR(120)'),
                         ("role", 'ALTER TABLE "user" ADD COLUMN role VARCHAR(50) DEFAULT \'viewer\' NOT NULL'),
                         ("is_active", 'ALTER TABLE "user" ADD COLUMN is_active BOOLEAN DEFAULT TRUE NOT NULL'),
+                        ("active", 'ALTER TABLE "user" ADD COLUMN active BOOLEAN DEFAULT TRUE NOT NULL'),
                         ("created_at", 'ALTER TABLE "user" ADD COLUMN created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW() NOT NULL'),
                         ("updated_at", 'ALTER TABLE "user" ADD COLUMN updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW() NOT NULL'),
                         ("reset_token", 'ALTER TABLE "user" ADD COLUMN reset_token VARCHAR(255) UNIQUE'),
@@ -655,8 +657,10 @@ def init_database():
                     user_columns = _sqlite_table_columns(connection, "user")
                     sqlite_user_patches = [
                         ("name", 'ALTER TABLE "user" ADD COLUMN name VARCHAR(255)'),
+                        ("display_name", 'ALTER TABLE "user" ADD COLUMN display_name VARCHAR(120)'),
                         ("role", 'ALTER TABLE "user" ADD COLUMN role VARCHAR(50) DEFAULT "viewer" NOT NULL'),
                         ("is_active", 'ALTER TABLE "user" ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL'),
+                        ("active", 'ALTER TABLE "user" ADD COLUMN active BOOLEAN DEFAULT 1 NOT NULL'),
                         ("reset_token", 'ALTER TABLE "user" ADD COLUMN reset_token VARCHAR(255)'),
                         ("reset_token_expiry", 'ALTER TABLE "user" ADD COLUMN reset_token_expiry DATETIME'),
                         ("created_at", 'ALTER TABLE "user" ADD COLUMN created_at DATETIME'),
