@@ -19,7 +19,7 @@ def init_models(db):
 
     class User(UserMixin, db.Model):
         """User model with role-based permissions - unified for main app and quiz app"""
-        __tablename__ = 'users'
+        __tablename__ = 'user'
         
         id = db.Column(db.Integer, primary_key=True)
         username = db.Column(db.String(120), unique=True, nullable=False, index=True)
@@ -109,7 +109,7 @@ def init_models(db):
         published = db.Column(db.Boolean, default=False)
         published_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
         
-        author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+        author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
         
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -136,7 +136,7 @@ def init_models(db):
         featured_image = db.Column(db.String(512))
         published = db.Column(db.Boolean, default=False)
         
-        author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+        author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
         
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -154,7 +154,7 @@ def init_models(db):
         order = db.Column(db.Integer, default=0)
         published = db.Column(db.Boolean, default=True)
         
-        author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+        author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
         
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -184,7 +184,7 @@ def init_models(db):
         order = db.Column(db.Integer, default=0)  # Display order in carousel
         published = db.Column(db.Boolean, default=True)
         
-        author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+        author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
         
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -206,7 +206,7 @@ def init_models(db):
         published = db.Column(db.Boolean, default=False, nullable=False, index=True)
         sort_order = db.Column(db.Integer, default=0, nullable=False)
 
-        author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+        author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -260,7 +260,7 @@ def init_models(db):
     class PublishingQuote(db.Model):
         """Saved publishing quote requests/results."""
         id = db.Column(db.Integer, primary_key=True)
-        user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True, index=True)
         title = db.Column(db.String(255), index=True)
         customer_email = db.Column(db.String(255), index=True)
         quote_payload = db.Column(db.Text, nullable=False)
@@ -275,7 +275,7 @@ def init_models(db):
         stripe_checkout_session_id = db.Column(db.String(255), unique=True, index=True)
         stripe_payment_intent_id = db.Column(db.String(255), index=True)
         quote_id = db.Column(db.Integer, db.ForeignKey('publishing_quote.id'), index=True)
-        user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
         title = db.Column(db.String(255), index=True)
         customer_name = db.Column(db.String(255))
         customer_email = db.Column(db.String(255), nullable=False, index=True)

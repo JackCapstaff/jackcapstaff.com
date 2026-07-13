@@ -43,7 +43,7 @@ class QuestionBankImport(db.Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     importer_user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -136,7 +136,7 @@ class StagedImport(db.Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)

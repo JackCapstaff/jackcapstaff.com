@@ -36,7 +36,7 @@ class TestSession(db.Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
     mode: Mapped[str] = mapped_column(
         String(20), nullable=False, index=True
