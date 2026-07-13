@@ -771,7 +771,7 @@ def _load_quiz_app_early():
 
 quiz_app_instance = _load_quiz_app_early()
 
-# Build middleware dict
+# Build middleware dict with quiz and rehearsal-schedule apps
 middleware_dict = {}
 if rehearsal_schedule_app is not None:
     middleware_dict[REHEARSAL_SCHEDULE_PREFIX] = rehearsal_schedule_app
