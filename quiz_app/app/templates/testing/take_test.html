@@ -99,6 +99,12 @@
                     {% endif %}
                 </form>
             </div>
+
+            {% if current_question.source_notice_snapshot %}
+                <p class="source-notice" style="margin-top:16px; font-size:0.8em; color:#666; border-top:1px solid #eee; padding-top:8px;">
+                    {{ current_question.source_notice_snapshot }}
+                </p>
+            {% endif %}
         </div>
 
         <div class="question-nav">
