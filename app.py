@@ -746,8 +746,8 @@ rehearsal_schedule_app = load_rehearsal_schedule_app()
 try:
     from quiz_app.register_blueprints import register_quiz_blueprints
     register_quiz_blueprints(app, db, login_manager)
-    # Import quiz models for Flask-Migrate discovery
-    from quiz_app.app.models import user as quiz_user, question as quiz_question, session as quiz_session  # noqa: F401
+    # NOTE: Do NOT import quiz models here. The blueprints will trigger their import
+    # when routes are loaded. This avoids registering quiz's User model with main app's db.
     sys.stderr.write(f"[QUIZ] Quiz app blueprints registered successfully at /quiz\n")
     sys.stderr.flush()
 except Exception as e:

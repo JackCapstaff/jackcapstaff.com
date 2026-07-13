@@ -27,19 +27,33 @@ def create_app(config_name: str = "development") -> Flask:
     login_manager.init_app(app)
     csrf.init_app(app)
 
-    # Set up Flask-Login
-    from .models.user import User  # noqa: F401 — needed for user_loader
-
+    # Set up Flask-Login (User is injected from main app via register_blueprints)
     @login_manager.user_loader
     def load_user(user_id: str):
-        return db.session.get(User, int(user_id))
+        # Use the User model that was injected from the main app
+        if db and hasattr(db, 'Model'):
+            # Find User in the registry (it will be there after main app initializes models)
+            from sqlalchemy.orm import class_mapper
+            from sqlalchemy import inspect
+            try:
+                User = None
+                for mapper in db.registry.mappers:
+                    if mapper.class_.__tablename__ == 'users':
+                        User = mapper.class_
+                        break
+                if User:
+                    return db.session.get(User, int(user_id))
+            except:
+                pass
+        return None
 
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please log in to access this page."
     login_manager.login_message_category = "info"
 
-    # Import all models so Alembic can discover them
-    from .models import user, question, session  # noqa: F401
+    # Import models so Alembic can discover them (only question and session, User is from main app)
+    # Note: models are auto-registered when imported; quiz_app.models.user no longer exists
+    from .models import question, session  # noqa: F401
 
     # Register blueprints
     from .auth import auth_bp

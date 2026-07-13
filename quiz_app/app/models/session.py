@@ -91,7 +91,8 @@ class TestSession(db.Model):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="test_sessions")
+    # Backref automatically creates User.test_sessions relationship
+    user: Mapped["User"] = relationship("User", backref=db.backref('test_sessions', lazy='dynamic', cascade='all, delete-orphan'))
     questions: Mapped[list["TestSessionQuestion"]] = relationship(
         "TestSessionQuestion",
         back_populates="session",

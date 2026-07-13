@@ -63,7 +63,7 @@ class QuestionBankImport(db.Model):
     )
     validation_summary: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    importer: Mapped[Optional["User"]] = relationship("User", back_populates="imports")
+    importer: Mapped[Optional["User"]] = relationship("User")
     questions: Mapped[list["Question"]] = relationship(
         "Question", back_populates="bank_import", cascade="all, delete-orphan"
     )
@@ -158,7 +158,7 @@ class StagedImport(db.Model):
     )
     validation_summary: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    user: Mapped["User"] = relationship("User", back_populates="staged_imports")
+    user: Mapped["User"] = relationship("User")
     staged_questions: Mapped[list["StagedQuestion"]] = relationship(
         "StagedQuestion", back_populates="staged_import", cascade="all, delete-orphan"
     )

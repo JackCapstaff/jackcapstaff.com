@@ -1,10 +1,10 @@
 """Models package — exposes all ORM classes."""
-from .user import User
+# Note: User is now provided by the main app via extensions.py
+# Do not import from .user as that module has been removed
 from .question import QuestionBankImport, Question, StagedImport, StagedQuestion
 from .session import TestSession, TestSessionQuestion
 
 __all__ = [
-    "User",
     "QuestionBankImport",
     "Question",
     "StagedImport",

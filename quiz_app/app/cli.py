@@ -13,8 +13,7 @@ def register_commands(app: Flask) -> None:
     @click.password_option(help="Admin password")
     def create_admin(username, email, display_name, password):
         """Create the first administrator account."""
-        from .extensions import db
-        from .models.user import User
+        from .extensions import db, User
 
         existing = db.session.execute(
             db.select(User).where(User.username == username)
@@ -38,8 +37,7 @@ def register_commands(app: Flask) -> None:
     @app.cli.command("seed-demo")
     def seed_demo():
         """Create demo users, question bank, and completed sessions."""
-        from .extensions import db
-        from .models.user import User
+        from .extensions import db, User
         from .services.csv_import import stage_import, confirm_import
         import pathlib
 
@@ -112,8 +110,7 @@ def register_commands(app: Flask) -> None:
     @click.option("--user-id", default=None, type=int, help="Importer user ID")
     def import_questions(filepath, user_id):
         """Import a question bank CSV, replacing the active bank."""
-        from .extensions import db
-        from .models.user import User
+        from .extensions import db, User
         from .services.csv_import import stage_import, confirm_import
 
         importer = None

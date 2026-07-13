@@ -15,9 +15,8 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from . import admin_bp
-from ..extensions import db
+from ..extensions import db, User
 from ..models.question import QuestionBankImport, Question, StagedImport, StagedQuestion
-from ..models.user import User
 from ..services.csv_import import stage_import, confirm_import
 
 
