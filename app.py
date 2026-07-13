@@ -742,91 +742,12 @@ app.register_blueprint(shop_bp)
 
 rehearsal_schedule_app = load_rehearsal_schedule_app()
 
-# Load and register quiz app blueprints directly
-def _load_and_register_quiz_blueprints():
-    """Load quiz app blueprints and register them with the main app."""
-    try:
-        quiz_app_dir = os.path.join(BASE_DIR, 'quiz_app')
-        if not os.path.exists(quiz_app_dir):
-            sys.stderr.write(f"[QUIZ] Quiz app directory not found at {quiz_app_dir}\n")
-            sys.stderr.flush()
-            return False
-        
-        sys.stderr.write(f"[QUIZ] Loading quiz app blueprints from {quiz_app_dir}\n")
-        sys.stderr.flush()
-        
-        # Add parent directory to sys.path
-        parent_dir = BASE_DIR
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        
-        # Import quiz app's database and extensions FIRST
-        from quiz_app.app import extensions as quiz_extensions
-        
-        # Replace quiz app's db with the main app's db
-        quiz_extensions.db = db  # Use main app's SQLAlchemy instance
-        
-        sys.stderr.write(f"[QUIZ] Configured shared database\n")
-        sys.stderr.flush()
-        
-        # Now import blueprints (which will use the shared db)
-        from quiz_app.app.auth import auth_bp as quiz_auth_bp
-        from quiz_app.app.main import main_bp as quiz_main_bp
-        from quiz_app.app.admin import admin_bp as quiz_admin_bp
-        from quiz_app.app.testing import testing_bp as quiz_testing_bp
-        from quiz_app.app.results import results_bp as quiz_results_bp
-        
-        from quiz_app.app.models.user import User as QuizUser
-        
-        sys.stderr.write(f"[QUIZ] Imported blueprints\n")
-        sys.stderr.flush()
-        
-        # Initialize only non-db extensions with main app
-        quiz_extensions.migrate.init_app(app, db)
-        quiz_extensions.login_manager.init_app(app)
-        quiz_extensions.csrf.init_app(app)
-        
-        # Set login view for quiz
-        quiz_extensions.login_manager.login_view = "quiz_auth.login"
-        quiz_extensions.login_manager.login_message = "Please log in to access this page."
-        
-        @quiz_extensions.login_manager.user_loader
-        def load_quiz_user(user_id):
-            return db.session.get(QuizUser, int(user_id))
-        
-        # Register blueprints with /quiz prefix and unique names
-        app.register_blueprint(quiz_auth_bp, url_prefix="/quiz/auth", name="quiz_auth")
-        app.register_blueprint(quiz_main_bp, url_prefix="/quiz", name="quiz_main")
-        app.register_blueprint(quiz_admin_bp, url_prefix="/quiz/admin", name="quiz_admin")
-        app.register_blueprint(quiz_testing_bp, url_prefix="/quiz/test", name="quiz_testing")
-        app.register_blueprint(quiz_results_bp, url_prefix="/quiz/results", name="quiz_results")
-        
-        sys.stderr.write(f"[QUIZ] Successfully registered quiz app blueprints\n")
-        sys.stderr.flush()
-        return True
-        
-    except Exception as e:
-        sys.stderr.write(f"[QUIZ] Failed to load quiz blueprints: {e}\n")
-        sys.stderr.flush()
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-        return False
+# DISABLED: Quiz app integration was causing SQLAlchemy initialization errors
+# This needs to be restructured to avoid database sharing conflicts
+# For now, quiz functionality is disabled until a proper solution is implemented
 
-# Try to load quiz blueprints
-quiz_blueprints_loaded = _load_and_register_quiz_blueprints()
-
-# Import quiz_app models so Flask-Migrate can discover them
-if quiz_blueprints_loaded:
-    try:
-        sys.stderr.write(f"[QUIZ] Importing quiz app models for migrations\n")
-        sys.stderr.flush()
-        from quiz_app.app.models import user, question, session  # noqa: F401
-        sys.stderr.write(f"[QUIZ] Models imported successfully\n")
-        sys.stderr.flush()
-    except Exception as e:
-        sys.stderr.write(f"[QUIZ] Failed to import models: {e}\n")
-        sys.stderr.flush()
+sys.stderr.write(f"[QUIZ] Quiz app integration is currently disabled\n")
+sys.stderr.flush()
 
 # Load rehearsal schedule middleware if needed
 if rehearsal_schedule_app is not None:
