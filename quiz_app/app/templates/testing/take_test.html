@@ -64,12 +64,12 @@
                     {% set opts = current_question.snapshot_options | list if current_question.snapshot_options else [] %}
                     {% if opts %}
                         {% for opt in opts | sort(attribute='display_order') %}
-                            <div class="answer-option {% if current_question.selected_answer == opt.display_letter %}selected{% endif %}"
-                                 onclick="selectOption(this, '{{ opt.display_letter }}')">
-                                <input type="radio" id="answer-{{ opt.display_letter }}" name="answer" value="{{ opt.display_letter }}"
-                                       {% if current_question.selected_answer == opt.display_letter %}checked{% endif %}>
-                                <label for="answer-{{ opt.display_letter }}" style="cursor:pointer">
-                                    <strong>{{ opt.display_letter }}.</strong> {{ opt.option_text }}
+                            <div class="answer-option {% if current_question.selected_answer == opt.display_label %}selected{% endif %}"
+                                 onclick="selectOption(this, '{{ opt.display_label }}')">
+                                <input type="radio" id="answer-{{ opt.display_label }}" name="answer" value="{{ opt.display_label }}"
+                                       {% if current_question.selected_answer == opt.display_label %}checked{% endif %}>
+                                <label for="answer-{{ opt.display_label }}" style="cursor:pointer">
+                                    <strong>{{ opt.display_label }}.</strong> {{ opt.option_text_snapshot }}
                                 </label>
                             </div>
                         {% endfor %}

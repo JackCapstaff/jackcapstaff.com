@@ -14,6 +14,7 @@ from sqlalchemy import func
 
 from ..extensions import db
 from ..models.question import Question, QuestionBankImport
+from ..models.subject import Subject
 
 
 # ---------------------------------------------------------------------------
@@ -252,3 +253,168 @@ def _enforce_capacity(
             f"Allocation error: got {total} but expected {requested}."
         )
     return quotas
+
+
+# ---------------------------------------------------------------------------
+# Focused practice: user-chosen subjects (modules) and/or topics
+# ---------------------------------------------------------------------------
+
+
+def get_active_subject_counts() -> list[dict]:
+    """
+    Return the SQE subjects (modules) that have questions in the active bank.
+
+    Each item: {id, code, short_name, full_name, paper, count}, ordered by
+    paper then display_order.
+    """
+    active_bank = db.session.execute(
+        db.select(QuestionBankImport).where(QuestionBankImport.active == True)  # noqa: E712
+    ).scalar_one_or_none()
+    if not active_bank:
+        return []
+
+    rows = db.session.execute(
+        db.select(
+            Subject.id,
+            Subject.code,
+            Subject.short_name,
+            Subject.full_name,
+            Subject.paper,
+            func.count(Question.id).label("cnt"),
+        )
+        .join(Question, Question.subject_id == Subject.id)
+        .where(
+            Question.bank_import_id == active_bank.id,
+            Question.active == True,  # noqa: E712
+        )
+        .group_by(
+            Subject.id,
+            Subject.code,
+            Subject.short_name,
+            Subject.full_name,
+            Subject.paper,
+            Subject.display_order,
+        )
+        .order_by(Subject.paper, Subject.display_order)
+    ).all()
+
+    return [
+        {
+            "id": row.id,
+            "code": row.code,
+            "short_name": row.short_name,
+            "full_name": row.full_name,
+            "paper": row.paper,
+            "count": row.cnt,
+        }
+        for row in rows
+    ]
+
+
+def select_focused_questions(
+    requested: int,
+    subject_ids: Optional[list[int]],
+    topic_keys: Optional[list[str]],
+    seed: int,
+) -> list[Question]:
+    """
+    Select questions restricted to the user-chosen subjects and/or topics.
+
+    Questions are drawn from the active bank matching ANY selected subject
+    (``Question.subject_id``) OR ANY selected topic (``Question.topic_key``).
+    Slots are allocated proportionally across the chosen buckets using the
+    largest-remainder method, de-duplicated, and any shortfall is topped up
+    from the remaining matched pool.
+
+    Parameters
+    ----------
+    requested : int
+        Desired number of questions. Silently capped at the number available.
+    subject_ids : list[int] or None
+        SQE subject IDs to include.
+    topic_keys : list[str] or None
+        Legacy topic keys to include.
+    seed : int
+        Random seed for reproducible selection.
+
+    Returns
+    -------
+    list[Question]
+        Shuffled list of distinct Question objects (may be shorter than
+        ``requested`` if fewer matching questions exist).
+    """
+    rng = random.Random(seed)
+
+    active_bank = db.session.execute(
+        db.select(QuestionBankImport).where(QuestionBankImport.active == True)  # noqa: E712
+    ).scalar_one_or_none()
+    if not active_bank:
+        raise ValueError("No active question bank found.")
+
+    subject_ids = [int(s) for s in (subject_ids or [])]
+    topic_keys = [t for t in (topic_keys or []) if t]
+    if not subject_ids and not topic_keys:
+        raise ValueError("Select at least one module or topic to practise.")
+
+    def _load(**filters) -> list[Question]:
+        query = db.select(Question).where(
+            Question.bank_import_id == active_bank.id,
+            Question.active == True,  # noqa: E712
+        )
+        for attr, value in filters.items():
+            query = query.where(getattr(Question, attr) == value)
+        return list(db.session.execute(query).scalars().all())
+
+    # Build buckets keyed by the chosen dimension.
+    buckets: dict[tuple, list[Question]] = {}
+    for sid in subject_ids:
+        qs = _load(subject_id=sid)
+        if qs:
+            buckets[("subject", sid)] = qs
+    for tk in topic_keys:
+        qs = _load(topic_key=tk)
+        if qs:
+            buckets[("topic", tk)] = qs
+
+    if not buckets:
+        raise ValueError("No questions match your selection.")
+
+    # Distinct pool across all buckets determines the true capacity.
+    distinct: dict[int, Question] = {}
+    for qs in buckets.values():
+        for q in qs:
+            distinct[q.id] = q
+
+    total_available = len(distinct)
+    target = min(requested, total_available)
+
+    counts = {key: len(qs) for key, qs in buckets.items()}
+    quotas = largest_remainder_allocation(counts, min(target, sum(counts.values())), rng)
+
+    selected_ids: set[int] = set()
+    selected: list[Question] = []
+
+    # First pass: fill each bucket's quota with distinct questions.
+    for key, qs in buckets.items():
+        want = quotas.get(key, 0)
+        if want <= 0:
+            continue
+        candidates = [q for q in qs if q.id not in selected_ids]
+        rng.shuffle(candidates)
+        for q in candidates[:want]:
+            selected_ids.add(q.id)
+            selected.append(q)
+
+    # Second pass: top up any shortfall (caused by overlap between buckets).
+    if len(selected) < target:
+        remaining = [q for qid, q in distinct.items() if qid not in selected_ids]
+        rng.shuffle(remaining)
+        for q in remaining:
+            if len(selected) >= target:
+                break
+            selected_ids.add(q.id)
+            selected.append(q)
+
+    rng.shuffle(selected)
+    return selected
+

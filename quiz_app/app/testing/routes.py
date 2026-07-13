@@ -21,7 +21,11 @@ from ..models.session import TestSession, TestSessionQuestion
 from ..models.question import QuestionBankImport, Question, FORMAT_SQE5
 from ..models.sqe import QuestionOption, TestSessionOption
 from ..models.specification import BlueprintProfile
-from ..services.question_selection import select_fresh_questions
+from ..services.question_selection import (
+    select_fresh_questions,
+    select_focused_questions,
+    get_active_subject_counts,
+)
 from ..services.adaptive_selection import select_adaptive_questions
 from ..services.blueprint_selection import select_sqe_questions, check_blueprint_coverage
 
@@ -30,8 +34,68 @@ SQE_FULL_PAPER_QUESTIONS = 90
 SQE_FULL_PAPER_MINUTES = 153  # 2h 33m per SRA spec
 
 SQE_MODES = ("sqe_blueprint", "sqe_adaptive", "sqe_simulation")
+FOCUSED_MODES = ("focused",)
 LEGACY_MODES = ("fresh", "adaptive")
-ALL_MODES = LEGACY_MODES + SQE_MODES
+ALL_MODES = LEGACY_MODES + FOCUSED_MODES + SQE_MODES
+
+
+def _snapshot_question(session_obj, q, position, active_bank):
+    """Create a TestSessionQuestion snapshot (plus option snapshots for SQE5).
+
+    Content is copied so historic results survive question-bank changes.
+    Scoring throughout the app uses the flat answer columns, which the CSV
+    importer always populates (including for SQE5 questions).
+    """
+    subject_name = q.subject.full_name if getattr(q, "subject", None) else None
+    tsq = TestSessionQuestion(
+        session_id=session_obj.id,
+        source_question_id=q.id,
+        bank_import_id=active_bank.id,
+        external_question_id=q.external_question_id,
+        topic=q.topic,
+        topic_key=q.topic_key,
+        paper=q.paper,
+        subject_id_snapshot=q.subject_id,
+        subject_name_snapshot=subject_name,
+        question_format=q.question_format or FORMAT_SQE5,
+        question_text=q.question_text,
+        answer_a=q.answer_a,
+        answer_b=q.answer_b,
+        answer_c=q.answer_c,
+        answer_d=q.answer_d,
+        answer_e=q.answer_e,
+        correct_answer=q.correct_answer,
+        explanation=q.explanation,
+        reference=q.reference,
+        difficulty=q.difficulty,
+        content_fingerprint=q.content_fingerprint,
+        display_position=position,
+        source_type_snapshot=q.source_type,
+        source_notice_snapshot=q.source_notice,
+    )
+    db.session.add(tsq)
+    db.session.flush()
+
+    # Snapshot normalised options for SQE5 questions (used for display/audit).
+    if q.question_format == FORMAT_SQE5:
+        options = db.session.execute(
+            select(QuestionOption)
+            .where(QuestionOption.question_id == q.id)
+            .order_by(QuestionOption.source_order)
+        ).scalars().all()
+        display_letters = list("ABCDE")
+        for opt_idx, opt in enumerate(options):
+            db.session.add(
+                TestSessionOption(
+                    test_session_question_id=tsq.id,
+                    original_option_id=opt.id,
+                    display_label=display_letters[opt_idx],
+                    option_text_snapshot=opt.option_text,
+                    is_correct=opt.is_correct,
+                    display_order=opt_idx,
+                )
+            )
+    return tsq
 
 
 @testing_bp.route("/start", methods=["GET", "POST"])
@@ -166,55 +230,7 @@ def start_test():
                 q = questions_by_id.get(item.question_id)
                 if not q:
                     continue
-
-                subject_name = q.subject.full_name if q.subject else None
-                tsq = TestSessionQuestion(
-                    session_id=session_obj.id,
-                    source_question_id=q.id,
-                    bank_import_id=active_bank.id,
-                    external_question_id=q.external_question_id,
-                    topic=q.topic,
-                    topic_key=q.topic_key,
-                    paper=q.paper,
-                    subject_id_snapshot=q.subject_id,
-                    subject_name_snapshot=subject_name,
-                    question_format=q.question_format or FORMAT_SQE5,
-                    question_text=q.question_text,
-                    answer_a=q.answer_a,
-                    answer_b=q.answer_b,
-                    answer_c=q.answer_c,
-                    answer_d=q.answer_d,
-                    answer_e=q.answer_e,
-                    correct_answer=q.correct_answer,
-                    explanation=q.explanation,
-                    reference=q.reference,
-                    difficulty=q.difficulty,
-                    content_fingerprint=q.content_fingerprint,
-                    display_position=item.display_position,
-                    source_type_snapshot=q.source_type,
-                    source_notice_snapshot=q.source_notice,
-                )
-                db.session.add(tsq)
-                db.session.flush()
-
-                # Snapshot QuestionOptions for SQE5 questions
-                if q.question_format == FORMAT_SQE5:
-                    options = db.session.execute(
-                        select(QuestionOption)
-                        .where(QuestionOption.question_id == q.id)
-                        .order_by(QuestionOption.source_order)
-                    ).scalars().all()
-                    display_letters = list("ABCDE")
-                    for opt_idx, opt in enumerate(options):
-                        tso = TestSessionOption(
-                            session_question_id=tsq.id,
-                            question_option_id=opt.id,
-                            display_letter=display_letters[opt_idx],
-                            option_text=opt.option_text,
-                            is_correct=opt.is_correct,
-                            display_order=opt_idx,
-                        )
-                        db.session.add(tso)
+                _snapshot_question(session_obj, q, item.display_position, active_bank)
 
             if coverage_warnings:
                 for w in coverage_warnings:
@@ -222,6 +238,57 @@ def start_test():
             if allocation.warnings:
                 for w in allocation.warnings[:3]:
                     flash(w, "warning")
+
+        # ---------------------------------------------------------------
+        # Focused practice: user-chosen subjects (modules) and/or topics
+        # ---------------------------------------------------------------
+        elif test_mode == "focused":
+            subject_ids = [
+                int(s) for s in request.form.getlist("subjects") if s.strip().isdigit()
+            ]
+            topic_keys = topics  # from request.form.getlist("topics") above
+
+            if not subject_ids and not topic_keys:
+                flash("Select at least one module or topic to practise.", "error")
+                return redirect(url_for("quiz_testing.start_test"))
+
+            try:
+                selected_qs = select_focused_questions(
+                    requested=question_count,
+                    subject_ids=subject_ids or None,
+                    topic_keys=topic_keys or None,
+                    seed=seed,
+                )
+            except ValueError as e:
+                flash(str(e), "error")
+                return redirect(url_for("quiz_testing.start_test"))
+
+            if not selected_qs:
+                flash("No questions match your selection.", "error")
+                return redirect(url_for("quiz_testing.start_test"))
+
+            if len(selected_qs) < question_count:
+                flash(
+                    f"Only {len(selected_qs)} question(s) available for your selection.",
+                    "warning",
+                )
+
+            session_obj = TestSession(
+                user_id=current_user.id,
+                mode="focused",
+                question_count=len(selected_qs),
+                selected_topics=topic_keys if topic_keys else None,
+                timed=timed,
+                time_limit_seconds=time_limit_minutes * 60 if timed else None,
+                random_seed=seed,
+                bank_import_id=active_bank.id,
+                status="in_progress",
+            )
+            db.session.add(session_obj)
+            db.session.flush()
+
+            for idx, question in enumerate(selected_qs):
+                _snapshot_question(session_obj, question, idx, active_bank)
 
         # ---------------------------------------------------------------
         # Legacy modes (fresh / adaptive)
@@ -301,9 +368,15 @@ def start_test():
     active_bank = QuestionBankImport.query.filter_by(active=True).first()
     topics = []
     if active_bank:
-        topics = sorted(
-            set(q.topic_key for q in active_bank.questions.filter_by(active=True).all())
-        )
+        topic_rows = db.session.execute(
+            select(Question.topic_key)
+            .where(
+                Question.bank_import_id == active_bank.id,
+                Question.active == True,  # noqa: E712
+            )
+            .distinct()
+        ).scalars().all()
+        topics = sorted(tk for tk in topic_rows if tk)
 
     # Load SQE blueprint profiles for display
     flk1_profile = db.session.execute(
@@ -317,10 +390,14 @@ def start_test():
         )
     ).scalars().first()
 
+    # Load SQE subjects (modules) that have questions, for focused practice
+    subjects = get_active_subject_counts() if active_bank else []
+
     return render_template(
         "testing/start_test.html",
         active_bank=active_bank,
         topics=topics,
+        subjects=subjects,
         min_limit=current_app.config["MIN_TIME_LIMIT_MINUTES"],
         max_limit=current_app.config["MAX_TIME_LIMIT_MINUTES"],
         flk1_profile=flk1_profile,

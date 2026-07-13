@@ -48,6 +48,11 @@
                     <strong>General Adaptive</strong>
                     <small>Focused on your weaker topics</small>
                 </label>
+                <label class="mode-card" id="card-focused" style="grid-column: 1 / -1;">
+                    <input type="radio" name="mode" value="focused" onchange="onModeChange(this)">
+                    <strong>Focused Practice</strong>
+                    <small>Choose specific modules and/or topics to assess yourself on</small>
+                </label>
                 {% if flk1_profile or flk2_profile %}
                 <label class="mode-card sqe-mode" id="card-sqe_blueprint">
                     <input type="radio" name="mode" value="sqe_blueprint" onchange="onModeChange(this)">
@@ -118,10 +123,37 @@
             </p>
         </div>
 
-        {# ----- Topics (legacy modes only) ----- #}
+        {# ----- Modules (SQE subjects) — focused mode only ----- #}
+        {% if subjects %}
+            <div class="form-section" id="modules-section" style="display:none">
+                <h3>Modules <small style="font-weight:normal">(select the SQE subjects to include)</small></h3>
+                {% set flk1_subjects = subjects | selectattr('paper', 'equalto', 'FLK1') | list %}
+                {% set flk2_subjects = subjects | selectattr('paper', 'equalto', 'FLK2') | list %}
+                {% if flk1_subjects %}
+                    <p style="margin:8px 0 4px; font-weight:600; color:#1a237e;">FLK1</p>
+                    {% for s in flk1_subjects %}
+                        <div class="form-group checkbox">
+                            <input type="checkbox" id="subject-{{ s.id }}" name="subjects" value="{{ s.id }}">
+                            <label for="subject-{{ s.id }}">{{ s.full_name }} <small style="color:#666">({{ s.count }})</small></label>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+                {% if flk2_subjects %}
+                    <p style="margin:12px 0 4px; font-weight:600; color:#004d40;">FLK2</p>
+                    {% for s in flk2_subjects %}
+                        <div class="form-group checkbox">
+                            <input type="checkbox" id="subject-{{ s.id }}" name="subjects" value="{{ s.id }}">
+                            <label for="subject-{{ s.id }}">{{ s.full_name }} <small style="color:#666">({{ s.count }})</small></label>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        {% endif %}
+
+        {# ----- Topics (legacy filter / focused selection) ----- #}
         {% if topics %}
             <div class="form-section" id="topics-section">
-                <h3>Topics <small style="font-weight:normal">(optional — leave blank for all)</small></h3>
+                <h3>Topics <small style="font-weight:normal" id="topics-hint">(optional — leave blank for all)</small></h3>
                 {% for topic in topics %}
                     <div class="form-group checkbox">
                         <input type="checkbox" id="topic-{{ loop.index }}" name="topics" value="{{ topic }}">
@@ -144,9 +176,22 @@ function onModeChange(radio) {
     const sqe = ['sqe_blueprint', 'sqe_adaptive', 'sqe_simulation'];
     const isSQE = sqe.includes(radio.value);
     const isSim = radio.value === 'sqe_simulation';
+    const isFocused = radio.value === 'focused';
 
     document.getElementById('sqe-options').style.display = isSQE ? 'block' : 'none';
-    document.getElementById('topics-section') && (document.getElementById('topics-section').style.display = isSQE ? 'none' : 'block');
+
+    const modulesSection = document.getElementById('modules-section');
+    if (modulesSection) modulesSection.style.display = isFocused ? 'block' : 'none';
+
+    const topicsSection = document.getElementById('topics-section');
+    if (topicsSection) topicsSection.style.display = isSQE ? 'none' : 'block';
+
+    const topicsHint = document.getElementById('topics-hint');
+    if (topicsHint) {
+        topicsHint.textContent = isFocused
+            ? '(pick specific topics — combined with any modules chosen above)'
+            : '(optional — leave blank for all)';
+    }
 
     // Simulation locks count and timer
     const countInput = document.getElementById('question_count');
