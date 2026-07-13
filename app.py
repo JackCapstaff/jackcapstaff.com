@@ -748,7 +748,10 @@ def _load_quiz_app_early():
     try:
         quiz_app_dir = os.path.join(BASE_DIR, 'quiz_app')
         if not os.path.exists(quiz_app_dir):
+            print(f"[QUIZ] Quiz app directory not found at {quiz_app_dir}")
             return None
+        
+        print(f"[QUIZ] Loading quiz app from {quiz_app_dir}")
         
         # Add parent directory to sys.path so we can import quiz_app as a package
         parent_dir = BASE_DIR
@@ -757,9 +760,13 @@ def _load_quiz_app_early():
         
         import quiz_app.app as quiz_app_factory
         config_name = os.environ.get("FLASK_CONFIG", "production")
-        return quiz_app_factory.create_app(config_name)
-    except Exception:
-        # Will try again later
+        quiz_app = quiz_app_factory.create_app(config_name)
+        print(f"[QUIZ] Successfully loaded quiz app")
+        return quiz_app
+    except Exception as e:
+        print(f"[QUIZ] Failed to load quiz app: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 quiz_app_instance = _load_quiz_app_early()
@@ -768,11 +775,16 @@ quiz_app_instance = _load_quiz_app_early()
 middleware_dict = {}
 if rehearsal_schedule_app is not None:
     middleware_dict[REHEARSAL_SCHEDULE_PREFIX] = rehearsal_schedule_app
+    print(f"[MIDDLEWARE] Mounted rehearsal-schedule at {REHEARSAL_SCHEDULE_PREFIX}")
 if quiz_app_instance is not None:
     middleware_dict['/quiz'] = quiz_app_instance
+    print(f"[MIDDLEWARE] Mounted quiz app at /quiz")
 
 if middleware_dict:
+    print(f"[MIDDLEWARE] Final middleware mounts: {list(middleware_dict.keys())}")
     app.wsgi_app = DispatcherMiddleware(app.wsgi_app, middleware_dict)
+else:
+    print("[MIDDLEWARE] No apps to mount in middleware")
 
 
 @login_manager.user_loader
