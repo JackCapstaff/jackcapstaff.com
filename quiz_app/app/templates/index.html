@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Quiz App{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Welcome to Quiz App</h1>
+    <p>Test your knowledge with adaptive, personalized quizzes.</p>
+    {% if not current_user.is_authenticated %}
+        <div class="cta-buttons">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Login</a>
+            {% if config.REGISTRATION_ENABLED %}
+                <a href="{{ url_for('auth.register') }}" class="btn btn-secondary">Register</a>
+            {% endif %}
+        </div>
+    {% else %}
+        <div class="cta-buttons">
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">Go to Dashboard</a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "quiz/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="quiz-dashboard">
+  <h1>Welcome, {{ user.display_name }}</h1>
+
+  {% if not has_bank %}
+    <div class="alert alert-info">
+      No question bank is loaded yet.
+      {% if quiz_user.is_admin %}
+        <a href="{{ url_for('quiz_admin.upload') }}">Upload questions</a> to get started.
+      {% else %}
+        Ask an administrator to upload a question bank.
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="quiz-actions">
+    <a href="{{ url_for('quiz_main.new_test') }}" class="btn btn-primary btn-lg">Start New Test</a>
+    <a href="{{ url_for('quiz_results.history') }}" class="btn btn-secondary">Test History</a>
+    <a href="{{ url_for('quiz_results.performance') }}" class="btn btn-secondary">My Performance</a>
+  </div>
+
+  {% if perf.completed_sessions > 0 %}
+    <div class="quiz-stats-grid">
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.completed_sessions }}</span>
+        <span class="stat-label">Tests completed</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.lifetime_accuracy }}%</span>
+        <span class="stat-label">Lifetime accuracy</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.average_score }}%</span>
+        <span class="stat-label">Average score</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.total_attempts }}</span>
+        <span class="stat-label">Questions attempted</span>
+      </div>
+    </div>
+
+    {% if perf.weakest_topics %}
+      <section class="dashboard-section" aria-labelledby="weak-topics-heading">
+        <h2 id="weak-topics-heading">Areas to focus on</h2>
+        <ul class="topic-list">
+          {% for t in perf.weakest_topics %}
+            <li>
+              <span class="topic-name">{{ t.topic }}</span>
+              <span class="topic-accuracy">{{ t.accuracy }}%</span>
+              <div class="progress-bar" role="progressbar"
+                   aria-valuenow="{{ t.accuracy|int }}" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar__fill" style="width: {{ t.accuracy|int }}%"></div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+  {% else %}
+    <p class="muted">Complete your first test to see performance statistics here.</p>
+  {% endif %}
+</div>
+{% endblock %}

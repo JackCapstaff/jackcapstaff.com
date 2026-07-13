@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Test History - Quiz App{% endblock %}
+
+{% block content %}
+<div class="history-container" style="max-width: 1000px; margin: 0 auto;">
+    <h2>Test History</h2>
+    
+    {% if sessions.items %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Mode</th>
+                    <th>Questions</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in sessions.items %}
+                    <tr>
+                        <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ session.mode|title }}</td>
+                        <td>{{ session.question_count }}</td>
+                        <td>
+                            {% if session.is_complete %}
+                                {{ "%.1f" | format(session.percentage()) }}%
+                            {% else %}
+                                In Progress
+                            {% endif %}
+                        </td>
+                        <td>{{ session.status|title }}</td>
+                        <td>
+                            {% if session.submitted_at %}
+                                {{ ((session.submitted_at - session.started_at).total_seconds() / 60)|int }} min
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if session.is_complete %}
+                                <a href="{{ url_for('results.view_result', session_id=session.id) }}">View</a>
+                            {% else %}
+                                <a href="{{ url_for('testing.take_test', session_id=session.id) }}">Continue</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="pagination" style="text-align: center; margin: 20px 0;">
+            {% if sessions.has_prev %}
+                <a href="{{ url_for('results.history', page=sessions.prev_num) }}" class="btn btn-sm btn-secondary">← Previous</a>
+            {% endif %}
+            <span>Page {{ sessions.page }} of {{ sessions.pages }}</span>
+            {% if sessions.has_next %}
+                <a href="{{ url_for('results.history', page=sessions.next_num) }}" class="btn btn-sm btn-secondary">Next →</a>
+            {% endif %}
+        </div>
+    {% else %}
+        <p>No test history yet. <a href="{{ url_for('testing.start_test') }}">Start a new test</a>.</p>
+    {% endif %}
+</div>
+{% endblock %}

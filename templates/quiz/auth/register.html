@@ -1,0 +1,37 @@
+{% extends "quiz/base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<div class="quiz-card quiz-card--narrow">
+  <h1>Create Quiz Account</h1>
+  <form method="post" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" value="{{ username|default('') }}"
+             autocomplete="username" required minlength="3" class="form-control" autofocus>
+    </div>
+    <div class="form-group">
+      <label for="email">Email address</label>
+      <input type="email" id="email" name="email" value="{{ email|default('') }}"
+             autocomplete="email" required class="form-control">
+    </div>
+    <div class="form-group">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name" value="{{ display_name|default('') }}"
+             required class="form-control">
+    </div>
+    <div class="form-group">
+      <label for="password">Password <span class="hint">(minimum 8 characters)</span></label>
+      <input type="password" id="password" name="password" autocomplete="new-password"
+             required minlength="8" class="form-control">
+    </div>
+    <div class="form-group">
+      <label for="confirm_password">Confirm password</label>
+      <input type="password" id="confirm_password" name="confirm_password"
+             autocomplete="new-password" required class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary btn-full">Create Account</button>
+  </form>
+  <p class="form-footer">Already registered? <a href="{{ url_for('quiz_auth.login') }}">Log in</a></p>
+</div>
+{% endblock %}

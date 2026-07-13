@@ -1,0 +1,80 @@
+{% extends "quiz/base.html" %}
+{% block title %}Test History{% endblock %}
+{% block content %}
+<div class="quiz-history">
+  <h1>Test History</h1>
+
+  <form method="get" class="history-filters">
+    <div class="filter-row">
+      <select name="mode" class="form-select" onchange="this.form.submit()">
+        <option value="">All modes</option>
+        <option value="fresh" {% if filter_mode == 'fresh' %}selected{% endif %}>Fresh</option>
+        <option value="adaptive" {% if filter_mode == 'adaptive' %}selected{% endif %}>Adaptive</option>
+        <option value="retest" {% if filter_mode == 'retest' %}selected{% endif %}>Retest</option>
+      </select>
+      <select name="timed" class="form-select" onchange="this.form.submit()">
+        <option value="">Timed &amp; untimed</option>
+        <option value="1" {% if filter_timed == '1' %}selected{% endif %}>Timed</option>
+        <option value="0" {% if filter_timed == '0' %}selected{% endif %}>Untimed</option>
+      </select>
+      <select name="sort" class="form-select" onchange="this.form.submit()">
+        <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Sort: Date</option>
+        <option value="score" {% if sort_by == 'score' %}selected{% endif %}>Sort: Score</option>
+      </select>
+    </div>
+  </form>
+
+  {% if sessions %}
+    <table class="quiz-table">
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Mode</th>
+          <th scope="col">Questions</th>
+          <th scope="col">Correct</th>
+          <th scope="col">Incorrect</th>
+          <th scope="col">Unanswered</th>
+          <th scope="col">Score</th>
+          <th scope="col">Timer</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+          <tr>
+            <td>{{ s.submitted_at.strftime('%d %b %Y') if s.submitted_at else '—' }}</td>
+            <td>{{ s.mode|capitalize }}</td>
+            <td>{{ s.question_count }}</td>
+            <td class="correct-cell">{{ s.correct_count() }}</td>
+            <td class="incorrect-cell">{{ s.incorrect_count() }}</td>
+            <td class="unanswered-cell">{{ s.unanswered_count() }}</td>
+            <td><strong>{{ s.percentage()|int }}%</strong></td>
+            <td>{% if s.timed %}{{ (s.time_limit_seconds // 60) }}m{% else %}—{% endif %}</td>
+            <td>
+              <a href="{{ url_for('quiz_results.results', session_id=s.id) }}" class="btn btn-sm">Results</a>
+              <a href="{{ url_for('quiz_results.review', session_id=s.id) }}" class="btn btn-sm btn-outline">Review</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+      <nav class="pagination" aria-label="Test history pages">
+        {% if page > 1 %}
+          <a href="{{ url_for('quiz_results.history', page=page-1, sort=sort_by, mode=filter_mode, timed=filter_timed) }}"
+             class="pagination__btn">&laquo; Previous</a>
+        {% endif %}
+        <span class="pagination__info">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+          <a href="{{ url_for('quiz_results.history', page=page+1, sort=sort_by, mode=filter_mode, timed=filter_timed) }}"
+             class="pagination__btn">Next &raquo;</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <p class="muted">No completed tests yet. <a href="{{ url_for('quiz_main.new_test') }}">Start your first test</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "quiz/base.html" %}
+{% block title %}Quiz Admin{% endblock %}
+{% block content %}
+<div class="quiz-admin">
+  <h1>Quiz Administration</h1>
+
+  <!-- Active bank -->
+  <section aria-labelledby="bank-heading">
+    <h2 id="bank-heading">Active Question Bank</h2>
+    {% if active_bank %}
+      <dl class="info-dl">
+        <div><dt>Filename</dt><dd>{{ active_bank.original_filename }}</dd></div>
+        <div><dt>Questions</dt><dd>{{ active_bank.question_count }}</dd></div>
+        <div><dt>Topics</dt><dd>{{ active_bank.topic_count }}</dd></div>
+        <div><dt>Imported by</dt><dd>{{ active_bank.imported_by_user }}</dd></div>
+        <div><dt>Imported at</dt><dd>{{ active_bank.created_at.strftime('%d %b %Y %H:%M') }}</dd></div>
+      </dl>
+      <table class="quiz-table" aria-label="Topic question counts">
+        <thead>
+          <tr><th scope="col">Topic</th><th scope="col">Questions</th></tr>
+        </thead>
+        <tbody>
+          {% for topic, count in topic_counts.items() %}
+            <tr><td>{{ topic }}</td><td>{{ count }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="button-row" style="margin-top:1rem">
+        <a href="{{ url_for('quiz_admin.export_bank') }}" class="btn btn-secondary">Export Bank (CSV)</a>
+        <a href="{{ url_for('quiz_admin.questions') }}" class="btn btn-secondary">Browse Questions</a>
+      </div>
+    {% else %}
+      <p class="alert alert-warning">No question bank loaded yet.</p>
+    {% endif %}
+  </section>
+
+  <!-- Upload new bank -->
+  <section aria-labelledby="upload-heading">
+    <h2 id="upload-heading">Upload New Question Bank</h2>
+    <a href="{{ url_for('quiz_admin.upload') }}" class="btn btn-primary">Upload CSV / TSV</a>
+  </section>
+
+  <!-- Recent imports -->
+  {% if recent_imports %}
+    <section aria-labelledby="imports-heading">
+      <h2 id="imports-heading">Recent Imports</h2>
+      <table class="quiz-table">
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Filename</th>
+            <th scope="col">Questions</th>
+            <th scope="col">Imported by</th>
+            <th scope="col">Active</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for imp in recent_imports %}
+            <tr>
+              <td>{{ imp.created_at.strftime('%d %b %Y %H:%M') }}</td>
+              <td>{{ imp.original_filename }}</td>
+              <td>{{ imp.question_count }}</td>
+              <td>{{ imp.imported_by_user }}</td>
+              <td>{% if imp.is_active %}<span class="badge badge--active">Active</span>{% else %}<span class="badge">Inactive</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  <!-- Users -->
+  <section aria-labelledby="users-heading">
+    <h2 id="users-heading">Manage Users</h2>
+    <a href="{{ url_for('quiz_admin.users') }}" class="btn btn-secondary">View / Manage Users</a>
+  </section>
+</div>
+{% endblock %}

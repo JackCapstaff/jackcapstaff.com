@@ -1,0 +1,103 @@
+{% extends "quiz/base.html" %}
+{% block title %}New Test{% endblock %}
+{% block content %}
+<div class="quiz-card">
+  <h1>Start a New Test</h1>
+
+  {% if not has_bank %}
+    <div class="alert alert-warning">No question bank is available. Please contact an administrator.</div>
+  {% else %}
+  <form method="post" id="new-test-form" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+
+    <!-- Mode -->
+    <fieldset class="form-fieldset">
+      <legend>Test type</legend>
+      <div class="radio-group">
+        <label class="radio-label">
+          <input type="radio" name="mode" value="fresh" checked>
+          <span class="radio-title">Fresh Test</span>
+          <span class="radio-desc">Proportional mix of all selected topics</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="mode" value="adaptive">
+          <span class="radio-title">Adaptive Test</span>
+          <span class="radio-desc">Emphasises your weaker areas</span>
+        </label>
+      </div>
+    </fieldset>
+
+    <!-- Topics -->
+    <fieldset class="form-fieldset" id="topic-section">
+      <legend>Topics</legend>
+      <label class="checkbox-label">
+        <input type="checkbox" name="all_topics" id="all_topics_cb" value="1" checked>
+        All topics
+      </label>
+      <div id="topic-list" class="topic-checklist" aria-hidden="true" hidden>
+        {% for key, name in topics_display.items() %}
+          <label class="checkbox-label">
+            <input type="checkbox" name="topics" value="{{ key }}" checked>
+            {{ name }}
+            <span class="topic-count">({{ topic_counts.get(key, 0) }})</span>
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <!-- Question count -->
+    <div class="form-group">
+      <label for="question_count">Number of questions</label>
+      <input type="number" id="question_count" name="question_count"
+             value="20" min="1" max="{{ topic_counts.values()|sum }}"
+             required class="form-control form-control--short">
+      <span class="hint">Up to {{ topic_counts.values()|sum }} available</span>
+    </div>
+
+    <!-- Timed -->
+    <fieldset class="form-fieldset">
+      <legend>Timer</legend>
+      <label class="checkbox-label">
+        <input type="checkbox" name="timed" id="timed_cb" value="1">
+        Set a time limit
+      </label>
+      <div id="time-limit-row" hidden aria-hidden="true">
+        <label for="time_limit_minutes">Time limit (minutes)</label>
+        <input type="number" id="time_limit_minutes" name="time_limit_minutes"
+               value="30" min="{{ min_time }}" max="{{ max_time }}"
+               class="form-control form-control--short">
+      </div>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary btn-lg">Start Test</button>
+    <a href="{{ url_for('quiz_main.index') }}" class="btn btn-secondary">Cancel</a>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var allCb = document.getElementById('all_topics_cb');
+  var topicList = document.getElementById('topic-list');
+  if (allCb && topicList) {
+    function toggleTopics() {
+      topicList.hidden = allCb.checked;
+      topicList.setAttribute('aria-hidden', allCb.checked ? 'true' : 'false');
+    }
+    allCb.addEventListener('change', toggleTopics);
+  }
+
+  var timedCb = document.getElementById('timed_cb');
+  var timeLimitRow = document.getElementById('time-limit-row');
+  if (timedCb && timeLimitRow) {
+    function toggleTimer() {
+      timeLimitRow.hidden = !timedCb.checked;
+      timeLimitRow.setAttribute('aria-hidden', !timedCb.checked ? 'true' : 'false');
+    }
+    timedCb.addEventListener('change', toggleTimer);
+  }
+}());
+</script>
+{% endblock %}

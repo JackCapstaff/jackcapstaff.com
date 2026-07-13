@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users - Quiz App{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    <h2>User Management</h2>
+    
+    {% if users %}
+        <table class="table" style="width: 100%; margin-top: 20px;">
+            <thead>
+                <tr style="background: #f0f0f0;">
+                    <th style="padding: 10px; text-align: left;">Username</th>
+                    <th style="padding: 10px; text-align: left;">Email</th>
+                    <th style="padding: 10px; text-align: left;">Display Name</th>
+                    <th style="padding: 10px; text-align: left;">Role</th>
+                    <th style="padding: 10px; text-align: left;">Status</th>
+                    <th style="padding: 10px; text-align: left;">Created</th>
+                    <th style="padding: 10px; text-align: center;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <td style="padding: 10px;">{{ user.username }}</td>
+                        <td style="padding: 10px;">{{ user.email }}</td>
+                        <td style="padding: 10px;">{{ user.display_name }}</td>
+                        <td style="padding: 10px;">{{ user.role|title }}</td>
+                        <td style="padding: 10px;">
+                            {% if user.active %}
+                                <span style="color: green;">Active</span>
+                            {% else %}
+                                <span style="color: red;">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 10px;">{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td style="padding: 10px; text-align: center;">
+                            {% if user.id != current_user.id %}
+                                <form method="POST" action="{{ url_for('admin.toggle_user_active', user_id=user.id) }}" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm" style="background-color: {% if user.active %}#dc3545{% else %}#28a745{% endif %}; color: white;">
+                                        {% if user.active %}Deactivate{% else %}Activate{% endif %}
+                                    </button>
+                                </form>
+                            {% else %}
+                                <em>Current User</em>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No users found.</p>
+    {% endif %}
+
+    <div style="margin-top: 30px;">
+        <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">Back to Admin</a>
+    </div>
+</div>
+{% endblock %}

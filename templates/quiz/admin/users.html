@@ -1,0 +1,53 @@
+{% extends "quiz/base.html" %}
+{% block title %}Manage Users{% endblock %}
+{% block content %}
+<div class="quiz-users">
+  <h1>Manage Users</h1>
+
+  <table class="quiz-table">
+    <thead>
+      <tr>
+        <th scope="col">Username</th>
+        <th scope="col">Role</th>
+        <th scope="col">Registered</th>
+        <th scope="col">Tests completed</th>
+        <th scope="col">Status</th>
+        <th scope="col">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>{{ 'Admin' if u.is_admin else 'User' }}</td>
+          <td>{{ u.created_at.strftime('%d %b %Y') }}</td>
+          <td>{{ u.session_count }}</td>
+          <td>
+            {% if u.is_active %}
+              <span class="badge badge--active">Active</span>
+            {% else %}
+              <span class="badge badge--inactive">Disabled</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.id != current_quiz_user.id %}
+              <form method="post" action="{{ url_for('quiz_admin.toggle_user', user_id=u.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+                <button type="submit" class="btn btn-sm {% if u.is_active %}btn-warning{% else %}btn-secondary{% endif %}">
+                  {{ 'Disable' if u.is_active else 'Enable' }}
+                </button>
+              </form>
+            {% else %}
+              <span class="muted small">You</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">No users found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a href="{{ url_for('quiz_admin.index') }}" class="btn btn-secondary" style="margin-top:1rem">← Admin Home</a>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Review Test - Quiz App{% endblock %}
+
+{% block content %}
+<div class="review-container" style="max-width: 900px; margin: 0 auto;">
+    <h2>Review: Incorrect Answers</h2>
+    <p>{{ incorrect_questions|length }} of {{ session.question_count }} questions incorrect or unanswered</p>
+
+    {% for tsq in incorrect_questions %}
+        <div style="background: #f9f9f9; border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 4px;">
+            <h4>Question {{ loop.index }}: {{ tsq.external_question_id }}</h4>
+            <p><strong>{{ tsq.question_text }}</strong></p>
+            
+            <p><strong>Your answer:</strong>
+                {% if tsq.is_unanswered %}
+                    <em>Not answered</em>
+                {% else %}
+                    {{ tsq.selected_answer }}: {{ tsq.answer_text }}
+                {% endif %}
+            </p>
+            
+            <p style="color: green; font-weight: bold;">
+                <strong>Correct answer:</strong> {{ tsq.correct_answer }}: {{ tsq.correct_answer_text }}
+            </p>
+            
+            {% if tsq.explanation %}
+                <p><strong>Explanation:</strong> {{ tsq.explanation }}</p>
+            {% endif %}
+            
+            {% if tsq.reference %}
+                <p><strong>Reference:</strong> {{ tsq.reference }}</p>
+            {% endif %}
+        </div>
+    {% endfor %}
+
+    <div style="text-align: center; margin: 20px 0;">
+        <a href="{{ url_for('results.view_result', session_id=session.id) }}" class="btn btn-secondary">Back to Results</a>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">Dashboard</a>
+    </div>
+</div>
+{% endblock %}

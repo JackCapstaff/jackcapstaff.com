@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Start Test - Quiz App{% endblock %}
+
+{% block extra_css %}
+<style>
+.test-form { max-width: 600px; margin: 0 auto; }
+.form-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; border-radius: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="test-form">
+    <h2>Start a New Test</h2>
+    <form method="POST" class="form">
+        <input type="hidden" name="mode" value="fresh">
+        
+        <div class="form-section">
+            <h3>Test Type</h3>
+            <div class="form-group radio">
+                <input type="radio" id="mode-fresh" name="mode" value="fresh" checked>
+                <label for="mode-fresh">Fresh Test (proportional topic mix)</label>
+            </div>
+            <div class="form-group radio">
+                <input type="radio" id="mode-adaptive" name="mode" value="adaptive">
+                <label for="mode-adaptive">Adaptive Test (focused on weak areas)</label>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Number of Questions</h3>
+            <div class="form-group">
+                <input type="number" name="question_count" value="25" min="5" max="100" class="form-control">
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Time Limit</h3>
+            <div class="form-group radio">
+                <input type="radio" id="untimed" name="time_limit" value="untimed" checked>
+                <label for="untimed">Untimed</label>
+            </div>
+            <div class="form-group radio">
+                <input type="radio" id="timed" name="time_limit" value="30">
+                <label for="timed">Timed</label>
+            </div>
+            <div id="time-limit-input" style="display: none; margin-top: 10px;">
+                <label>Minutes ({{ min_limit }}-{{ max_limit }})</label>
+                <input type="number" id="time-input" name="time_limit" min="{{ min_limit }}" max="{{ max_limit }}" value="30" class="form-control">
+            </div>
+        </div>
+
+        {% if topics %}
+            <div class="form-section">
+                <h3>Topics (optional)</h3>
+                <p>Leave all unchecked to include all topics.</p>
+                {% for topic in topics %}
+                    <div class="form-group checkbox">
+                        <input type="checkbox" id="topic-{{ loop.index }}" name="topics" value="{{ topic }}">
+                        <label for="topic-{{ loop.index }}">{{ topic }}</label>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-lg btn-primary">Start Test</button>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+
+<script>
+document.querySelectorAll('input[name="time_limit"]').forEach(el => {
+    el.addEventListener('change', function() {
+        document.getElementById('time-limit-input').style.display = this.value === 'untimed' ? 'none' : 'block';
+    });
+});
+</script>
+{% endblock %}

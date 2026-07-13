@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Quiz App{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    <h2>Performance Analytics</h2>
+    
+    {% if stats %}
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 30px 0;">
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 4px; text-align: center;">
+                <h3>{{ stats.total_tests }}</h3>
+                <p>Tests Completed</p>
+            </div>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 4px; text-align: center;">
+                <h3>{{ stats.total_questions }}</h3>
+                <p>Total Questions</p>
+            </div>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 4px; text-align: center;">
+                <h3>{{ stats.total_correct }}</h3>
+                <p>Correct Answers</p>
+            </div>
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 4px; text-align: center;">
+                <h3>{{ "%.1f" | format(stats.avg_score) }}%</h3>
+                <p>Average Score</p>
+            </div>
+        </div>
+
+        {% if stats.topic_perf %}
+            <h3>Performance by Topic</h3>
+            <table class="table" style="width: 100%; margin: 20px 0;">
+                <thead>
+                    <tr style="background: #f0f0f0;">
+                        <th style="padding: 10px; text-align: left;">Topic</th>
+                        <th style="padding: 10px; text-align: right;">Correct</th>
+                        <th style="padding: 10px; text-align: right;">Total</th>
+                        <th style="padding: 10px; text-align: right;">Percentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for topic_key, perf in stats.topic_perf.items() %}
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 10px;">{{ perf.topic }}</td>
+                            <td style="padding: 10px; text-align: right;">{{ perf.correct }}</td>
+                            <td style="padding: 10px; text-align: right;">{{ perf.total }}</td>
+                            <td style="padding: 10px; text-align: right;">
+                                <strong>{{ "%.1f" | format(perf.correct / perf.total * 100 if perf.total > 0 else 0) }}%</strong>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+
+        {% if stats.mode_perf %}
+            <h3>Performance by Test Mode</h3>
+            <table class="table" style="width: 100%; margin: 20px 0;">
+                <thead>
+                    <tr style="background: #f0f0f0;">
+                        <th style="padding: 10px; text-align: left;">Mode</th>
+                        <th style="padding: 10px; text-align: right;">Tests</th>
+                        <th style="padding: 10px; text-align: right;">Correct</th>
+                        <th style="padding: 10px; text-align: right;">Total</th>
+                        <th style="padding: 10px; text-align: right;">Percentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mode, perf in stats.mode_perf.items() %}
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 10px;">{{ mode|title }}</td>
+                            <td style="padding: 10px; text-align: right;">{{ perf.count }}</td>
+                            <td style="padding: 10px; text-align: right;">{{ perf.correct }}</td>
+                            <td style="padding: 10px; text-align: right;">{{ perf.total }}</td>
+                            <td style="padding: 10px; text-align: right;">
+                                <strong>{{ "%.1f" | format(perf.correct / perf.total * 100 if perf.total > 0 else 0) }}%</strong>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    {% else %}
+        <p>No test data yet. <a href="{{ url_for('testing.start_test') }}">Start a test</a> to generate analytics.</p>
+    {% endif %}
+
+    <div style="margin-top: 30px;">
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+</div>
+{% endblock %}

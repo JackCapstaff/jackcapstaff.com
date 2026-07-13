@@ -1,0 +1,27 @@
+{% extends "quiz/base.html" %}
+{% block title %}Submit Test{% endblock %}
+{% block content %}
+<div class="quiz-card quiz-card--narrow">
+  <h1>Submit Test</h1>
+
+  {% if unanswered > 0 %}
+    <div class="alert alert-warning" role="alert">
+      <strong>{{ unanswered }} question{{ 's' if unanswered != 1 else '' }} unanswered.</strong>
+      Unanswered questions will be marked incorrect.
+    </div>
+  {% else %}
+    <p>All {{ sess.question_count }} questions answered.</p>
+  {% endif %}
+
+  <p>Are you sure you want to submit?</p>
+
+  <div class="button-row">
+    <form method="post" action="{{ url_for('quiz_testing.submit', session_id=sess.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+      <button type="submit" class="btn btn-success">Yes, Submit</button>
+    </form>
+    <a href="{{ url_for('quiz_testing.question', session_id=sess.id, position=sess.current_position) }}"
+       class="btn btn-secondary">Return to Test</a>
+  </div>
+</div>
+{% endblock %}

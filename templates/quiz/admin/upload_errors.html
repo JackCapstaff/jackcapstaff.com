@@ -1,0 +1,36 @@
+{% extends "quiz/base.html" %}
+{% block title %}Validation Errors{% endblock %}
+{% block content %}
+<div class="quiz-card">
+  <h1>Validation Errors</h1>
+  <div class="alert alert-danger" role="alert">
+    The uploaded file contained <strong>{{ errors|length }} error(s)</strong>. Please fix them and upload again.
+  </div>
+
+  <table class="quiz-table" aria-label="Validation errors">
+    <thead>
+      <tr>
+        <th scope="col">Row</th>
+        <th scope="col">Column</th>
+        <th scope="col">Error</th>
+        <th scope="col">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in errors %}
+        <tr>
+          <td>{{ e.row }}</td>
+          <td>{{ e.column or '—' }}</td>
+          <td>{{ e.message }}</td>
+          <td class="error-value">{{ e.value if e.value is not none else '' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="button-row" style="margin-top:1rem">
+    <a href="{{ url_for('quiz_admin.upload') }}" class="btn btn-primary">Try Again</a>
+    <a href="{{ url_for('quiz_admin.index') }}" class="btn btn-secondary">Back to Admin</a>
+  </div>
+</div>
+{% endblock %}

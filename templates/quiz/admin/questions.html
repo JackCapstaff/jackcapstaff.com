@@ -1,0 +1,83 @@
+{% extends "quiz/base.html" %}
+{% block title %}Question Bank{% endblock %}
+{% block content %}
+<div class="quiz-questions-browser">
+  <h1>Question Bank</h1>
+
+  <!-- Search/filter -->
+  <form method="get" class="question-filters" role="search">
+    <div class="filter-row">
+      <input type="text" name="q" value="{{ search_q }}"
+             placeholder="Search question text or ID" class="form-control">
+      <select name="topic" class="form-select">
+        <option value="">All topics</option>
+        {% for key, name in all_topics.items() %}
+          <option value="{{ key }}" {% if topic_filter == key %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+      <select name="active" class="form-select">
+        <option value="">Active &amp; inactive</option>
+        <option value="1" {% if active_filter == '1' %}selected{% endif %}>Active only</option>
+        <option value="0" {% if active_filter == '0' %}selected{% endif %}>Inactive only</option>
+      </select>
+      <button type="submit" class="btn btn-secondary">Search</button>
+    </div>
+  </form>
+
+  <p class="result-count muted">
+    Showing {{ questions|length }} of {{ total_count }} question(s)
+  </p>
+
+  {% if questions %}
+    <table class="quiz-table quiz-table--questions">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">Topic</th>
+          <th scope="col">Question</th>
+          <th scope="col">Correct</th>
+          <th scope="col">Difficulty</th>
+          <th scope="col">Active</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+          <tr>
+            <td class="muted small">{{ q.external_question_id }}</td>
+            <td>{{ q.topic }}</td>
+            <td class="question-snippet">{{ q.question_text[:80] }}{% if q.question_text|length > 80 %}…{% endif %}</td>
+            <td><strong>{{ q.correct_answer }}</strong></td>
+            <td>{{ q.difficulty or '—' }}</td>
+            <td>
+              {% if q.active %}
+                <span class="badge badge--active">Active</span>
+              {% else %}
+                <span class="badge">Inactive</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+      <nav class="pagination" aria-label="Question pages">
+        {% if page > 1 %}
+          <a href="{{ url_for('quiz_admin.questions', page=page-1, q=search_q, topic=topic_filter, active=active_filter) }}"
+             class="pagination__btn">&laquo; Previous</a>
+        {% endif %}
+        <span class="pagination__info">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+          <a href="{{ url_for('quiz_admin.questions', page=page+1, q=search_q, topic=topic_filter, active=active_filter) }}"
+             class="pagination__btn">Next &raquo;</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <p class="muted">No questions match the search criteria.</p>
+  {% endif %}
+
+  <a href="{{ url_for('quiz_admin.index') }}" class="btn btn-secondary" style="margin-top:1rem">← Admin Home</a>
+</div>
+{% endblock %}

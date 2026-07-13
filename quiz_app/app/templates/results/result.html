@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Test Results - Quiz App{% endblock %}
+
+{% block extra_css %}
+<style>
+.result-container { max-width: 800px; margin: 0 auto; }
+.score-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px; text-align: center; margin-bottom: 30px; }
+.score-card h2 { font-size: 48px; margin: 10px 0; }
+.score-card p { font-size: 18px; margin: 5px 0; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+.stat-box { background: #f5f5f5; padding: 20px; border-radius: 4px; text-align: center; }
+.stat-box h3 { font-size: 24px; margin: 0; color: #667eea; }
+.stat-box p { margin: 5px 0 0 0; }
+.topic-perf { margin: 20px 0; }
+.topic-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd; }
+.buttons { text-align: center; margin: 20px 0; }
+.buttons a { margin: 0 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="result-container">
+    <h2>Test Results</h2>
+    
+    <div class="score-card">
+        <p>Your Score</p>
+        <h2>{{ "%.1f" | format(session.percentage()) }}%</h2>
+        <p>{{ session.correct_count() }} correct out of {{ session.question_count }} questions</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-box">
+            <h3>{{ session.correct_count() }}</h3>
+            <p>Correct</p>
+        </div>
+        <div class="stat-box">
+            <h3>{{ session.incorrect_count() }}</h3>
+            <p>Incorrect</p>
+        </div>
+        <div class="stat-box">
+            <h3>{{ session.unanswered_count() }}</h3>
+            <p>Unanswered</p>
+        </div>
+    </div>
+
+    {% if topic_stats %}
+        <h3>Performance by Topic</h3>
+        <div class="topic-perf">
+            {% for topic_key, stats in topic_stats.items() %}
+                <div class="topic-row">
+                    <span>{{ stats.topic }}</span>
+                    <strong>{{ stats.correct }}/{{ stats.total }} ({{ "%.0f" | format(stats.correct / stats.total * 100 if stats.total > 0 else 0) }}%)</strong>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="buttons">
+        <a href="{{ url_for('results.review_test', session_id=session.id) }}" class="btn btn-primary">Review Incorrect Answers</a>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "quiz/base.html" %}
+{% block title %}Log In{% endblock %}
+{% block content %}
+<div class="quiz-card quiz-card--narrow">
+  <h1>Quiz Login</h1>
+  <form method="post" action="{{ url_for('quiz_auth.login') }}" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username"
+             required class="form-control" autofocus>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password"
+             required class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary btn-full">Log In</button>
+  </form>
+  {% if config.QUIZ_REGISTRATION_ENABLED %}
+    <p class="form-footer">
+      No account? <a href="{{ url_for('quiz_auth.register') }}">Register</a>
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

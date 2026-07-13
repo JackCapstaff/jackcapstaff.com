@@ -1,0 +1,106 @@
+{% extends "quiz/base.html" %}
+{% block title %}Answer Review{% endblock %}
+{% block content %}
+<div class="quiz-review">
+  <h1>Answer Review</h1>
+
+  <!-- Filters -->
+  <form method="get" class="review-filters" role="search" aria-label="Filter review">
+    <div class="filter-row">
+      <div class="filter-group">
+        <label for="filter_mode" class="sr-only">Show</label>
+        <select name="filter" id="filter_mode" class="form-select" onchange="this.form.submit()">
+          <option value="all" {% if filter_mode == 'all' %}selected{% endif %}>All questions</option>
+          <option value="incorrect" {% if filter_mode == 'incorrect' %}selected{% endif %}>Incorrect</option>
+          <option value="unanswered" {% if filter_mode == 'unanswered' %}selected{% endif %}>Unanswered</option>
+          <option value="correct" {% if filter_mode == 'correct' %}selected{% endif %}>Correct</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter_topic" class="sr-only">Topic</label>
+        <select name="topic" id="filter_topic" class="form-select" onchange="this.form.submit()">
+          <option value="">All topics</option>
+          {% for key, name in all_topics.items() %}
+            <option value="{{ key }}" {% if topic_filter == key %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="qid_filter" class="sr-only">Question ID</label>
+        <input type="text" name="qid" id="qid_filter" value="{{ qid_filter }}"
+               placeholder="Search Question ID" class="form-control">
+      </div>
+      <button type="submit" class="btn btn-secondary">Filter</button>
+    </div>
+  </form>
+
+  <p class="review-count">
+    Showing <strong>{{ questions|length }}</strong> question(s)
+  </p>
+
+  <!-- Question list -->
+  {% for tsq in questions %}
+    <div class="review-item review-item--{% if tsq.is_unanswered %}unanswered{% elif tsq.is_correct %}correct{% else %}incorrect{% endif %}"
+         id="q{{ tsq.display_position }}">
+      <div class="review-item__header">
+        <span class="review-item__num">Q{{ loop.index }}</span>
+        <span class="review-item__id muted">ID: {{ tsq.external_question_id }}</span>
+        <span class="review-item__topic">{{ tsq.topic }}</span>
+        <span class="review-item__status badge
+          {% if tsq.is_unanswered %}badge--unanswered
+          {% elif tsq.is_correct %}badge--correct
+          {% else %}badge--incorrect{% endif %}">
+          {% if tsq.is_unanswered %}Unanswered{% elif tsq.is_correct %}Correct{% else %}Incorrect{% endif %}
+        </span>
+      </div>
+
+      <div class="review-item__question">{{ tsq.question_text }}</div>
+
+      <div class="review-item__answers">
+        {% for letter, text in [('A', tsq.answer_a), ('B', tsq.answer_b), ('C', tsq.answer_c), ('D', tsq.answer_d)] %}
+          <div class="answer-row
+            {% if letter == tsq.correct_answer %}answer-row--correct{% endif %}
+            {% if letter == tsq.selected_answer and not tsq.is_unanswered and letter != tsq.correct_answer %}answer-row--wrong{% endif %}">
+            <span class="answer-letter">{{ letter }}</span>
+            <span class="answer-text">{{ text }}</span>
+            {% if letter == tsq.correct_answer %}
+              <span class="answer-badge answer-badge--correct" aria-label="Correct answer">✓ Correct</span>
+            {% endif %}
+            {% if letter == tsq.selected_answer and letter != tsq.correct_answer %}
+              <span class="answer-badge answer-badge--your" aria-label="Your answer">Your answer</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="review-item__verdict">
+        {% if tsq.is_unanswered %}
+          <p><strong>Your answer:</strong> No answer selected</p>
+        {% else %}
+          <p><strong>Your answer:</strong> {{ tsq.selected_answer }} — {{ tsq.answer_text }}</p>
+        {% endif %}
+        <p><strong>Correct answer:</strong> {{ tsq.correct_answer }} — {{ tsq.correct_answer_text }}</p>
+      </div>
+
+      {% if tsq.explanation %}
+        <div class="review-item__explanation">
+          <strong>Explanation:</strong> {{ tsq.explanation }}
+        </div>
+      {% endif %}
+      {% if tsq.reference %}
+        <div class="review-item__reference">
+          <strong>Reference:</strong> {{ tsq.reference }}
+        </div>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="muted">No questions match the selected filters.</p>
+  {% endfor %}
+
+  <div class="page-actions">
+    <a href="{{ url_for('quiz_results.results', session_id=sess.id) }}" class="btn btn-secondary">
+      ← Back to Results
+    </a>
+  </div>
+</div>
+{% endblock %}

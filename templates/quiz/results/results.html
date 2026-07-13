@@ -1,0 +1,130 @@
+{% extends "quiz/base.html" %}
+{% block title %}Results{% endblock %}
+{% block content %}
+<div class="quiz-results">
+  <h1>Test Results</h1>
+
+  <!-- Score summary -->
+  <div class="score-summary">
+    <div class="score-circle" aria-label="Score: {{ sess.percentage()|int }}%">
+      <span class="score-pct">{{ sess.percentage()|int }}%</span>
+    </div>
+    <div class="score-details">
+      <dl class="score-dl">
+        <div class="score-dl__row score-dl__row--correct">
+          <dt>Correct</dt><dd>{{ sess.correct_count() }}</dd>
+        </div>
+        <div class="score-dl__row score-dl__row--incorrect">
+          <dt>Incorrect</dt><dd>{{ sess.incorrect_count() }}</dd>
+        </div>
+        <div class="score-dl__row score-dl__row--unanswered">
+          <dt>Unanswered</dt><dd>{{ sess.unanswered_count() }}</dd>
+        </div>
+        <div class="score-dl__row">
+          <dt>Total questions</dt><dd>{{ sess.question_count }}</dd>
+        </div>
+        <div class="score-dl__row">
+          <dt>Mode</dt><dd>{{ sess.mode|capitalize }}{% if sess.adaptive_cold_start %} (standard fallback){% endif %}</dd>
+        </div>
+        <div class="score-dl__row">
+          <dt>Submitted</dt>
+          <dd>{{ sess.submitted_at.strftime('%d %b %Y %H:%M') if sess.submitted_at else '—' }}
+            {% if sess.submission_reason == 'time_expired' %}<span class="badge badge--warning">Time expired</span>{% endif %}
+          </dd>
+        </div>
+        {% if sess.timed and sess.time_limit_seconds %}
+          <div class="score-dl__row">
+            <dt>Time limit</dt><dd>{{ (sess.time_limit_seconds // 60) }} min</dd>
+          </div>
+        {% endif %}
+      </dl>
+    </div>
+  </div>
+
+  <!-- Topic breakdown -->
+  <section aria-labelledby="topic-breakdown-heading">
+    <h2 id="topic-breakdown-heading">Topic Breakdown</h2>
+    <table class="quiz-table" aria-label="Topic breakdown">
+      <thead>
+        <tr>
+          <th scope="col">Topic</th>
+          <th scope="col">Questions</th>
+          <th scope="col">Correct</th>
+          <th scope="col">Incorrect</th>
+          <th scope="col">Unanswered</th>
+          <th scope="col">Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in sorted_topics %}
+          <tr>
+            <td>{{ t.topic }}</td>
+            <td>{{ t.total }}</td>
+            <td class="correct-cell">{{ t.correct }}</td>
+            <td class="incorrect-cell">{{ t.incorrect }}</td>
+            <td class="unanswered-cell">{{ t.unanswered }}</td>
+            <td>
+              {{ t.percentage|int }}%
+              <div class="mini-progress" role="presentation">
+                <div class="mini-progress__fill" style="width:{{ t.percentage|int }}%"></div>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Actions -->
+  <div class="results-actions">
+    <a href="{{ url_for('quiz_results.review', session_id=sess.id) }}" class="btn btn-primary">
+      Review Answers
+    </a>
+
+    {% if retest_info.eligible > 0 %}
+      <details class="retest-details">
+        <summary class="btn btn-warning">
+          Retest Incorrect Questions ({{ retest_info.eligible }} available)
+        </summary>
+        {% if retest_info.unavailable > 0 %}
+          <p class="hint">{{ retest_info.unavailable }} question(s) from this test are no longer in the current bank and will be excluded.</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('quiz_results.retest', session_id=sess.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+          <label class="checkbox-label">
+            <input type="checkbox" name="include_unanswered" value="1">
+            Include unanswered questions
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="timed" id="retest_timed" value="1">
+            Set a time limit
+          </label>
+          <div id="retest-time-row" hidden>
+            <label for="retest_time_limit">Time limit (minutes)</label>
+            <input type="number" id="retest_time_limit" name="time_limit_minutes"
+                   value="30" min="1" max="480" class="form-control form-control--short">
+          </div>
+          <button type="submit" class="btn btn-warning">Start Retest</button>
+        </form>
+      </details>
+    {% endif %}
+
+    <a href="{{ url_for('quiz_main.new_test') }}" class="btn btn-secondary">New Test</a>
+    <a href="{{ url_for('quiz_results.history') }}" class="btn btn-secondary">Test History</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var retestTimed = document.getElementById('retest_timed');
+  var retestTimeRow = document.getElementById('retest-time-row');
+  if (retestTimed && retestTimeRow) {
+    retestTimed.addEventListener('change', function () {
+      retestTimeRow.hidden = !retestTimed.checked;
+    });
+  }
+}());
+</script>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "quiz/base.html" %}
+{% block title %}Upload Question Bank{% endblock %}
+{% block content %}
+<div class="quiz-card quiz-card--narrow">
+  <h1>Upload Question Bank</h1>
+  <p>Upload a CSV or TSV file. The first row must be a header row with the following required columns:</p>
+  <ul class="column-list">
+    <li><code>question_id</code></li>
+    <li><code>topic</code></li>
+    <li><code>question</code></li>
+    <li><code>answer_a</code></li>
+    <li><code>answer_b</code></li>
+    <li><code>answer_c</code></li>
+    <li><code>answer_d</code></li>
+    <li><code>correct_answer</code> (A, B, C, or D)</li>
+  </ul>
+  <p>Optional columns: <code>explanation</code>, <code>difficulty</code>, <code>active</code>, <code>image_url</code>, <code>reference</code>, <code>last_updated</code></p>
+
+  <div class="alert alert-warning" role="alert">
+    <strong>Warning:</strong> Uploading a new bank will <strong>replace</strong> the current active bank after confirmation.
+  </div>
+
+  <form method="post" enctype="multipart/form-data" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+    <div class="form-group">
+      <label for="file">Select CSV or TSV file</label>
+      <input type="file" id="file" name="file" accept=".csv,.tsv,.txt" required class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">Upload &amp; Validate</button>
+    <a href="{{ url_for('quiz_admin.index') }}" class="btn btn-secondary">Cancel</a>
+  </form>
+</div>
+{% endblock %}

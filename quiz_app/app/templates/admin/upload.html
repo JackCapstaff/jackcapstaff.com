@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Questions - Quiz App{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h2>Upload Question Bank</h2>
+    <p>Upload a CSV or TSV file with the following columns:</p>
+    <ul>
+        <li>Question ID (required)</li>
+        <li>Topic (required)</li>
+        <li>Question (required)</li>
+        <li>Answer A, B, C, D (required)</li>
+        <li>Correct Answer (A/B/C/D, required)</li>
+        <li>Explanation, Difficulty, Active, Image URL, Reference, Last Updated (optional)</li>
+    </ul>
+
+    <form method="POST" enctype="multipart/form-data" style="margin: 30px 0;">
+        <div style="margin: 20px 0;">
+            <label for="file">Select CSV or TSV file:</label><br>
+            <input type="file" id="file" name="file" accept=".csv,.tsv,.txt" required style="margin-top: 10px;">
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+        <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+
+    <div style="background: #f9f9f9; padding: 20px; border-radius: 4px; margin: 20px 0;">
+        <h4>Requirements</h4>
+        <ul>
+            <li>File size must not exceed 10 MB</li>
+            <li>File must be UTF-8 encoded</li>
+            <li>All required columns must be present</li>
+            <li>All rows must have valid data</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

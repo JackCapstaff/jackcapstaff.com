@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Preview Import - Quiz App{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    <h2>Preview Import</h2>
+    
+    <div style="background: #f9f9f9; padding: 20px; border-radius: 4px; margin: 20px 0;">
+        <h3>Import Summary</h3>
+        <p><strong>Filename:</strong> {{ staged.filename }}</p>
+        <p><strong>Questions:</strong> {{ staged.question_count }}</p>
+        <p><strong>Topics:</strong> {{ staged.topic_count }}</p>
+        <p><strong>Detected Format:</strong> {{ "CSV" if staged.detected_delimiter == "," else "TSV" }}</p>
+    </div>
+
+    {% if staged.validation_summary %}
+        <div style="background: #f9f9f9; padding: 20px; border-radius: 4px; margin: 20px 0;">
+            <h3>Validation Summary</h3>
+            <ul>
+                <li>Valid questions: {{ staged.validation_summary.get('question_count', 0) }}</li>
+                <li>Invalid rows: {{ staged.validation_summary.get('invalid_count', 0) }}</li>
+                <li>Blank rows skipped: {{ staged.validation_summary.get('blank_count', 0) }}</li>
+            </ul>
+            {% if staged.validation_summary.get('errors') %}
+                <details>
+                    <summary>Errors ({{ staged.validation_summary['errors']|length }})</summary>
+                    <ul>
+                        {% for error in staged.validation_summary['errors'][:20] %}
+                            <li>Row {{ error.get('row', '?') }}: {{ error.get('message', 'Unknown error') }}</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    {% if active_bank %}
+        <div style="background: #ffe0e0; padding: 20px; border-radius: 4px; margin: 20px 0;">
+            <strong>⚠️ Warning:</strong> Confirming this import will replace the current active question bank 
+            ({{ active_bank.question_count }} questions from {{ active_bank.filename }}).
+        </div>
+    {% endif %}
+
+    <div style="margin: 30px 0;">
+        <form method="POST" action="{{ url_for('admin.confirm_import_route', token=staged.token) }}" style="display: inline;">
+            <button type="submit" class="btn btn-lg btn-primary" onclick="return confirm('Replace the active question bank?');">
+                Confirm & Activate
+            </button>
+        </form>
+        <a href="{{ url_for('admin.upload_questions') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</div>
+{% endblock %}

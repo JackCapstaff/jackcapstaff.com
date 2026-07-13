@@ -1,0 +1,215 @@
+{% extends "quiz/base.html" %}
+{% block title %}Question {{ position + 1 }} of {{ total }}{% endblock %}
+
+{% block extra_head %}
+{% if sess.timed and sess.expires_at %}
+<meta name="quiz-expires-at" content="{{ sess.expires_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}">
+<meta name="quiz-session-id" content="{{ sess.id }}">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="quiz-test-layout">
+
+  <!-- Question navigator sidebar -->
+  <aside class="quiz-navigator" aria-label="Question navigator">
+    <h2 class="navigator-title">Questions</h2>
+    <ol class="navigator-list" role="list">
+      {% for q in questions %}
+        <li>
+          <a href="{{ url_for('quiz_testing.question', session_id=sess.id, position=q.display_position) }}"
+             class="navigator-item {% if q.display_position == position %}navigator-item--current{% endif %}
+                                   {% if q.display_position in answered_positions %}navigator-item--answered{% endif %}"
+             aria-label="Question {{ loop.index }}{% if q.display_position in answered_positions %} (answered){% endif %}{% if q.display_position == position %} (current){% endif %}"
+             {% if q.display_position == position %}aria-current="page"{% endif %}>
+            {{ loop.index }}
+          </a>
+        </li>
+      {% endfor %}
+    </ol>
+    <div class="navigator-legend">
+      <span class="legend-dot legend-dot--answered"></span> Answered
+      <span class="legend-dot legend-dot--unanswered"></span> Unanswered
+    </div>
+  </aside>
+
+  <!-- Main question area -->
+  <div class="quiz-question-area">
+
+    <!-- Progress & timer -->
+    <div class="quiz-meta-bar">
+      <div class="progress-info" aria-live="polite">
+        Question <strong>{{ position + 1 }}</strong> of <strong>{{ total }}</strong>
+      </div>
+      <div class="quiz-progress-bar" role="progressbar"
+           aria-valuenow="{{ position + 1 }}" aria-valuemin="1" aria-valuemax="{{ total }}">
+        <div class="quiz-progress-bar__fill" style="width: {{ ((position + 1) / total * 100)|int }}%"></div>
+      </div>
+      {% if sess.timed %}
+        <div id="quiz-timer" class="quiz-timer" aria-live="assertive" aria-atomic="true">
+          <span id="quiz-timer-text">Calculating…</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Save status -->
+    <div id="save-status" class="save-status" aria-live="polite" aria-atomic="true" hidden></div>
+
+    <!-- Question card -->
+    <div class="question-card">
+      {% if topic_visible %}
+        <p class="question-topic">{{ tsq.topic }}</p>
+      {% endif %}
+      <p class="question-id muted">Q{{ tsq.external_question_id }}</p>
+      <div class="question-text" id="question-text">{{ tsq.question_text }}</div>
+
+      <form id="answer-form" method="post"
+            action="{{ url_for('quiz_testing.save_answer', session_id=sess.id) }}"
+            aria-labelledby="question-text" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+        <input type="hidden" name="position" value="{{ position }}">
+
+        <fieldset class="answers-fieldset">
+          <legend class="sr-only">Select your answer</legend>
+          {% for letter, text in [('A', tsq.answer_a), ('B', tsq.answer_b), ('C', tsq.answer_c), ('D', tsq.answer_d)] %}
+            <label class="answer-label {% if tsq.selected_answer == letter %}answer-label--selected{% endif %}"
+                   id="answer-label-{{ letter }}">
+              <input type="radio" name="answer" value="{{ letter }}"
+                     {% if tsq.selected_answer == letter %}checked{% endif %}
+                     class="answer-radio" aria-labelledby="answer-label-{{ letter }}">
+              <span class="answer-letter">{{ letter }}</span>
+              <span class="answer-text">{{ text }}</span>
+            </label>
+          {% endfor %}
+        </fieldset>
+      </form>
+    </div>
+
+    <!-- Navigation buttons -->
+    <div class="quiz-nav-buttons">
+      {% if position > 0 %}
+        <a href="{{ url_for('quiz_testing.question', session_id=sess.id, position=position - 1) }}"
+           class="btn btn-secondary">&#8592; Back</a>
+      {% endif %}
+
+      {% if position < total - 1 %}
+        <a href="{{ url_for('quiz_testing.question', session_id=sess.id, position=position + 1) }}"
+           class="btn btn-primary">Next &#8594;</a>
+      {% else %}
+        <a href="{{ url_for('quiz_testing.submit', session_id=sess.id) }}"
+           class="btn btn-success">Review &amp; Submit</a>
+      {% endif %}
+
+      {% if not sess.timed %}
+        <form method="post" action="{{ url_for('quiz_testing.pause', session_id=sess.id) }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+          <button type="submit" class="btn btn-secondary">Pause Test</button>
+        </form>
+      {% endif %}
+
+      <a href="{{ url_for('quiz_testing.submit', session_id=sess.id) }}" class="btn btn-outline">
+        Submit Test
+      </a>
+    </div>
+
+  </div><!-- /.quiz-question-area -->
+</div><!-- /.quiz-test-layout -->
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  // Autosave on radio change
+  var form = document.getElementById('answer-form');
+  var saveStatus = document.getElementById('save-status');
+  var radios = form ? form.querySelectorAll('input[type="radio"]') : [];
+  var csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+  function showSaveStatus(msg, cls) {
+    if (!saveStatus) return;
+    saveStatus.textContent = msg;
+    saveStatus.className = 'save-status save-status--' + cls;
+    saveStatus.hidden = false;
+    setTimeout(function () { saveStatus.hidden = true; }, 3000);
+  }
+
+  radios.forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      // Visual update
+      document.querySelectorAll('.answer-label').forEach(function (lbl) {
+        lbl.classList.remove('answer-label--selected');
+      });
+      radio.closest('.answer-label').classList.add('answer-label--selected');
+
+      // Autosave
+      var data = new URLSearchParams();
+      data.append('csrf_token', csrfToken);
+      data.append('position', form.querySelector('input[name="position"]').value);
+      data.append('answer', radio.value);
+
+      fetch(form.action, {method: 'POST', body: data, headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.ok) { showSaveStatus('Saved', 'ok'); }
+          else { showSaveStatus(d.error || 'Save failed', 'error'); }
+        })
+        .catch(function () { showSaveStatus('Could not save', 'error'); });
+    });
+  });
+
+  // Timer
+  var timerEl = document.getElementById('quiz-timer-text');
+  var metaExpiry = document.querySelector('meta[name="quiz-expires-at"]');
+  var metaSession = document.querySelector('meta[name="quiz-session-id"]');
+
+  if (timerEl && metaExpiry) {
+    var expiresAt = new Date(metaExpiry.content);
+    var sessionId = metaSession ? metaSession.content : null;
+    var warned = {};
+    var THRESHOLDS = [300, 60, 30];
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function updateTimer() {
+      var remaining = Math.floor((expiresAt - Date.now()) / 1000);
+      if (remaining <= 0) {
+        timerEl.textContent = '0:00';
+        timerEl.closest('.quiz-timer').classList.add('quiz-timer--expired');
+        // Auto-submit
+        if (sessionId) {
+          var d = new URLSearchParams();
+          d.append('csrf_token', csrfToken);
+          fetch('/quiz/test/' + sessionId + '/expire', {method: 'POST', body: d})
+            .then(function (r) { return r.json(); })
+            .then(function (data) { if (data.redirect) { window.location = data.redirect; } });
+        }
+        return;
+      }
+      var mins = Math.floor(remaining / 60);
+      var secs = remaining % 60;
+      timerEl.textContent = mins + ':' + pad(secs);
+
+      THRESHOLDS.forEach(function (t) {
+        if (remaining <= t && !warned[t]) {
+          warned[t] = true;
+          var msg = remaining <= 30 ? '30 seconds remaining!' :
+                    remaining <= 60 ? '1 minute remaining!' : '5 minutes remaining!';
+          timerEl.closest('.quiz-timer').classList.add('quiz-timer--warning');
+          // ARIA announcement
+          var ann = document.createElement('div');
+          ann.setAttribute('role', 'alert');
+          ann.textContent = msg;
+          ann.style.position = 'absolute';
+          ann.style.left = '-9999px';
+          document.body.appendChild(ann);
+          setTimeout(function () { document.body.removeChild(ann); }, 3000);
+        }
+      });
+
+      requestAnimationFrame(function () { setTimeout(updateTimer, 1000); });
+    }
+    updateTimer();
+  }
+}());
+</script>
+{% endblock %}

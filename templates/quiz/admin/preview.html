@@ -1,0 +1,76 @@
+{% extends "quiz/base.html" %}
+{% block title %}Preview Import{% endblock %}
+{% block content %}
+<div class="quiz-card">
+  <h1>Preview Import</h1>
+
+  <!-- Summary -->
+  <div class="import-summary">
+    <dl class="info-dl">
+      <div><dt>Filename</dt><dd>{{ result.original_filename }}</dd></div>
+      <div><dt>Delimiter</dt><dd>{{ 'Tab (TSV)' if result.delimiter == '\t' else 'Comma (CSV)' }}</dd></div>
+      <div><dt>Total rows (data)</dt><dd>{{ result.total_rows }}</dd></div>
+      <div><dt>Skipped (inactive)</dt><dd>{{ result.skipped_rows }}</dd></div>
+      <div><dt>Questions to import</dt><dd><strong>{{ result.accepted_rows }}</strong></dd></div>
+      <div><dt>Topics</dt><dd>{{ result.topic_count }}</dd></div>
+    </dl>
+  </div>
+
+  <!-- Topic breakdown -->
+  <h2>Topics in this import</h2>
+  <table class="quiz-table" aria-label="Topic breakdown">
+    <thead>
+      <tr><th scope="col">Topic</th><th scope="col">Questions</th></tr>
+    </thead>
+    <tbody>
+      {% for topic, count in result.topic_counts.items() %}
+        <tr><td>{{ topic }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- First 10 rows -->
+  <h2>First {{ result.preview_rows|length }} rows</h2>
+  <div class="table-scroll">
+    <table class="quiz-table quiz-table--preview" aria-label="Preview rows">
+      <thead>
+        <tr>
+          <th>ID</th><th>Topic</th><th>Question</th><th>A</th><th>B</th><th>C</th><th>D</th><th>Correct</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in result.preview_rows %}
+          <tr>
+            <td>{{ row.question_id }}</td>
+            <td>{{ row.topic }}</td>
+            <td>{{ row.question }}</td>
+            <td>{{ row.answer_a }}</td>
+            <td>{{ row.answer_b }}</td>
+            <td>{{ row.answer_c }}</td>
+            <td>{{ row.answer_d }}</td>
+            <td><strong>{{ row.correct_answer }}</strong></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="alert alert-warning" role="alert">
+    <strong>Confirming will permanently replace the current active bank.</strong>
+    This cannot be undone (the previous bank data is retained in history but will not be used for tests).
+  </div>
+
+  <div class="button-row">
+    <form method="post" action="{{ url_for('quiz_admin.confirm') }}">
+      <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+      <input type="hidden" name="token" value="{{ result.token }}">
+      <button type="submit" class="btn btn-danger">Confirm Import</button>
+    </form>
+    <form method="post" action="{{ url_for('quiz_admin.cancel') }}">
+      <input type="hidden" name="csrf_token" value="{{ quiz_csrf_token }}">
+      <input type="hidden" name="token" value="{{ result.token }}">
+      <button type="submit" class="btn btn-secondary">Cancel</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

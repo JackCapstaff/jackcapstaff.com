@@ -1,0 +1,116 @@
+{% extends "quiz/base.html" %}
+{% block title %}My Performance{% endblock %}
+{% block content %}
+<div class="quiz-performance">
+  <h1>Performance Dashboard</h1>
+
+  {% if perf.completed_sessions == 0 %}
+    <p class="muted">Complete your first test to see performance data here.</p>
+    <a href="{{ url_for('quiz_main.new_test') }}" class="btn btn-primary">Start a Test</a>
+  {% else %}
+    <!-- Summary stats -->
+    <div class="quiz-stats-grid">
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.completed_sessions }}</span>
+        <span class="stat-label">Tests completed</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.total_attempts }}</span>
+        <span class="stat-label">Questions attempted</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.unique_questions }}</span>
+        <span class="stat-label">Unique questions</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.lifetime_accuracy }}%</span>
+        <span class="stat-label">Lifetime accuracy</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ perf.average_score }}%</span>
+        <span class="stat-label">Average score</span>
+      </div>
+      {% if perf.bank_question_count %}
+        <div class="stat-card">
+          <span class="stat-value">{{ ((perf.unique_questions / perf.bank_question_count) * 100)|int }}%</span>
+          <span class="stat-label">Bank coverage</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Score trend -->
+    {% if perf.score_trend|length >= 3 %}
+      <section aria-labelledby="trend-heading">
+        <h2 id="trend-heading">Score Trend (last {{ perf.score_trend|length }} tests)</h2>
+        <div class="score-trend" aria-label="Score trend chart">
+          {% for entry in perf.score_trend %}
+            <div class="trend-bar-wrapper" title="Test {{ entry.session_num }}: {{ entry.score }}%">
+              <div class="trend-bar" style="height: {{ entry.score|int }}%"
+                   aria-label="{{ entry.score }}%"></div>
+              <span class="trend-label">{{ entry.score|int }}%</span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% else %}
+      <p class="muted hint">Score trend requires at least 3 completed tests.</p>
+    {% endif %}
+
+    <!-- Topic accuracy -->
+    {% if perf.topic_accuracy %}
+      <section aria-labelledby="topic-accuracy-heading">
+        <h2 id="topic-accuracy-heading">Accuracy by Topic</h2>
+        <table class="quiz-table" aria-label="Topic accuracy">
+          <thead>
+            <tr>
+              <th scope="col">Topic</th>
+              <th scope="col">Attempts</th>
+              <th scope="col">Accuracy</th>
+              <th scope="col">Visual</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in perf.topic_accuracy|sort(attribute='accuracy') %}
+              <tr>
+                <td>{{ t.topic }}</td>
+                <td>{{ t.attempts }}</td>
+                <td>{{ t.accuracy }}%</td>
+                <td>
+                  <div class="mini-progress" role="presentation">
+                    <div class="mini-progress__fill" style="width:{{ t.accuracy|int }}%"></div>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+
+    <!-- Repeatedly incorrect -->
+    {% if perf.repeated_incorrect %}
+      <section aria-labelledby="repeated-heading">
+        <h2 id="repeated-heading">Questions Answered Incorrectly More Than Once</h2>
+        <table class="quiz-table">
+          <thead>
+            <tr>
+              <th scope="col">Question ID</th>
+              <th scope="col">Topic</th>
+              <th scope="col">Times incorrect</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in perf.repeated_incorrect %}
+              <tr>
+                <td>{{ r.external_id }}</td>
+                <td>{{ r.topic }}</td>
+                <td>{{ r.count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

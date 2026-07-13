@@ -1,0 +1,21 @@
+Question ID,Topic,Question,Answer A,Answer B,Answer C,Answer D,Correct Answer,Explanation,Difficulty
+1,General Knowledge,What is the capital of France?,London,Paris,Berlin,Rome,B,Paris is the capital of France.,Easy
+2,General Knowledge,What is the largest planet in our solar system?,Earth,Venus,Jupiter,Saturn,C,Jupiter is the largest planet in our solar system.,Easy
+3,General Knowledge,Who wrote Romeo and Juliet?,William Shakespeare,Jane Austen,Charles Dickens,Mark Twain,A,William Shakespeare wrote Romeo and Juliet.,Easy
+4,Science,What is the chemical symbol for gold?,Au,Gd,Ag,Pt,A,The chemical symbol for gold is Au.,Easy
+5,Science,How many bones are in the adult human body?,186,206,226,246,B,An adult human has 206 bones.,Medium
+6,Science,What is the smallest country in the world?,Vatican City,Monaco,Liechtenstein,Malta,A,Vatican City is the smallest country in the world.,Hard
+7,History,In what year did World War II end?,1943,1944,1945,1946,C,World War II ended in 1945.,Medium
+8,History,Who was the first President of the United States?,Thomas Jefferson,George Washington,Benjamin Franklin,John Adams,B,George Washington was the first President of the United States.,Medium
+9,Geography,What is the longest river in the world?,Amazon River,Nile River,Yangtze River,Mississippi River,B,The Nile River is the longest river in the world.,Medium
+10,Geography,Which country has the most islands?,Sweden,Norway,Finland,Indonesia,D,Indonesia has the most islands of any country.,Hard
+11,Literature,Who is the author of Harry Potter?,J.R.R. Tolkien,C.S. Lewis,J.K. Rowling,Stephen King,C,J.K. Rowling is the author of the Harry Potter series.,Easy
+12,Literature,What is the most widely spoken language in the world?,Spanish,English,Mandarin Chinese,Hindi,B,English is the most widely spoken language in the world by native and non-native speakers combined.,Hard
+13,Mathematics,What is 15 × 8?,100,120,130,140,B,15 × 8 = 120,Easy
+14,Mathematics,What is the square root of 144?,10,11,12,13,C,The square root of 144 is 12.,Easy
+15,Mathematics,What is the value of pi to two decimal places?,3.12,3.14,3.16,3.18,B,Pi equals approximately 3.14159...,Medium
+16,Sports,How many players are on a basketball team on the court?,4,5,6,7,B,There are 5 players on each basketball team on the court.,Easy
+17,Sports,In what year were the Olympic Games first held in modern times?,1894,1896,1898,1900,B,The modern Olympic Games first began in 1896.,Medium
+18,Sports,What is the maximum break in snooker?,180,160,147,170,C,The maximum break in snooker is 147.,Hard
+19,Technology,What does HTML stand for?,Hyper Text Markup Language,High Tech Modern Language,Home Tool Markup Language,Hyperlinks and Text Markup Language,A,HTML stands for Hyper Text Markup Language.,Easy
+20,Technology,What year was the internet invented?,1965,1969,1980,1983,B,The internet was invented in 1969 with ARPANET.,Medium
