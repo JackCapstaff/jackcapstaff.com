@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Analytics - Quiz App{% endblock %}
 
@@ -80,11 +80,11 @@
             </table>
         {% endif %}
     {% else %}
-        <p>No test data yet. <a href="{{ url_for('testing.start_test') }}">Start a test</a> to generate analytics.</p>
+        <p>No test data yet. <a href="{{ url_for('quiz_testing.start_test') }}">Start a test</a> to generate analytics.</p>
     {% endif %}
 
     <div style="margin-top: 30px;">
-        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+        <a href="{{ url_for('quiz_main.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
     </div>
 </div>
 {% endblock %}

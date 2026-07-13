@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Quiz{% endblock %} — Jack Capstaff</title>
+  <title>{% block title %}SQE Practice{% endblock %} — Jack Capstaff</title>
   <link rel="stylesheet" href="/assets/quiz/quiz.css">
   {% block extra_head %}{% endblock %}
+  {% block extra_css %}{% endblock %}
 </head>
 <body class="quiz-app">
 
@@ -13,18 +14,18 @@
 
 <header class="quiz-header" role="banner">
   <nav class="quiz-nav" aria-label="Quiz navigation">
-    <a href="/quiz/" class="quiz-logo">Quiz</a>
+    <a href="/quiz/" class="quiz-logo">SQE Practice</a>
     <ul class="quiz-nav-links" role="list">
-      {% if quiz_user %}
-        <li><a href="{{ url_for('quiz_main.index') }}">Dashboard</a></li>
-        <li><a href="{{ url_for('quiz_main.new_test') }}">New Test</a></li>
+      {% if current_user.is_authenticated %}
+        <li><a href="{{ url_for('quiz_main.dashboard') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('quiz_testing.start_test') }}">New Practice</a></li>
         <li><a href="{{ url_for('quiz_results.history') }}">History</a></li>
-        <li><a href="{{ url_for('quiz_results.performance') }}">Performance</a></li>
-        {% if quiz_user.is_admin %}
+        <li><a href="{{ url_for('quiz_results.analytics') }}">Analytics</a></li>
+        {% if current_user.role in ('admin', 'editor') or current_user.is_admin() %}
           <li><a href="{{ url_for('quiz_admin.index') }}">Admin</a></li>
         {% endif %}
         <li>
-          <a href="{{ url_for('quiz_auth.logout') }}">Log out ({{ quiz_user.display_name }})</a>
+          <a href="{{ url_for('quiz_auth.logout') }}">Log out ({{ current_user.display_name or current_user.name or current_user.username }})</a>
         </li>
       {% else %}
         <li><a href="{{ url_for('quiz_auth.login') }}">Log in</a></li>
@@ -48,10 +49,15 @@
 </main>
 
 <footer class="quiz-footer" role="contentinfo">
-  <p>&copy; {{ now.year if now else 2026 }} Jack Capstaff. Quiz platform.</p>
+  <p>
+    SQE Practice — part of <a href="/">jackcapstaff.com</a> &mdash;
+    Independent study tool. Not affiliated with the SRA or any official provider.
+    Scores cannot predict an official SQE result.
+  </p>
 </footer>
 
 <script src="/assets/quiz/quiz.js"></script>
 {% block extra_scripts %}{% endblock %}
+{% block extra_js %}{% endblock %}
 </body>
 </html>

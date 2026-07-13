@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Dashboard - Quiz App{% endblock %}
 
@@ -21,13 +21,13 @@
         <div class="test-options">
             <h3>Start a New Test</h3>
             <div class="button-group">
-                <a href="{{ url_for('testing.start_test') }}?mode=fresh" class="btn btn-lg btn-primary">
+                <a href="{{ url_for('quiz_testing.start_test') }}?mode=fresh" class="btn btn-lg btn-primary">
                     Fresh Test
                 </a>
-                <a href="{{ url_for('testing.start_test') }}?mode=adaptive" class="btn btn-lg btn-secondary">
+                <a href="{{ url_for('quiz_testing.start_test') }}?mode=adaptive" class="btn btn-lg btn-secondary">
                     Adaptive Test
                 </a>
-                <a href="{{ url_for('results.analytics') }}" class="btn btn-lg btn-info">
+                <a href="{{ url_for('quiz_results.analytics') }}" class="btn btn-lg btn-info">
                     View Analytics
                 </a>
             </div>
@@ -63,9 +63,9 @@
                                 <td>{{ session.status|title }}</td>
                                 <td>
                                     {% if session.is_editable %}
-                                        <a href="{{ url_for('testing.take_test', session_id=session.id) }}" class="link">Continue</a>
+                                        <a href="{{ url_for('quiz_testing.take_test', session_id=session.id) }}" class="link">Continue</a>
                                     {% elif session.is_complete %}
-                                        <a href="{{ url_for('results.view_result', session_id=session.id) }}" class="link">View</a>
+                                        <a href="{{ url_for('quiz_results.view_result', session_id=session.id) }}" class="link">View</a>
                                     {% endif %}
                                 </td>
                             </tr>

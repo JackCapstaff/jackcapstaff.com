@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Login - Quiz App{% endblock %}
 
@@ -28,7 +28,7 @@
         <button type="submit" class="btn btn-primary">Login</button>
     </form>
     {% if config.REGISTRATION_ENABLED %}
-        <p>Don't have an account? <a href="{{ url_for('auth.register') }}">Register here</a></p>
+        <p>Don't have an account? <a href="{{ url_for('quiz_auth.register') }}">Register here</a></p>
     {% endif %}
 </div>
 {% endblock %}

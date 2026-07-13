@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Test History - Quiz App{% endblock %}
 
@@ -42,9 +42,9 @@
                         </td>
                         <td>
                             {% if session.is_complete %}
-                                <a href="{{ url_for('results.view_result', session_id=session.id) }}">View</a>
+                                <a href="{{ url_for('quiz_results.view_result', session_id=session.id) }}">View</a>
                             {% else %}
-                                <a href="{{ url_for('testing.take_test', session_id=session.id) }}">Continue</a>
+                                <a href="{{ url_for('quiz_testing.take_test', session_id=session.id) }}">Continue</a>
                             {% endif %}
                         </td>
                     </tr>
@@ -55,15 +55,15 @@
         <!-- Pagination -->
         <div class="pagination" style="text-align: center; margin: 20px 0;">
             {% if sessions.has_prev %}
-                <a href="{{ url_for('results.history', page=sessions.prev_num) }}" class="btn btn-sm btn-secondary">← Previous</a>
+                <a href="{{ url_for('quiz_results.history', page=sessions.prev_num) }}" class="btn btn-sm btn-secondary">← Previous</a>
             {% endif %}
             <span>Page {{ sessions.page }} of {{ sessions.pages }}</span>
             {% if sessions.has_next %}
-                <a href="{{ url_for('results.history', page=sessions.next_num) }}" class="btn btn-sm btn-secondary">Next →</a>
+                <a href="{{ url_for('quiz_results.history', page=sessions.next_num) }}" class="btn btn-sm btn-secondary">Next →</a>
             {% endif %}
         </div>
     {% else %}
-        <p>No test history yet. <a href="{{ url_for('testing.start_test') }}">Start a new test</a>.</p>
+        <p>No test history yet. <a href="{{ url_for('quiz_testing.start_test') }}">Start a new test</a>.</p>
     {% endif %}
 </div>
 {% endblock %}

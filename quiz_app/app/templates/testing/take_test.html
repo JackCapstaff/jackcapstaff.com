@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Take Test - SQE Practice{% endblock %}
 
@@ -177,12 +177,6 @@ async function confirmSubmit() {
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = submitUrl;
-        const csrf = document.querySelector('meta[name="csrf-token"]');
-        if (csrf) {
-            const input = document.createElement('input');
-            input.type = 'hidden'; input.name = 'csrf_token'; input.value = csrf.content;
-            form.appendChild(input);
-        }
         document.body.appendChild(form);
         form.submit();
     }

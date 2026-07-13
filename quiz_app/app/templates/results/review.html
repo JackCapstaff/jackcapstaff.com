@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Review Test - Quiz App{% endblock %}
 
@@ -35,8 +35,8 @@
     {% endfor %}
 
     <div style="text-align: center; margin: 20px 0;">
-        <a href="{{ url_for('results.view_result', session_id=session.id) }}" class="btn btn-secondary">Back to Results</a>
-        <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">Dashboard</a>
+        <a href="{{ url_for('quiz_results.view_result', session_id=session.id) }}" class="btn btn-secondary">Back to Results</a>
+        <a href="{{ url_for('quiz_main.dashboard') }}" class="btn btn-primary">Dashboard</a>
     </div>
 </div>
 {% endblock %}

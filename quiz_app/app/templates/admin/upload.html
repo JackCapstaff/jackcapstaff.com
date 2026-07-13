@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Upload Questions - Quiz App{% endblock %}
 
@@ -21,7 +21,7 @@
             <input type="file" id="file" name="file" accept=".csv,.tsv,.txt" required style="margin-top: 10px;">
         </div>
         <button type="submit" class="btn btn-primary">Upload</button>
-        <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">Cancel</a>
+        <a href="{{ url_for('quiz_admin.index') }}" class="btn btn-secondary">Cancel</a>
     </form>
 
     <div style="background: #f9f9f9; padding: 20px; border-radius: 4px; margin: 20px 0;">

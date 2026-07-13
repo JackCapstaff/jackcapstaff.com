@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Admin Dashboard - Quiz App{% endblock %}
 
@@ -25,9 +25,9 @@
 
     <div style="margin: 30px 0;">
         <h3>Question Bank Management</h3>
-        <a href="{{ url_for('admin.upload_questions') }}" class="btn btn-primary">Upload New Question Bank</a>
+        <a href="{{ url_for('quiz_admin.upload_questions') }}" class="btn btn-primary">Upload New Question Bank</a>
         {% if active_bank %}
-            <a href="{{ url_for('admin.export_current_bank') }}" class="btn btn-secondary">Export Current Bank</a>
+            <a href="{{ url_for('quiz_admin.export_current_bank') }}" class="btn btn-secondary">Export Current Bank</a>
         {% endif %}
     </div>
 
@@ -42,7 +42,7 @@
 
     <div style="margin: 30px 0;">
         <h3>User Management</h3>
-        <a href="{{ url_for('admin.manage_users') }}" class="btn btn-secondary">Manage Users</a>
+        <a href="{{ url_for('quiz_admin.manage_users') }}" class="btn btn-secondary">Manage Users</a>
     </div>
 
     {% if all_banks %}

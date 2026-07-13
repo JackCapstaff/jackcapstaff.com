@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "quiz/base.html" %}
 
 {% block title %}Preview Import - Quiz App{% endblock %}
 
@@ -43,12 +43,12 @@
     {% endif %}
 
     <div style="margin: 30px 0;">
-        <form method="POST" action="{{ url_for('admin.confirm_import_route', token=staged.token) }}" style="display: inline;">
+        <form method="POST" action="{{ url_for('quiz_admin.confirm_import_route', token=staged.token) }}" style="display: inline;">
             <button type="submit" class="btn btn-lg btn-primary" onclick="return confirm('Replace the active question bank?');">
                 Confirm & Activate
             </button>
         </form>
-        <a href="{{ url_for('admin.upload_questions') }}" class="btn btn-secondary">Cancel</a>
+        <a href="{{ url_for('quiz_admin.upload_questions') }}" class="btn btn-secondary">Cancel</a>
     </div>
 </div>
 {% endblock %}
