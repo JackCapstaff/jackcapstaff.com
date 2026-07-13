@@ -1,2 +1,2 @@
-release: python migrate_add_read_column.py && cd quiz_app && FLASK_APP=wsgi:app FLASK_CONFIG=production flask db upgrade || true
+release: python migrate_add_read_column.py && FLASK_CONFIG=production flask db upgrade
 web: gunicorn app:app

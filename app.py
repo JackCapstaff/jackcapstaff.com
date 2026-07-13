@@ -816,6 +816,18 @@ def _load_and_register_quiz_blueprints():
 # Try to load quiz blueprints
 quiz_blueprints_loaded = _load_and_register_quiz_blueprints()
 
+# Import quiz_app models so Flask-Migrate can discover them
+if quiz_blueprints_loaded:
+    try:
+        sys.stderr.write(f"[QUIZ] Importing quiz app models for migrations\n")
+        sys.stderr.flush()
+        from quiz_app.app.models import user, question, session  # noqa: F401
+        sys.stderr.write(f"[QUIZ] Models imported successfully\n")
+        sys.stderr.flush()
+    except Exception as e:
+        sys.stderr.write(f"[QUIZ] Failed to import models: {e}\n")
+        sys.stderr.flush()
+
 # Load rehearsal schedule middleware if needed
 if rehearsal_schedule_app is not None:
     middleware_dict = {REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app}
