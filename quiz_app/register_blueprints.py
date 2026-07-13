@@ -4,6 +4,8 @@ This module provides a function to integrate quiz_app blueprints into the main
 application without creating a separate Flask instance. The quiz blueprints
 use the extensions (db, migrate, login_manager, csrf) from the main app.
 """
+import sys
+import importlib
 
 
 def register_quiz_blueprints(app, db, login_manager):
@@ -14,7 +16,19 @@ def register_quiz_blueprints(app, db, login_manager):
         db: SQLAlchemy instance from main app
         login_manager: Flask-Login LoginManager from main app
     """
-    # Import quiz blueprints
+    # Inject main app's extensions into quiz_app BEFORE any imports
+    # This replaces the quiz_app's own instances with the main app's instances
+    import quiz_app.app.extensions as quiz_extensions
+    quiz_extensions.db = db
+    quiz_extensions.login_manager = login_manager
+    
+    # Force reload of quiz modules to pick up injected extensions
+    # This ensures any cached imports use the new db instance
+    for module_name in list(sys.modules.keys()):
+        if 'quiz_app' in module_name and module_name not in ('quiz_app', 'quiz_app.register_blueprints'):
+            del sys.modules[module_name]
+
+    # Now import quiz blueprints (they will use the injected db)
     from quiz_app.app.auth import auth_bp
     from quiz_app.app.main import main_bp
     from quiz_app.app.admin import admin_bp
