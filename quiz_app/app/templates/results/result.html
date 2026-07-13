@@ -14,9 +14,22 @@
 .stat-box h3 { font-size: 24px; margin: 0; color: #1a237e; }
 .stat-box p { margin: 5px 0 0 0; }
 .subject-perf { margin: 20px 0; }
-.subject-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #ddd; }
-.subject-bar { height: 8px; background: #e0e0e0; border-radius: 4px; width: 120px; overflow: hidden; }
+.subject-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #ddd; gap: 12px; }
+.subject-bar { height: 8px; background: #e0e0e0; border-radius: 4px; width: 120px; overflow: hidden; flex: none; }
 .subject-bar-fill { height: 100%; border-radius: 4px; background: #1a237e; }
+.area-name { flex: 1; min-width: 0; }
+.area-share { font-size: 0.75rem; color: #666; }
+.area-score { min-width: 92px; text-align: right; }
+.fill-good { background: #2e7d32; }
+.fill-mid { background: #f9a825; }
+.fill-low { background: #c62828; }
+.score-good { color: #2e7d32; }
+.score-mid { color: #f9a825; }
+.score-low { color: #c62828; }
+.focus-card { background: #fff3e0; border-left: 4px solid #fb8c00; padding: 14px 18px; border-radius: 0 4px 4px 0; margin: 20px 0; }
+.focus-card h3 { margin-top: 0; }
+.focus-card ul { margin: 8px 0 0 0; padding-left: 20px; }
+.weighting-help { font-size: 0.8rem; color: #666; margin: 4px 0 14px; }
 .notice { background: #fff8e1; border-left: 4px solid #ffc107; padding: 12px 16px; border-radius: 0 4px 4px 0; font-size: 0.85rem; margin: 16px 0; }
 .disclaimer { background: #f9f9f9; border: 1px solid #ddd; padding: 12px 16px; border-radius: 4px; font-size: 0.8rem; color: #555; margin-top: 24px; }
 .buttons { text-align: center; margin: 24px 0; }
@@ -53,43 +66,46 @@
         </div>
     </div>
 
-    {% if is_sqe %}
-        {# SQE subject breakdown #}
-        {% if subject_stats %}
-            <h3>Performance by Subject</h3>
-            <div class="subject-perf">
-                {% for name, data in subject_stats | dictsort %}
-                    {% set pct = (data.correct / data.total * 100) if data.total > 0 else 0 %}
-                    <div class="subject-row">
-                        <span style="flex: 1">{{ name }}</span>
-                        <div class="subject-bar" style="margin: 0 12px">
-                            <div class="subject-bar-fill" style="width: {{ pct | int }}%"></div>
-                        </div>
-                        <strong style="min-width:80px; text-align:right">{{ data.correct }}/{{ data.total }} ({{ "%.0f" | format(pct) }}%)</strong>
-                    </div>
+    {% if focus_areas %}
+        <div class="focus-card">
+            <h3>Recommended focus areas</h3>
+            <p style="margin:0">Based on this test, these areas need the most work (below 70%):</p>
+            <ul>
+                {% for area in focus_areas %}
+                    <li><strong>{{ area.name }}</strong> — {{ area.correct }}/{{ area.total }} ({{ "%.0f" | format(area.pct) }}%)</li>
                 {% endfor %}
-            </div>
-        {% endif %}
-
-        {# Source notices #}
-        {% for notice in source_notices %}
-            <div class="notice">{{ notice }}</div>
-        {% endfor %}
-
-    {% else %}
-        {# Legacy topic breakdown #}
-        {% if topic_stats %}
-            <h3>Performance by Topic</h3>
-            <div class="subject-perf">
-                {% for topic_key, stats in topic_stats.items() %}
-                    <div class="subject-row">
-                        <span>{{ stats.topic }}</span>
-                        <strong>{{ stats.correct }}/{{ stats.total }} ({{ "%.0f" | format(stats.correct / stats.total * 100 if stats.total > 0 else 0) }}%)</strong>
-                    </div>
-                {% endfor %}
-            </div>
-        {% endif %}
+            </ul>
+            <p style="margin:10px 0 0"><a href="{{ url_for('quiz_testing.start_test') }}">Start a focused practice session &rarr;</a></p>
+        </div>
     {% endif %}
+
+    {% if area_breakdown %}
+        <h3>Performance &amp; weighting by {{ "subject" if is_sqe else "topic" }}</h3>
+        <p class="weighting-help">
+            <strong>Weighting</strong> shows how much of this test came from each area (its share of questions),
+            reflecting the SQE blueprint balance. <strong>Score</strong> shows how you performed there.
+        </p>
+        <div class="subject-perf">
+            {% for area in area_breakdown %}
+                {% set cls = 'good' if area.pct >= 70 else ('mid' if area.pct >= 50 else 'low') %}
+                <div class="subject-row">
+                    <span class="area-name">
+                        {{ area.name }}<br>
+                        <span class="area-share">Weighting: {{ "%.0f" | format(area.share) }}% of test ({{ area.total }} q)</span>
+                    </span>
+                    <div class="subject-bar">
+                        <div class="subject-bar-fill fill-{{ cls }}" style="width: {{ area.pct | int }}%"></div>
+                    </div>
+                    <strong class="area-score score-{{ cls }}">{{ area.correct }}/{{ area.total }} ({{ "%.0f" | format(area.pct) }}%)</strong>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {# Source notices #}
+    {% for notice in source_notices %}
+        <div class="notice">{{ notice }}</div>
+    {% endfor %}
 
     <div class="buttons">
         <a href="{{ url_for('quiz_results.review_test', session_id=session.id) }}" class="btn btn-primary">Review Incorrect Answers</a>

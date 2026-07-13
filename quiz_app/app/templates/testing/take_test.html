@@ -146,6 +146,16 @@ function selectOption(el, letter) {
     el.classList.add('selected');
     const radio = el.querySelector('input[type="radio"]');
     if (radio) radio.checked = true;
+    syncCurrentPill();
+}
+
+function syncCurrentPill() {
+    // Keep the current question's progress pill in step with the live selection,
+    // since pills are rendered server-side and otherwise only refresh on navigation.
+    const form = document.getElementById('answer-form');
+    const checked = form ? form.querySelector('input[name="answer"]:checked') : null;
+    const currentPill = document.querySelector('.progress-pill.current');
+    if (currentPill) currentPill.classList.toggle('answered', !!checked);
 }
 
 async function saveAnswer() {
@@ -153,6 +163,7 @@ async function saveAnswer() {
     const checked = form.querySelector('input[name="answer"]:checked');
     const answer = checked ? checked.value : null;
     const position = parseInt(document.getElementById('current-pos').textContent) - 1;
+    syncCurrentPill();
     try {
         await fetch(answerUrl, {
             method: 'POST',

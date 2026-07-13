@@ -11,17 +11,35 @@ from ..models.question import QuestionBankImport
 SQE_MODES = ("sqe_blueprint", "sqe_adaptive", "sqe_simulation")
 
 
-def _compute_subject_stats(session_obj: TestSession) -> dict:
-    """Return {subject_name: {correct, total}} for SQE sessions."""
-    subject_stats: dict[str, dict] = {}
+def _compute_area_breakdown(session_obj: TestSession) -> list[dict]:
+    """Return a per-area breakdown for any mode.
+
+    Each entry: {name, correct, total, pct, share} where `share` is the
+    percentage of the whole test drawn from that area (its weighting) and
+    `pct` is the user's accuracy in that area. Sorted weakest-accuracy first
+    so areas needing work surface at the top.
+    """
+    areas: dict[str, dict] = {}
+    total_questions = 0
     for tsq in session_obj.questions:
+        total_questions += 1
         name = tsq.subject_name_snapshot or tsq.topic or "Unknown"
-        if name not in subject_stats:
-            subject_stats[name] = {"correct": 0, "total": 0}
-        subject_stats[name]["total"] += 1
+        if name not in areas:
+            areas[name] = {"name": name, "correct": 0, "total": 0}
+        areas[name]["total"] += 1
         if tsq.is_correct:
-            subject_stats[name]["correct"] += 1
-    return subject_stats
+            areas[name]["correct"] += 1
+
+    breakdown = []
+    for data in areas.values():
+        total = data["total"]
+        data["pct"] = (data["correct"] / total * 100) if total else 0
+        data["share"] = (total / total_questions * 100) if total_questions else 0
+        breakdown.append(data)
+
+    # Weakest accuracy first; ties broken by larger share (bigger weighting) first.
+    breakdown.sort(key=lambda d: (d["pct"], -d["share"]))
+    return breakdown
 
 
 @results_bp.route("/session/<int:session_id>")
@@ -40,17 +58,11 @@ def view_result(session_id):
 
     is_sqe = session_obj.mode in SQE_MODES
 
-    # Subject stats for SQE modes; topic stats for legacy modes
-    subject_stats = _compute_subject_stats(session_obj) if is_sqe else None
+    # Unified per-area breakdown (subject for SQE, topic for others)
+    area_breakdown = _compute_area_breakdown(session_obj)
 
-    topic_stats = {}
-    if not is_sqe:
-        for tsq in session_obj.questions:
-            if tsq.topic_key not in topic_stats:
-                topic_stats[tsq.topic_key] = {"topic": tsq.topic, "correct": 0, "total": 0}
-            topic_stats[tsq.topic_key]["total"] += 1
-            if tsq.is_correct:
-                topic_stats[tsq.topic_key]["correct"] += 1
+    # Areas needing work: below 70% accuracy, weakest first (already sorted)
+    focus_areas = [a for a in area_breakdown if a["total"] >= 1 and a["pct"] < 70]
 
     # Collect source notices from questions (de-duplicated)
     source_notices = list(
@@ -64,8 +76,8 @@ def view_result(session_id):
     return render_template(
         "results/result.html",
         session=session_obj,
-        topic_stats=topic_stats,
-        subject_stats=subject_stats,
+        area_breakdown=area_breakdown,
+        focus_areas=focus_areas,
         is_sqe=is_sqe,
         source_notices=source_notices,
     )
