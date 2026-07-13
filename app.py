@@ -5,6 +5,7 @@ import io
 import os
 import re
 import smtplib
+import sys
 import html
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -740,10 +741,17 @@ from shop import shop_bp
 app.register_blueprint(shop_bp)
 
 rehearsal_schedule_app = load_rehearsal_schedule_app()
+quiz_app_instance = None
+
+middleware_dict = {}
 if rehearsal_schedule_app is not None:
-    app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
-        REHEARSAL_SCHEDULE_PREFIX: rehearsal_schedule_app,
-    })
+    middleware_dict[REHEARSAL_SCHEDULE_PREFIX] = rehearsal_schedule_app
+
+# Quiz app will be loaded lazily to avoid circular imports
+# It will be added to middleware_dict if needed
+
+if middleware_dict:
+    app.wsgi_app = DispatcherMiddleware(app.wsgi_app, middleware_dict)
 
 
 @login_manager.user_loader
@@ -2034,6 +2042,38 @@ def admin_testimonial_delete(testimonial_id):
 with app.app_context():
     db.create_all()
     ensure_optional_columns()
+
+
+# Late-load quiz app to avoid circular imports  
+def _mount_quiz_app():
+    try:
+        quiz_app_dir = os.path.join(BASE_DIR, 'quiz_app')
+        
+        if not os.path.exists(quiz_app_dir):
+            return
+        
+        # Add the parent directory to sys.path so we can import quiz_app as a package
+        parent_dir = BASE_DIR
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        
+        try:
+            # Import quiz_app as a proper package
+            import quiz_app.app as quiz_app_factory
+            config_name = os.environ.get("FLASK_CONFIG", "production")
+            quiz_app_instance = quiz_app_factory.create_app(config_name)
+            
+            if quiz_app_instance is not None:
+                app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {'/quiz': quiz_app_instance})
+                app.logger.info('✓ Quiz app mounted at /quiz')
+        finally:
+            if parent_dir in sys.path and sys.path[0] == parent_dir:
+                sys.path.pop(0)
+    except Exception:
+        app.logger.exception('Failed mounting quiz app')
+
+
+_mount_quiz_app()
 
 
 if __name__ == '__main__':
