@@ -741,106 +741,80 @@ from shop import shop_bp
 app.register_blueprint(shop_bp)
 
 rehearsal_schedule_app = load_rehearsal_schedule_app()
-quiz_app_instance = None
 
-# Try to load quiz app early to avoid circular imports
-def _load_quiz_app_early():
+# Load and register quiz app blueprints directly
+def _load_and_register_quiz_blueprints():
+    """Load quiz app blueprints and register them with the main app."""
     try:
         quiz_app_dir = os.path.join(BASE_DIR, 'quiz_app')
         if not os.path.exists(quiz_app_dir):
             sys.stderr.write(f"[QUIZ] Quiz app directory not found at {quiz_app_dir}\n")
             sys.stderr.flush()
-            return None
+            return False
         
-        sys.stderr.write(f"[QUIZ] Loading quiz app from {quiz_app_dir}\n")
+        sys.stderr.write(f"[QUIZ] Loading quiz app blueprints from {quiz_app_dir}\n")
         sys.stderr.flush()
         
-        # Add parent directory to sys.path so we can import quiz_app as a package
+        # Add parent directory to sys.path
         parent_dir = BASE_DIR
         if parent_dir not in sys.path:
             sys.path.insert(0, parent_dir)
         
-        import quiz_app.app as quiz_app_factory
-        config_name = os.environ.get("FLASK_CONFIG", "production")
-        quiz_app = quiz_app_factory.create_app(config_name)
-        sys.stderr.write(f"[QUIZ] Successfully loaded quiz app\n")
+        # Import quiz app's database and extensions FIRST
+        from quiz_app.app import extensions as quiz_extensions
+        
+        # Replace quiz app's db with the main app's db
+        quiz_extensions.db = db  # Use main app's SQLAlchemy instance
+        
+        sys.stderr.write(f"[QUIZ] Configured shared database\n")
         sys.stderr.flush()
-        return quiz_app
+        
+        # Now import blueprints (which will use the shared db)
+        from quiz_app.app.auth import auth_bp as quiz_auth_bp
+        from quiz_app.app.main import main_bp as quiz_main_bp
+        from quiz_app.app.admin import admin_bp as quiz_admin_bp
+        from quiz_app.app.testing import testing_bp as quiz_testing_bp
+        from quiz_app.app.results import results_bp as quiz_results_bp
+        
+        from quiz_app.app.models.user import User as QuizUser
+        
+        sys.stderr.write(f"[QUIZ] Imported blueprints\n")
+        sys.stderr.flush()
+        
+        # Initialize only non-db extensions with main app
+        quiz_extensions.migrate.init_app(app, db)
+        quiz_extensions.login_manager.init_app(app)
+        quiz_extensions.csrf.init_app(app)
+        
+        # Set login view for quiz
+        quiz_extensions.login_manager.login_view = "quiz_auth.login"
+        quiz_extensions.login_manager.login_message = "Please log in to access this page."
+        
+        @quiz_extensions.login_manager.user_loader
+        def load_quiz_user(user_id):
+            return db.session.get(QuizUser, int(user_id))
+        
+        # Register blueprints with /quiz prefix and unique names
+        app.register_blueprint(quiz_auth_bp, url_prefix="/quiz/auth", name="quiz_auth")
+        app.register_blueprint(quiz_main_bp, url_prefix="/quiz", name="quiz_main")
+        app.register_blueprint(quiz_admin_bp, url_prefix="/quiz/admin", name="quiz_admin")
+        app.register_blueprint(quiz_testing_bp, url_prefix="/quiz/test", name="quiz_testing")
+        app.register_blueprint(quiz_results_bp, url_prefix="/quiz/results", name="quiz_results")
+        
+        sys.stderr.write(f"[QUIZ] Successfully registered quiz app blueprints\n")
+        sys.stderr.flush()
+        return True
+        
     except Exception as e:
-        sys.stderr.write(f"[QUIZ] Failed to load quiz app: {e}\n")
+        sys.stderr.write(f"[QUIZ] Failed to load quiz blueprints: {e}\n")
         sys.stderr.flush()
         import traceback
         traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
-        return None
+        return False
 
-quiz_app_instance = _load_quiz_app_early()
-
-# Route for /quiz - delegates to quiz app instance if available
-@app.route('/quiz')
-@app.route('/quiz/')
-def quiz_index():
-    """Proxy requests to the quiz app."""
-    if quiz_app_instance is None:
-        abort(503)  # Service Unavailable if quiz app failed to load
-    
-    # Use quiz app's test client to proxy the request
-    with quiz_app_instance.test_client() as client:
-        # Get the path from the current request (just "/" for /quiz or /quiz/)
-        path = request.path.replace('/quiz', '', 1) or '/'
-        
-        # Build query string
-        qs = f"?{request.query_string.decode()}" if request.query_string else ""
-        
-        # Proxy the request
-        resp = client.get(f"{path}{qs}")
-        
-        # Return the response
-        response = make_response(resp.data)
-        response.status_code = resp.status_code
-        for header, value in resp.headers:
-            if header not in ('Content-Length', 'Content-Encoding'):
-                response.headers[header] = value
-        return response
-
-# Proxy all /quiz/* routes to the quiz app
-@app.route('/quiz/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
-def quiz_proxy(path):
-    """Proxy all sub-routes to the quiz app."""
-    if quiz_app_instance is None:
-        abort(503)
-    
-    with quiz_app_instance.test_client() as client:
-        # Build the full path for the quiz app
-        full_path = f"/{path}"
-        
-        # Build query string
-        qs = f"?{request.query_string.decode()}" if request.query_string else ""
-        
-        # Proxy the request with the correct method
-        method_map = {
-            'GET': client.get,
-            'POST': client.post,
-            'PUT': client.put,
-            'DELETE': client.delete,
-            'PATCH': client.patch,
-        }
-        
-        method_func = method_map.get(request.method, client.get)
-        
-        # For POST/PUT/PATCH, include the request data
-        if request.method in ('POST', 'PUT', 'PATCH'):
-            resp = method_func(f"{full_path}{qs}", data=request.get_data(), content_type=request.content_type)
-        else:
-            resp = method_func(f"{full_path}{qs}")
-        
-        # Return the response
-        response = make_response(resp.data)
-        response.status_code = resp.status_code
-        for header, value in resp.headers:
-            if header not in ('Content-Length', 'Content-Encoding'):
-                response.headers[header] = value
-        return response
+# Try to load quiz blueprints
+quiz_blueprints_loaded = _load_and_register_quiz_blueprints()
 
 # Load rehearsal schedule middleware if needed
 if rehearsal_schedule_app is not None:
