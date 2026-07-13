@@ -38,7 +38,7 @@ def create_app(config_name: str = "development") -> Flask:
             try:
                 User = None
                 for mapper in db.registry.mappers:
-                    if mapper.class_.__tablename__ == 'users':
+                    if mapper.class_.__tablename__ == 'user':
                         User = mapper.class_
                         break
                 if User:
@@ -51,9 +51,8 @@ def create_app(config_name: str = "development") -> Flask:
     login_manager.login_message = "Please log in to access this page."
     login_manager.login_message_category = "info"
 
-    # Import models so Alembic can discover them (only question and session, User is from main app)
-    # Note: models are auto-registered when imported; quiz_app.models.user no longer exists
-    from .models import question, session  # noqa: F401
+    # Import models so Alembic can discover them (User is from main app)
+    from .models import question, session, subject, specification, sqe  # noqa: F401
 
     # Register blueprints
     from .auth import auth_bp

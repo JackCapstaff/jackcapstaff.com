@@ -21,8 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..extensions import db
 
 if TYPE_CHECKING:
-    from .user import User
-    from .question import Question
+    pass  # User model imported at runtime via extensions
 
 
 class TestSession(db.Model):
@@ -39,8 +38,8 @@ class TestSession(db.Model):
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
     mode: Mapped[str] = mapped_column(
-        String(20), nullable=False, index=True
-    )  # fresh | adaptive | retest
+        String(40), nullable=False, index=True
+    )  # fresh | adaptive | sqe_blueprint | sqe_adaptive | sqe_simulation | retest
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="in_progress", index=True
     )  # in_progress | paused | submitted | expired
@@ -77,6 +76,21 @@ class TestSession(db.Model):
     bank_import_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("question_bank_imports.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # SQE: which paper and blueprint profile this session was generated for
+    paper: Mapped[Optional[str]] = mapped_column(String(4), nullable=True, index=True)
+    blueprint_profile_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("blueprint_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    specification_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assessment_specifications.id", ondelete="SET NULL"), nullable=True
+    )
+    # Snapshot of spec/blueprint version used at generation time
+    spec_version_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    blueprint_allocation_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # is_strict_blueprint: was hard min/max enforced during selection?
+    is_strict_blueprint: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # section_count: 1 for standard, 2 for full FLK (90+90)
+    section_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -168,15 +182,26 @@ class TestSessionQuestion(db.Model):
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     topic: Mapped[str] = mapped_column(String(255), nullable=False)
     topic_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    # SQE classification snapshot
+    paper: Mapped[Optional[str]] = mapped_column(String(4), nullable=True)
+    subject_id_snapshot: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    subject_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    question_format: Mapped[str] = mapped_column(String(16), nullable=False, default="LEGACY_MCQ4")
+    # Section within the test (1 or 2 for full FLK simulation)
+    section_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
-    answer_a: Mapped[str] = mapped_column(Text, nullable=False)
-    answer_b: Mapped[str] = mapped_column(Text, nullable=False)
-    answer_c: Mapped[str] = mapped_column(Text, nullable=False)
-    answer_d: Mapped[str] = mapped_column(Text, nullable=False)
-    correct_answer: Mapped[str] = mapped_column(String(1), nullable=False)
+    # Legacy flat answer columns — kept for backward compat; nullable for SQE5
+    answer_a: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    answer_b: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    answer_c: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    answer_d: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    answer_e: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    correct_answer: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)
     explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reference: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     difficulty: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    source_type_snapshot: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    source_notice_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # ---- Answer state ----
     display_position: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -194,15 +219,22 @@ class TestSessionQuestion(db.Model):
     session: Mapped["TestSession"] = relationship(
         "TestSession", back_populates="questions"
     )
+    snapshot_options: Mapped[list["TestSessionOption"]] = relationship(  # type: ignore[name-defined]
+        "TestSessionOption",
+        foreign_keys="TestSessionOption.test_session_question_id",
+        cascade="all, delete-orphan",
+        order_by="TestSessionOption.display_order",
+    )
 
     @property
     def answer_text(self) -> Optional[str]:
-        """Text of the user's selected answer."""
+        """Text of the user's selected answer (legacy flat-column support)."""
         mapping = {
             "A": self.answer_a,
             "B": self.answer_b,
             "C": self.answer_c,
             "D": self.answer_d,
+            "E": self.answer_e,
         }
         return mapping.get(self.selected_answer) if self.selected_answer else None
 
@@ -213,8 +245,9 @@ class TestSessionQuestion(db.Model):
             "B": self.answer_b,
             "C": self.answer_c,
             "D": self.answer_d,
+            "E": self.answer_e,
         }
-        return mapping.get(self.correct_answer, "")
+        return mapping.get(self.correct_answer or "", "") or ""
 
     def __repr__(self) -> str:  # pragma: no cover
         return (
