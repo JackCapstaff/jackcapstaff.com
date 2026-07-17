@@ -31,6 +31,19 @@ MEAL_PLAN_INVOCATION = "family kitchen"
 # module-level cert cache: {url: pem_bytes}
 _CERT_CACHE = {}
 
+# in-memory ring buffer of recent rejection diagnostics (no secrets stored)
+_DIAG = []
+
+
+def _record_diag(reason, extra=None):
+    import time as _t
+    entry = {"at": _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()), "reason": reason}
+    if extra:
+        entry.update(extra)
+    _DIAG.append(entry)
+    del _DIAG[:-15]
+
+
 
 # --------------------------------------------------------------------------- #
 # Request verification
@@ -583,6 +596,11 @@ def alexa_endpoint():
     error = _verify_request(envelope, body_bytes)
     if error:
         current_app.logger.warning("Alexa request rejected: %s", error)
+        _record_diag(error, {
+            "had_cert_url": bool(request.headers.get("SignatureCertChainUrl")),
+            "had_signature": bool(request.headers.get("Signature-256") or request.headers.get("Signature")),
+            "verify_enabled": _verify_enabled(),
+        })
         return jsonify({"error": "unauthorized"}), 400
 
     try:
@@ -590,6 +608,20 @@ def alexa_endpoint():
     except Exception as e:  # noqa: BLE001 - never 500 to Alexa; speak a graceful error
         current_app.logger.exception("Alexa handler error")
         return _resp("Sorry, something went wrong in the kitchen. Please try again.", end=True)
+
+
+@alexa_bp.route("/_diag", methods=["GET"])
+def alexa_diag():
+    """Return recent request-rejection diagnostics.
+
+    Guarded by the ALEXA_DEBUG_TOKEN env var: if it is unset the route 404s, so
+    it is inert unless you deliberately enable it. The recorded reasons contain
+    no secrets (just verification error strings). Access with ?t=<token>.
+    """
+    token = os.environ.get("ALEXA_DEBUG_TOKEN", "").strip()
+    if not token or request.args.get("t", "") != token:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"recent": _DIAG})
 
 
 # --------------------------------------------------------------------------- #
