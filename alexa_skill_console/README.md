@@ -1,4 +1,4 @@
-# Family Kitchen — Alexa Skill setup
+# family cookbook — Alexa Skill setup
 
 This turns your existing `/kitchen` recipe app into a **voice + Echo Show** experience.
 Your Flask app **is** the skill's backend — there is **no AWS Lambda** to manage, and
@@ -6,7 +6,7 @@ recipe editing stays exactly where it is now (`/kitchen/manage`).
 
 - **Endpoint (what Alexa calls):** `https://www.jackcapstaff.com/kitchen/alexa`
 - **Data source:** your live recipe database (published recipes only)
-- **Invocation name:** *"family kitchen"* → say **"Alexa, open family kitchen"**
+- **Invocation name:** *"family cookbook"* → say **"Alexa, open family cookbook"**
 
 ---
 
@@ -14,7 +14,7 @@ recipe editing stays exactly where it is now (`/kitchen/manage`).
 
 1. Go to the **Alexa Developer Console** → <https://developer.amazon.com/alexa/console/ask>.
 2. **Create Skill**:
-   - Name: `Family Kitchen`
+   - Name: `family cookbook`
    - Primary locale: **English (UK)** (the responses are written in en-GB).
    - Model: **Custom**
    - Hosting: **Provision your own** (this is the key choice — we use our own HTTPS endpoint, not Alexa-hosted/Lambda).
@@ -63,15 +63,15 @@ Without this permission the skill will instead tell you the duration and suggest
 ## 6. Test it
 
 - **Console simulator:** left nav **Test** → set to **Development** → type or say
-  *"open family kitchen"*.
+  *"open family cookbook"*.
 - **On your Echo Show** (signed into the same Amazon account as the dev account):
-  *"Alexa, open family kitchen"*.
+  *"Alexa, open family cookbook"*.
 
 ### Things to say
 
 | You say | What happens |
 | --- | --- |
-| "Alexa, open family kitchen" | Welcome + how many recipes |
+| "Alexa, open family cookbook" | Welcome + how many recipes |
 | "what's on the menu" | Reads the list (with day numbers) |
 | "open day one" / "cook the chicken tikka curry" | Opens that recipe, shows equipment |
 | "what equipment do I need" / "ingredients" / "prep" | Reads those, shows them on screen |

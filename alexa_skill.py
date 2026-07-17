@@ -26,7 +26,7 @@ from flask import Blueprint, current_app, request, jsonify
 alexa_bp = Blueprint("alexa", __name__, url_prefix="/kitchen/alexa")
 
 APL_TOKEN = "kitchenStep"
-MEAL_PLAN_INVOCATION = "family kitchen"
+MEAL_PLAN_INVOCATION = "family cookbook"
 
 # module-level cert cache: {url: pem_bytes}
 _CERT_CACHE = {}
@@ -604,9 +604,29 @@ def alexa_endpoint():
         return jsonify({"error": "unauthorized"}), 400
 
     try:
-        return _handle(envelope)
+        import time as _t
+        _t0 = _t.time()
+        resp = _handle(envelope)
+        try:
+            payload = resp.get_json(silent=True) if hasattr(resp, "get_json") else None
+        except Exception:
+            payload = None
+        rtype = (envelope.get("request") or {}).get("type")
+        rname = ((envelope.get("request") or {}).get("intent") or {}).get("name")
+        dev = (((envelope.get("context") or {}).get("System") or {}).get("device") or {})
+        has_apl_iface = "Alexa.Presentation.APL" in (dev.get("supportedInterfaces") or {})
+        directives = ((payload or {}).get("response") or {}).get("directives") or []
+        sent_apl = any((d.get("type", "").startswith("Alexa.Presentation.APL")) for d in directives)
+        _record_diag("ok", {
+            "rtype": rtype, "intent": rname,
+            "device_supports_apl": has_apl_iface,
+            "sent_apl": sent_apl,
+            "ms": int((_t.time() - _t0) * 1000),
+        })
+        return resp
     except Exception as e:  # noqa: BLE001 - never 500 to Alexa; speak a graceful error
         current_app.logger.exception("Alexa handler error")
+        _record_diag("handler_exception", {"err": repr(e)[:300]})
         return _resp("Sorry, something went wrong in the kitchen. Please try again.", end=True)
 
 
