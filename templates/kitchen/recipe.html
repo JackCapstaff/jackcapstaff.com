@@ -21,9 +21,20 @@
   .checklist li.checked span.t{text-decoration:line-through}
 
   /* cook mode */
-  .cook{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:clamp(20px,4vw,40px);text-align:center}
-  .cook .stepno{color:var(--accent);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:15px}
-  .cook .steptext{font-size:clamp(22px,4.5vw,40px);line-height:1.35;margin:16px auto;max-width:900px}
+  .cook{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:clamp(18px,3vw,34px)}
+  .cook .stepno{color:var(--accent);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:15px;text-align:center}
+  .stepcards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:stretch;margin:8px 0}
+  .stepcard{flex:1;min-width:280px;max-width:640px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:16px;padding:clamp(18px,3vw,30px);display:flex;flex-direction:column;gap:14px;text-align:center}
+  .stepcard.primary{border-color:var(--accent)}
+  .stepcard.peek{opacity:.75}
+  .stepcard .scno{font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:14px;color:var(--accent)}
+  .stepcard.peek .scno{color:var(--muted)}
+  .stepcard .sctext{font-size:clamp(20px,3.4vw,32px);line-height:1.35}
+  .tctl{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:auto}
+  .tctl .tinput{width:112px;text-align:center;font-size:clamp(20px,3vw,26px);font-variant-numeric:tabular-nums;font-weight:700}
+  .tctl .adj{min-width:56px;font-size:26px;padding:8px 14px;line-height:1}
+  .tctl .start{font-size:clamp(16px,2.4vw,20px)}
   .cook .controls{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:22px}
   .cook .controls .btn{min-width:120px;font-size:clamp(17px,2.5vw,22px)}
   .dots{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:18px 0 4px}
@@ -50,6 +61,8 @@
   <h1>{{ recipe.title }}</h1>
   {% if can_manage %}
     <a class="btn small" href="{{ url_for('recipes.manage_edit', slug=recipe.slug) }}">Edit</a>
+  {% else %}
+    <a class="btn ghost small" href="{{ url_for('login', next=request.path) }}">Sign in</a>
   {% endif %}
 </div>
 <div class="subline">
@@ -110,9 +123,7 @@
 <div class="panel" id="panel-cook">
   {% if recipe.steps %}
     <div class="cook">
-      <div class="stepno" id="stepno"></div>
-      <div class="steptext" id="steptext"></div>
-      <div id="steptimer"></div>
+      <div class="stepcards" id="stepcards"></div>
       <div class="controls">
         <button class="btn" id="prevBtn">◀ Prev</button>
         <button class="btn primary" id="nextBtn">Next ▶</button>
@@ -141,15 +152,49 @@
     });
   });
 
-  // ---- cook mode ----
+  // ---- cook mode (two steps at a time, editable timers) ----
   let idx = 0;
-  const stepno = document.getElementById('stepno');
-  const steptext = document.getElementById('steptext');
-  const steptimer = document.getElementById('steptimer');
+  const cards = document.getElementById('stepcards');
   const dots = document.getElementById('dots');
   const done = new Set();
 
-  function fmt(s){const m=Math.floor(s/60),ss=s%60;return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
+  function fmt(s){s=Math.max(0,Math.round(s));const m=Math.floor(s/60),ss=s%60;return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
+  function parseTime(str){
+    str=(str||'').trim();
+    if(str.indexOf(':')>-1){const p=str.split(':');const m=parseInt(p[0],10)||0;const s=parseInt(p[1],10)||0;return m*60+s;}
+    const n=parseInt(str,10); return isNaN(n)?0:n*60;
+  }
+
+  function timerControl(step, i){
+    const wrap=document.createElement('div'); wrap.className='tctl';
+    const minus=document.createElement('button'); minus.type='button'; minus.className='btn adj'; minus.textContent='−';
+    const inp=document.createElement('input'); inp.className='tinput'; inp.type='text'; inp.inputMode='numeric';
+    inp.value=fmt(step.timer_seconds);
+    const plus=document.createElement('button'); plus.type='button'; plus.className='btn adj'; plus.textContent='+';
+    const start=document.createElement('button'); start.type='button'; start.className='btn green start';
+    start.textContent='⏱ Start';
+    minus.onclick=()=>{ inp.value=fmt(Math.max(0,parseTime(inp.value)-60)); };
+    plus.onclick=()=>{ inp.value=fmt(parseTime(inp.value)+60); };
+    inp.onblur=()=>{ inp.value=fmt(parseTime(inp.value)); };
+    start.onclick=()=>{ const secs=parseTime(inp.value); if(secs>0) startTimer(secs, 'Step '+(i+1)); };
+    wrap.appendChild(minus); wrap.appendChild(inp); wrap.appendChild(plus); wrap.appendChild(start);
+    return wrap;
+  }
+
+  function makeCard(i, kind){
+    const s=STEPS[i];
+    const card=document.createElement('div'); card.className='stepcard '+kind;
+    const no=document.createElement('div'); no.className='scno';
+    if(kind==='primary'){
+      no.textContent='Step '+(i+1)+' of '+STEPS.length;
+    } else {
+      no.textContent=/^\s*meanwhile/i.test(s.text) ? 'Meanwhile' : ('Coming up · Step '+(i+1));
+    }
+    const txt=document.createElement('div'); txt.className='sctext'; txt.textContent=s.text;
+    card.appendChild(no); card.appendChild(txt);
+    if(s.timer_seconds){ card.appendChild(timerControl(s,i)); }
+    return card;
+  }
 
   function renderDots(){
     if(!dots) return;
@@ -162,17 +207,9 @@
   }
   function renderStep(){
     if(!STEPS.length) return;
-    const s=STEPS[idx];
-    stepno.textContent='Step '+(idx+1)+' of '+STEPS.length;
-    steptext.textContent=s.text;
-    steptimer.innerHTML='';
-    if(s.timer_seconds){
-      const b=document.createElement('button');
-      b.className='btn green big-timer-btn';
-      b.textContent='⏱ Start timer · '+(s.timer_label||fmt(s.timer_seconds));
-      b.onclick=()=>startTimer(s.timer_seconds, 'Step '+(idx+1));
-      steptimer.appendChild(b);
-    }
+    cards.innerHTML='';
+    cards.appendChild(makeCard(idx,'primary'));
+    if(idx+1<STEPS.length){ cards.appendChild(makeCard(idx+1,'peek')); }
     document.getElementById('prevBtn').disabled = idx===0;
     document.getElementById('nextBtn').textContent = idx===STEPS.length-1 ? 'Done ✓' : 'Next ▶';
     renderDots();
