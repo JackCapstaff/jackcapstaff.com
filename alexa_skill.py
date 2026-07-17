@@ -236,9 +236,10 @@ def _iso_duration(seconds):
 # --------------------------------------------------------------------------- #
 def _resp(speech, reprompt=None, end=False, attributes=None, directives=None, card=None):
     response = {
-        "outputSpeech": {"type": "PlainText", "text": speech},
         "shouldEndSession": end,
     }
+    if speech is not None:
+        response["outputSpeech"] = {"type": "PlainText", "text": speech}
     if reprompt:
         response["reprompt"] = {"outputSpeech": {"type": "PlainText", "text": reprompt}}
     if directives:
@@ -259,37 +260,6 @@ def _supports_apl(envelope):
         )
     except (KeyError, TypeError):
         return False
-
-
-def _apl_directive(recipe, step_index=None, heading=None, lines=None, subtitle=None):
-    """Build an APL RenderDocument directive for the Echo Show."""
-    if step_index is not None:
-        steps = recipe.steps
-        s = steps[step_index]
-        heading = f"Step {step_index + 1} of {len(steps)}"
-        primary = s["text"]
-        subtitle = recipe.title
-        timer_label = s.get("timer_label") or ""
-        nxt = steps[step_index + 1]["text"] if step_index + 1 < len(steps) else ""
-    else:
-        primary = "\n".join(f"• {ln}" for ln in (lines or []))
-        timer_label = ""
-        nxt = ""
-
-    return {
-        "type": "Alexa.Presentation.APL.RenderDocument",
-        "token": APL_TOKEN,
-        "document": _APL_DOC,
-        "datasources": {
-            "data": {
-                "heading": heading or "",
-                "subtitle": subtitle or "",
-                "primary": primary,
-                "timer": (f"Timer: {timer_label}" if timer_label else ""),
-                "nextUp": (f"Next: {nxt}" if nxt else ""),
-            }
-        },
-    }
 
 
 def _timer_directive_via_api(envelope, seconds, label):
@@ -339,10 +309,9 @@ def _launch(envelope):
     if not n:
         return _resp("There are no recipes yet. Add some in the kitchen web app first.", end=True)
     speech = (f"Welcome to the kitchen. There are {n} recipes. "
-              "You can say, for example, open day one, or, cook the chicken tikka curry. "
-              "You can also say, what's on the menu.")
-    reprompt = "Which recipe would you like? Try, open day one."
-    directives = None
+              "Tap a recipe on the screen, or say, open day one, or, cook the chicken tikka curry.")
+    reprompt = "Which recipe would you like? Try, open day one, or tap one on screen."
+    directives = [_apl_home_directive(recipes)] if _supports_apl(envelope) else None
     return _resp(speech, reprompt=reprompt, attributes={}, directives=directives)
 
 
@@ -375,17 +344,14 @@ def _open_recipe(recipe, envelope):
         parts.append(f"Serves {recipe.servings}.")
     if equip:
         parts.append(f"You'll need: {equip}.")
-    parts.append("Say start cooking to begin, or ask what equipment or ingredients you need.")
+    parts.append("Tap Cook or say start cooking to begin.")
     speech = " ".join(parts)
-    directives = []
+    directives = None
     if _supports_apl(envelope):
-        directives.append(_apl_directive(
-            recipe, heading=recipe.title,
-            subtitle=(f"Serves {recipe.servings}" if recipe.servings else ""),
-            lines=recipe.equipment or ["Say 'start cooking' to begin"],
-        ))
+        lines = recipe.equipment or ["Nothing special needed â€” tap Cook to begin."]
+        directives = [_apl_list_directive(recipe, "equip", "Equipment", lines)]
     return _resp(speech, reprompt="Say start cooking to begin.", attributes=attrs,
-                 directives=directives or None)
+                 directives=directives)
 
 
 def _open_by_day(envelope, intent):
@@ -417,21 +383,25 @@ def _current(attrs):
     return recipe, step
 
 
-def _say_step(recipe, step, envelope):
+def _say_step(recipe, step, envelope, timer_override=None, speak=True):
     steps = recipe.steps
     step = max(0, min(step, len(steps) - 1))
     s = steps[step]
     attrs = {"slug": recipe.slug, "step": step}
-    speech = f"Step {step + 1}. {s['text']}"
-    if s.get("timer_label"):
-        speech += f" You can say start the timer for {s['timer_label']}."
-    if step == len(steps) - 1:
-        speech += " That's the last step. Enjoy!"
-    directives = []
+    reprompt = None
+    if speak:
+        speech = f"Step {step + 1}. {s['text']}"
+        if s.get("timer_label"):
+            speech += f" You can say start the timer for {s['timer_label']}."
+        if step == len(steps) - 1:
+            speech += " That's the last step. Enjoy!"
+        reprompt = "Say next, repeat, or start the timer."
+    else:
+        speech = None
+    directives = None
     if _supports_apl(envelope):
-        directives.append(_apl_directive(recipe, step_index=step))
-    reprompt = "Say next, repeat, or start the timer."
-    return _resp(speech, reprompt=reprompt, attributes=attrs, directives=directives or None)
+        directives = [_apl_step_directive(recipe, step, timer_override=timer_override)]
+    return _resp(speech, reprompt=reprompt, attributes=attrs, directives=directives)
 
 
 def _start_cooking(envelope, attrs):
@@ -479,8 +449,8 @@ def _equipment(envelope, attrs):
         return _resp("Open a recipe first. Try, open day one.", reprompt="Try, open day one.")
     if not recipe.equipment:
         return _resp("No equipment is listed for this recipe.", attributes=attrs)
-    directives = [_apl_directive(recipe, heading="Equipment", subtitle=recipe.title,
-                                 lines=recipe.equipment)] if _supports_apl(envelope) else None
+    directives = [_apl_list_directive(recipe, "equip", "Equipment", recipe.equipment)] \
+        if _supports_apl(envelope) else None
     return _resp("You'll need: " + _join(recipe.equipment) + ".",
                  reprompt="Say start cooking to begin.", attributes=attrs, directives=directives)
 
@@ -492,8 +462,8 @@ def _ingredients(envelope, attrs):
     if not recipe.ingredients:
         return _resp("No separate ingredients are listed; they're mentioned within the steps.",
                      attributes=attrs)
-    directives = [_apl_directive(recipe, heading="Ingredients", subtitle=recipe.title,
-                                 lines=recipe.ingredients)] if _supports_apl(envelope) else None
+    directives = [_apl_list_directive(recipe, "prep", "Ingredients", recipe.ingredients)] \
+        if _supports_apl(envelope) else None
     return _resp("Ingredients: " + _join(recipe.ingredients) + ".",
                  reprompt="Say start cooking to begin.", attributes=attrs, directives=directives)
 
@@ -504,8 +474,8 @@ def _prep(envelope, attrs):
         return _resp("Open a recipe first. Try, open day one.", reprompt="Try, open day one.")
     if not recipe.prep:
         return _resp("There are no separate prep notes for this recipe.", attributes=attrs)
-    directives = [_apl_directive(recipe, heading="Prep", subtitle=recipe.title,
-                                 lines=recipe.prep)] if _supports_apl(envelope) else None
+    directives = [_apl_list_directive(recipe, "prep", "Prep", recipe.prep)] \
+        if _supports_apl(envelope) else None
     return _resp("Prep: " + _join(recipe.prep) + ".",
                  reprompt="Say start cooking to begin.", attributes=attrs, directives=directives)
 
@@ -529,7 +499,7 @@ def _start_timer(envelope, attrs):
                   f"{s.get('timer_label')}.")
     else:
         speech = f"Please say, Alexa, set a timer for {s.get('timer_label')}."
-    directives = [_apl_directive(recipe, step_index=step)] if _supports_apl(envelope) else None
+    directives = [_apl_step_directive(recipe, step)] if _supports_apl(envelope) else None
     return _resp(speech, reprompt="Say next when you're ready.", attributes=attrs, directives=directives)
 
 
@@ -538,6 +508,100 @@ def _help(envelope, attrs):
               "Then say: start cooking, next, previous, repeat, what equipment do I need, "
               "or, start the timer. Say stop to exit.")
     return _resp(speech, reprompt="Which recipe would you like? Try, open day one.", attributes=attrs)
+
+
+def _as_int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _user_event(envelope):
+    """Handle a touch (SendEvent) from the Echo Show APL screen.
+
+    All state travels in the button's ``arguments`` list, so touch handling is
+    stateless and independent of session attributes:
+      ["menu"]                         -> home grid
+      ["overview", slug]               -> recipe landing (Equipment tab)
+      ["equip", slug]                  -> Equipment list
+      ["prep", slug]                   -> Ingredients + Prep list
+      ["open", slug]                   -> start cooking at step 0
+      ["next"|"prev", slug, step]      -> step navigation
+      ["tadj", slug, step, secs, delta]-> adjust this step's timer, re-render
+      ["tstart", slug, step, secs]     -> start a native timer for `secs`
+    """
+    req = envelope.get("request", {}) or {}
+    args = req.get("arguments") or []
+    if not args:
+        return _launch(envelope)
+    action = args[0]
+    if action == "menu":
+        return _launch(envelope)
+
+    slug = args[1] if len(args) > 1 else None
+    recipe = _get_by_slug(slug) if slug else None
+    if not recipe:
+        return _launch(envelope)
+
+    step = _as_int(args[2]) if len(args) > 2 else 0
+    attrs = {"slug": recipe.slug, "step": step}
+
+    if action == "overview":
+        return _open_recipe(recipe, envelope)
+
+    if action == "equip":
+        lines = recipe.equipment or ["Nothing special needed."]
+        directives = [_apl_list_directive(recipe, "equip", "Equipment", lines)] \
+            if _supports_apl(envelope) else None
+        return _resp(None, attributes={"slug": recipe.slug, "step": step}, directives=directives)
+
+    if action == "prep":
+        lines = []
+        if recipe.ingredients:
+            lines.append("Ingredients")
+            lines += recipe.ingredients
+        if recipe.prep:
+            lines.append("Prep")
+            lines += recipe.prep
+        if not lines:
+            lines = ["No prep needed â€” tap Cook to begin."]
+        directives = [_apl_list_directive(recipe, "prep", "Prep", lines)] \
+            if _supports_apl(envelope) else None
+        return _resp(None, attributes={"slug": recipe.slug, "step": step}, directives=directives)
+
+    if action == "open":
+        return _say_step(recipe, 0, envelope)
+
+    if action == "next":
+        return _say_step(recipe, min(step + 1, len(recipe.steps) - 1), envelope)
+
+    if action == "prev":
+        return _say_step(recipe, max(step - 1, 0), envelope)
+
+    if action == "tadj":
+        cur = _as_int(args[3]) if len(args) > 3 else 0
+        delta = _as_int(args[4]) if len(args) > 4 else 0
+        return _say_step(recipe, step, envelope, timer_override=max(0, cur + delta), speak=False)
+
+    if action == "tstart":
+        secs = _as_int(args[3]) if len(args) > 3 else (recipe.steps[step].get("timer_seconds") or 0)
+        if secs <= 0:
+            return _say_step(recipe, step, envelope, speak=False)
+        ok, needs_perm = _timer_directive_via_api(envelope, secs, f"{recipe.title} Â· step {step + 1}")
+        if ok:
+            speech = f"Timer set for {_iso_duration(secs).replace('PT', '').replace('M', ' minutes ').replace('S', ' seconds').replace('H', ' hours ').strip()}."
+        elif needs_perm:
+            speech = ("To let me set timers, enable the timers permission for this skill in the "
+                      "Alexa app. For now you can say, Alexa, set a timer.")
+        else:
+            speech = "Please say, Alexa, set a timer."
+        directives = [_apl_step_directive(recipe, step, timer_override=secs)] \
+            if _supports_apl(envelope) else None
+        return _resp(speech, reprompt="Say next when you're ready.",
+                     attributes=attrs, directives=directives)
+
+    return _launch(envelope)
 
 
 # --------------------------------------------------------------------------- #
@@ -553,6 +617,9 @@ def _handle(envelope):
 
     if rtype == "SessionEndedRequest":
         return _resp("", end=True)
+
+    if rtype == "Alexa.Presentation.APL.UserEvent":
+        return _user_event(envelope)
 
     if rtype == "IntentRequest":
         intent = req.get("intent", {})
@@ -645,66 +712,300 @@ def alexa_diag():
 
 
 # --------------------------------------------------------------------------- #
-# APL document (kept inline so no static hosting is needed)
+# APL documents (server-rendered inline; no static hosting or datasources).
+#
+# Every screen is built fresh per request with literal values and literal touch
+# arguments, so there is no data-binding to reason about and the Echo Show can
+# drive the whole flow by touch (each tap POSTs an Alexa.Presentation.APL.User-
+# Event back to this endpoint, handled by _user_event()).
 # --------------------------------------------------------------------------- #
-_APL_DOC = {
-    "type": "APL",
-    "version": "2022.1",
-    "mainTemplate": {
-        "parameters": ["data"],
-        "items": [
-            {
+_BG = "#0b0f14"
+_PANEL = "#161d27"
+_PANEL2 = "#1d2734"
+_LINE = "#263141"
+_ACCENT = "#ff7a3c"
+_ACCENT_INK = "#1a1008"
+_GREEN = "#36c17a"
+_GREEN_INK = "#04240f"
+_TEXT = "#f3f6fa"
+_MUTED = "#9fb0c3"
+
+
+def _fmt_mmss(secs):
+    secs = max(0, int(secs or 0))
+    return f"{secs // 60:02d}:{secs % 60:02d}"
+
+
+def _spacer(px, vertical=False):
+    key = "height" if vertical else "width"
+    return {"type": "Container", key: f"{int(px)}dp"}
+
+
+def _btn(text, args, bg=_LINE, color=_TEXT, grow=0, font="22dp", pad=12):
+    """A touchable pill button that fires a SendEvent with literal `args`."""
+    return {
+        "type": "TouchWrapper",
+        "grow": grow,
+        "onPress": [{"type": "SendEvent", "arguments": args}],
+        "item": {
+            "type": "Frame",
+            "backgroundColor": bg,
+            "borderRadius": "14dp",
+            "item": {
                 "type": "Container",
+                "direction": "row",
+                "justifyContent": "center",
+                "alignItems": "center",
+                "paddingTop": f"{pad}dp",
+                "paddingBottom": f"{pad}dp",
+                "paddingLeft": "14dp",
+                "paddingRight": "14dp",
+                "items": [{
+                    "type": "Text",
+                    "text": text,
+                    "fontSize": font,
+                    "color": color,
+                    "fontWeight": "700",
+                    "textAlign": "center",
+                    "maxLines": 1,
+                }],
+            },
+        },
+    }
+
+
+def _render(items, token=APL_TOKEN):
+    """Wrap a list of components in a full-screen dark document + directive."""
+    doc = {
+        "type": "APL",
+        "version": "2022.1",
+        "theme": "dark",
+        "mainTemplate": {
+            "items": [{
+                "type": "Frame",
                 "width": "100vw",
                 "height": "100vh",
-                "paddingLeft": "5vw",
-                "paddingRight": "5vw",
-                "paddingTop": "5vh",
-                "paddingBottom": "5vh",
-                "direction": "column",
-                "items": [
-                    {
-                        "type": "Text",
-                        "text": "${data.heading}",
-                        "fontSize": "28dp",
-                        "color": "#ff7a3c",
-                        "fontWeight": "700",
-                        "maxLines": 1
-                    },
-                    {
-                        "type": "Text",
-                        "text": "${data.subtitle}",
-                        "fontSize": "20dp",
-                        "color": "#9fb0c3",
-                        "maxLines": 1,
-                        "paddingBottom": "2vh"
-                    },
-                    {
-                        "type": "Text",
-                        "text": "${data.primary}",
-                        "fontSize": "44dp",
-                        "color": "#f3f6fa",
-                        "fontWeight": "500",
-                        "grow": 1,
-                        "maxLines": 8
-                    },
-                    {
-                        "type": "Text",
-                        "text": "${data.timer}",
-                        "fontSize": "26dp",
-                        "color": "#36c17a",
-                        "fontWeight": "700",
-                        "maxLines": 1
-                    },
-                    {
-                        "type": "Text",
-                        "text": "${data.nextUp}",
-                        "fontSize": "22dp",
-                        "color": "#9fb0c3",
-                        "maxLines": 2
-                    }
-                ]
-            }
-        ]
+                "backgroundColor": _BG,
+                "item": {
+                    "type": "Container",
+                    "width": "100%",
+                    "height": "100%",
+                    "direction": "column",
+                    "paddingLeft": "4vw",
+                    "paddingRight": "4vw",
+                    "paddingTop": "3vh",
+                    "paddingBottom": "3vh",
+                    "items": items,
+                },
+            }],
+        },
     }
-}
+    return {
+        "type": "Alexa.Presentation.APL.RenderDocument",
+        "token": token,
+        "document": doc,
+    }
+
+
+def _tabbar(recipe, active):
+    """Menu / Equipment / Prep / Cook tab row (mirrors the web app tabs)."""
+    def tab(label, key, args):
+        on = (key == active)
+        return _btn(
+            label, args,
+            bg=(_ACCENT if on else _PANEL2),
+            color=(_ACCENT_INK if on else _MUTED),
+            grow=1, font="19dp", pad=10,
+        )
+    return {
+        "type": "Container",
+        "direction": "row",
+        "width": "100%",
+        "items": [
+            tab("\u2261 Menu", "menu", ["menu"]),
+            _spacer(8),
+            tab("\U0001f9f0 Equip", "equip", ["equip", recipe.slug]),
+            _spacer(8),
+            tab("\U0001f52a Prep", "prep", ["prep", recipe.slug]),
+            _spacer(8),
+            tab("\U0001f525 Cook", "cook", ["open", recipe.slug]),
+        ],
+    }
+
+
+def _home_card(r):
+    return {
+        "type": "TouchWrapper",
+        "width": "100%",
+        "onPress": [{"type": "SendEvent", "arguments": ["overview", r.slug]}],
+        "item": {
+            "type": "Frame",
+            "backgroundColor": _PANEL,
+            "borderRadius": "18dp",
+            "borderColor": _LINE,
+            "borderWidth": "1dp",
+            "height": "156dp",
+            "item": {
+                "type": "Container",
+                "width": "100%",
+                "height": "100%",
+                "direction": "column",
+                "paddingLeft": "18dp",
+                "paddingRight": "18dp",
+                "paddingTop": "14dp",
+                "paddingBottom": "14dp",
+                "items": [
+                    {"type": "Text",
+                     "text": (f"DAY {r.day_number}" if r.day_number else "RECIPE"),
+                     "fontSize": "15dp", "color": _ACCENT, "fontWeight": "800",
+                     "maxLines": 1},
+                    {"type": "Text", "text": r.title, "fontSize": "24dp",
+                     "color": _TEXT, "fontWeight": "700", "grow": 1, "maxLines": 3},
+                    {"type": "Text", "text": (r.servings or ""), "fontSize": "15dp",
+                     "color": _MUTED, "maxLines": 1},
+                ],
+            },
+        },
+    }
+
+
+def _apl_home_directive(recipes):
+    """Scrollable two-column grid of tappable recipe cards."""
+    cards = [_home_card(r) for r in recipes]
+    rows = []
+    for i in range(0, len(cards), 2):
+        pair = [{"type": "Container", "grow": 1, "items": [cards[i]]}, _spacer(14)]
+        if i + 1 < len(cards):
+            pair.append({"type": "Container", "grow": 1, "items": [cards[i + 1]]})
+        else:
+            pair.append({"type": "Container", "grow": 1})
+        rows.append({"type": "Container", "direction": "row", "width": "100%", "items": pair})
+        rows.append(_spacer(14, vertical=True))
+    header = [
+        {"type": "Text", "text": "Family Kitchen", "fontSize": "34dp",
+         "color": _ACCENT, "fontWeight": "800", "maxLines": 1},
+        {"type": "Text", "text": "Tap a recipe to open it", "fontSize": "20dp",
+         "color": _MUTED, "maxLines": 1, "paddingBottom": "1vh"},
+    ]
+    scroll = {
+        "type": "ScrollView",
+        "grow": 1,
+        "width": "100%",
+        "item": {"type": "Container", "width": "100%", "direction": "column", "items": rows},
+    }
+    return _render(header + [scroll])
+
+
+def _apl_list_directive(recipe, active, heading, lines):
+    """Equipment / Prep style list view with the tab bar and a Start button."""
+    items = [
+        _tabbar(recipe, active),
+        _spacer(10, vertical=True),
+        {"type": "Text", "text": recipe.title, "fontSize": "22dp", "color": _MUTED, "maxLines": 1},
+        {"type": "Text", "text": heading, "fontSize": "26dp", "color": _ACCENT,
+         "fontWeight": "800", "maxLines": 1, "paddingBottom": "1vh"},
+    ]
+    list_items = []
+    for ln in lines:
+        list_items.append({
+            "type": "Frame", "backgroundColor": _PANEL, "borderRadius": "12dp",
+            "borderColor": _LINE, "borderWidth": "1dp", "width": "100%",
+            "item": {"type": "Container", "paddingLeft": "16dp", "paddingRight": "16dp",
+                     "paddingTop": "12dp", "paddingBottom": "12dp",
+                     "items": [{"type": "Text", "text": ln, "fontSize": "22dp",
+                                "color": _TEXT, "maxLines": 4}]},
+        })
+        list_items.append(_spacer(8, vertical=True))
+    items.append({
+        "type": "ScrollView", "grow": 1, "width": "100%",
+        "item": {"type": "Container", "width": "100%", "items": list_items},
+    })
+    items.append(_spacer(8, vertical=True))
+    items.append(_btn("\U0001f525 Start cooking", ["open", recipe.slug],
+                      bg=_ACCENT, color=_ACCENT_INK, font="24dp", pad=14))
+    return _render(items)
+
+
+def _dots(n, cur):
+    dots = []
+    for i in range(n):
+        if i == cur:
+            c = _ACCENT
+        elif i < cur:
+            c = _GREEN
+        else:
+            c = _LINE
+        dots.append({"type": "Frame", "width": "12dp", "height": "12dp",
+                     "borderRadius": "6dp", "backgroundColor": c})
+        dots.append(_spacer(6))
+    return {"type": "Container", "direction": "row", "justifyContent": "center",
+            "wrap": "wrap", "items": dots}
+
+
+def _apl_step_directive(recipe, step, timer_override=None):
+    """Interactive cook view: big step text, editable timer, prev/next, dots."""
+    steps = recipe.steps
+    n = len(steps)
+    step = max(0, min(step, n - 1))
+    s = steps[step]
+    base_secs = s.get("timer_seconds") or 0
+    secs = timer_override if timer_override is not None else base_secs
+    has_timer = bool(base_secs) or bool(timer_override)
+
+    items = [
+        _tabbar(recipe, "cook"),
+        _spacer(10, vertical=True),
+        {"type": "Container", "direction": "row", "width": "100%", "alignItems": "center",
+         "items": [
+             {"type": "Text", "text": recipe.title, "fontSize": "20dp", "color": _MUTED,
+              "grow": 1, "maxLines": 1},
+             {"type": "Text", "text": f"Step {step + 1} of {n}", "fontSize": "18dp",
+              "color": _ACCENT, "fontWeight": "800", "maxLines": 1},
+         ]},
+        _spacer(8, vertical=True),
+        {"type": "Frame", "grow": 1, "width": "100%", "backgroundColor": _PANEL,
+         "borderRadius": "18dp", "borderColor": _ACCENT, "borderWidth": "1dp",
+         "item": {"type": "Container", "width": "100%", "height": "100%",
+                  "justifyContent": "center", "paddingLeft": "22dp", "paddingRight": "22dp",
+                  "paddingTop": "16dp", "paddingBottom": "16dp",
+                  "items": [{"type": "Text", "text": s["text"], "fontSize": "34dp",
+                             "color": _TEXT, "textAlign": "center", "maxLines": 8}]}},
+    ]
+
+    if has_timer:
+        items.append(_spacer(10, vertical=True))
+        items.append({
+            "type": "Container", "direction": "row", "width": "100%",
+            "justifyContent": "center", "alignItems": "center",
+            "items": [
+                _btn("\u2212", ["tadj", recipe.slug, step, secs, -60],
+                     bg=_PANEL2, font="30dp", pad=6),
+                _spacer(12),
+                {"type": "Frame", "backgroundColor": _PANEL2, "borderRadius": "12dp",
+                 "item": {"type": "Container", "paddingLeft": "22dp", "paddingRight": "22dp",
+                          "paddingTop": "8dp", "paddingBottom": "8dp",
+                          "items": [{"type": "Text", "text": _fmt_mmss(secs), "fontSize": "30dp",
+                                     "color": _TEXT, "fontWeight": "800", "maxLines": 1}]}},
+                _spacer(12),
+                _btn("+", ["tadj", recipe.slug, step, secs, 60], bg=_PANEL2, font="30dp", pad=6),
+                _spacer(16),
+                _btn("\u23f1 Start", ["tstart", recipe.slug, step, secs],
+                     bg=_GREEN, color=_GREEN_INK, font="22dp"),
+            ],
+        })
+
+    items.append(_spacer(12, vertical=True))
+    prev_btn = (_btn("\u25c0 Prev", ["prev", recipe.slug, step], bg=_PANEL2, grow=1)
+                if step > 0 else {"type": "Container", "grow": 1})
+    next_label = "Done \u2713" if step == n - 1 else "Next \u25b6"
+    items.append({
+        "type": "Container", "direction": "row", "width": "100%",
+        "items": [
+            prev_btn,
+            _spacer(14),
+            _btn(next_label, ["next", recipe.slug, step], bg=_ACCENT, color=_ACCENT_INK, grow=1),
+        ],
+    })
+    items.append(_spacer(10, vertical=True))
+    items.append(_dots(n, step))
+    return _render(items)
