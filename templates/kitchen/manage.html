@@ -1,0 +1,65 @@
+{% extends "kitchen/base.html" %}
+{% block title %}Manage recipes{% endblock %}
+{% block body %}
+<div class="topbar">
+  <h1>Manage recipes</h1>
+  <a class="btn ghost small" href="{{ url_for('recipes.kitchen_index') }}">View menu</a>
+  <a class="btn primary" href="{{ url_for('recipes.manage_new') }}">＋ Add recipe</a>
+</div>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-bottom:24px">
+  <form class="card" method="post" action="{{ url_for('recipes.manage_seed') }}">
+    {{ csrf_token() if csrf_token is defined else '' }}
+    <h3>Import built-in 14-day plan</h3>
+    <p class="muted">Adds the 14 family meal-plan recipes with auto-detected timers &amp; equipment.</p>
+    <label style="display:flex;align-items:center;gap:10px;font-weight:500">
+      <input type="checkbox" name="replace" style="width:auto"> Replace existing 14-day plan first
+    </label>
+    <button class="btn green" type="submit">Import plan</button>
+  </form>
+
+  <form class="card" method="post" action="{{ url_for('recipes.manage_import') }}" enctype="multipart/form-data">
+    {{ csrf_token() if csrf_token is defined else '' }}
+    <h3>Upload a .docx booklet</h3>
+    <p class="muted">Expects “Day N – Title” headings, a “Method” list of steps, and optional “Baby:” notes.</p>
+    <input type="text" name="plan_name" placeholder="Plan name (e.g. Summer plan)">
+    <input type="file" name="docx" accept=".docx" style="margin-top:10px">
+    <button class="btn" type="submit" style="margin-top:12px">Upload &amp; import</button>
+  </form>
+
+  <div class="card">
+    <h3>Export</h3>
+    <p class="muted">Download all recipes as JSON (backup).</p>
+    <a class="btn" href="{{ url_for('recipes.manage_export') }}">Download JSON</a>
+  </div>
+</div>
+
+{% if not recipes %}
+  <p class="muted">No recipes yet — import the plan or add one.</p>
+{% else %}
+  <div class="grid" style="grid-template-columns:1fr">
+    {% for recipe in recipes %}
+      <div class="card" style="flex-direction:row;align-items:center;min-height:auto;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            {% if recipe.day_number %}<span class="pill">Day {{ recipe.day_number }}</span>{% endif %}
+            <strong style="font-size:19px">{{ recipe.title }}</strong>
+            {% if not recipe.published %}<span class="pill" style="color:#ffb0a0">hidden</span>{% endif %}
+          </div>
+          <div class="muted" style="margin-top:4px">
+            {{ recipe.meal_plan or '—' }} · {{ recipe.steps|length }} steps
+            {% if recipe.has_timers() %} · ⏱ timers{% endif %}
+          </div>
+        </div>
+        <a class="btn small" href="{{ url_for('recipes.kitchen_recipe', slug=recipe.slug) }}">View</a>
+        <a class="btn small" href="{{ url_for('recipes.manage_edit', slug=recipe.slug) }}">Edit</a>
+        <form method="post" action="{{ url_for('recipes.manage_delete', slug=recipe.slug) }}"
+              onsubmit="return confirm('Delete “{{ recipe.title|e }}”?');" style="margin:0">
+          {{ csrf_token() if csrf_token is defined else '' }}
+          <button class="btn small danger" type="submit">Delete</button>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

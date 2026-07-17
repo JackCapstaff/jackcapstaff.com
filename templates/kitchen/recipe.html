@@ -1,0 +1,220 @@
+{% extends "kitchen/base.html" %}
+{% block title %}{{ recipe.title }}{% endblock %}
+{% block head_extra %}
+<style>
+  .rhead{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+  .rhead h1{margin:0;font-size:clamp(24px,4vw,40px);flex:1;min-width:220px}
+  .subline{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 16px}
+  .tabs{display:flex;gap:10px;margin:14px 0 20px;flex-wrap:wrap}
+  .tab{flex:1;min-width:130px;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:16px;font-size:clamp(16px,2.4vw,20px);font-weight:700;
+    text-align:center;cursor:pointer;color:var(--muted)}
+  .tab.active{background:var(--accent);color:#1a1008;border-color:var(--accent)}
+  .panel{display:none}
+  .panel.active{display:block}
+  .checklist{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+  .checklist li{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:16px 18px;font-size:clamp(17px,2.4vw,22px);display:flex;align-items:center;gap:14px;cursor:pointer}
+  .checklist li .box{width:30px;height:30px;border-radius:8px;border:2px solid var(--muted);flex:none;display:flex;align-items:center;justify-content:center;font-size:20px}
+  .checklist li.checked{opacity:.55}
+  .checklist li.checked .box{background:var(--accent2);border-color:var(--accent2);color:#04240f}
+  .checklist li.checked span.t{text-decoration:line-through}
+
+  /* cook mode */
+  .cook{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:clamp(20px,4vw,40px);text-align:center}
+  .cook .stepno{color:var(--accent);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:15px}
+  .cook .steptext{font-size:clamp(22px,4.5vw,40px);line-height:1.35;margin:16px auto;max-width:900px}
+  .cook .controls{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+  .cook .controls .btn{min-width:120px;font-size:clamp(17px,2.5vw,22px)}
+  .dots{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:18px 0 4px}
+  .dots span{width:14px;height:14px;border-radius:50%;background:var(--line)}
+  .dots span.on{background:var(--accent)}
+  .dots span.done{background:var(--accent2)}
+  .big-timer-btn{font-size:clamp(18px,3vw,26px);padding:16px 26px}
+
+  /* running timers bar */
+  #timerbar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;
+    flex-wrap:wrap;padding:10px;background:rgba(10,14,20,.92);border-top:1px solid var(--line);z-index:50}
+  #timerbar:empty{display:none}
+  .tchip{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 14px;
+    display:flex;align-items:center;gap:12px;font-weight:700;font-size:clamp(18px,2.6vw,24px)}
+  .tchip .rem{font-variant-numeric:tabular-nums;min-width:78px;text-align:center}
+  .tchip.done{background:var(--accent);color:#1a1008;animation:flash .8s steps(2) infinite}
+  .tchip .x{cursor:pointer;border:none;background:transparent;color:inherit;font-size:22px;line-height:1}
+  @keyframes flash{50%{background:#ffd0b0}}
+</style>
+{% endblock %}
+{% block body %}
+<div class="rhead">
+  <a class="btn ghost small" href="{{ url_for('recipes.kitchen_index') }}">← Menu</a>
+  <h1>{{ recipe.title }}</h1>
+  {% if can_manage %}
+    <a class="btn small" href="{{ url_for('recipes.manage_edit', slug=recipe.slug) }}">Edit</a>
+  {% endif %}
+</div>
+<div class="subline">
+  {% if recipe.day_number %}<span class="pill">Day {{ recipe.day_number }}</span>{% endif %}
+  {% if recipe.servings %}<span class="pill">Serves {{ recipe.servings }}</span>{% endif %}
+  {% if recipe.meal_plan %}<span class="pill">{{ recipe.meal_plan }}</span>{% endif %}
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-panel="equipment">🧰 Equipment</div>
+  <div class="tab" data-panel="prep">🔪 Prep</div>
+  <div class="tab" data-panel="cook">🔥 Cook</div>
+</div>
+
+<!-- EQUIPMENT -->
+<div class="panel active" id="panel-equipment">
+  {% if recipe.equipment %}
+    <ul class="checklist">
+      {% for item in recipe.equipment %}
+        <li onclick="this.classList.toggle('checked')"><span class="box">✓</span><span class="t">{{ item }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">No equipment listed.</p>
+  {% endif %}
+</div>
+
+<!-- PREP -->
+<div class="panel" id="panel-prep">
+  {% if recipe.ingredients %}
+    <h2 style="margin:6px 0 12px">Ingredients</h2>
+    <ul class="checklist">
+      {% for item in recipe.ingredients %}
+        <li onclick="this.classList.toggle('checked')"><span class="box">✓</span><span class="t">{{ item }}</span></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if recipe.prep %}
+    <h2 style="margin:20px 0 12px">Prep</h2>
+    <ul class="checklist">
+      {% for item in recipe.prep %}
+        <li onclick="this.classList.toggle('checked')"><span class="box">✓</span><span class="t">{{ item }}</span></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if not recipe.ingredients and not recipe.prep %}
+    <p class="muted">No prep notes. Head to the Cook tab to get going.</p>
+  {% endif %}
+  {% if recipe.baby_note %}
+    <div class="card" style="margin-top:18px">
+      <strong>👶 Baby</strong>
+      <span>{{ recipe.baby_note }}</span>
+    </div>
+  {% endif %}
+</div>
+
+<!-- COOK -->
+<div class="panel" id="panel-cook">
+  {% if recipe.steps %}
+    <div class="cook">
+      <div class="stepno" id="stepno"></div>
+      <div class="steptext" id="steptext"></div>
+      <div id="steptimer"></div>
+      <div class="controls">
+        <button class="btn" id="prevBtn">◀ Prev</button>
+        <button class="btn primary" id="nextBtn">Next ▶</button>
+      </div>
+      <div class="dots" id="dots"></div>
+    </div>
+  {% else %}
+    <p class="muted">No steps yet.</p>
+  {% endif %}
+</div>
+
+<div id="timerbar"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const STEPS = {{ recipe.steps | tojson }};
+
+  // ---- tabs ----
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click',()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('panel-'+t.dataset.panel).classList.add('active');
+    });
+  });
+
+  // ---- cook mode ----
+  let idx = 0;
+  const stepno = document.getElementById('stepno');
+  const steptext = document.getElementById('steptext');
+  const steptimer = document.getElementById('steptimer');
+  const dots = document.getElementById('dots');
+  const done = new Set();
+
+  function fmt(s){const m=Math.floor(s/60),ss=s%60;return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
+
+  function renderDots(){
+    if(!dots) return;
+    dots.innerHTML='';
+    STEPS.forEach((_,i)=>{
+      const d=document.createElement('span');
+      if(i===idx) d.className='on'; else if(done.has(i)) d.className='done';
+      dots.appendChild(d);
+    });
+  }
+  function renderStep(){
+    if(!STEPS.length) return;
+    const s=STEPS[idx];
+    stepno.textContent='Step '+(idx+1)+' of '+STEPS.length;
+    steptext.textContent=s.text;
+    steptimer.innerHTML='';
+    if(s.timer_seconds){
+      const b=document.createElement('button');
+      b.className='btn green big-timer-btn';
+      b.textContent='⏱ Start timer · '+(s.timer_label||fmt(s.timer_seconds));
+      b.onclick=()=>startTimer(s.timer_seconds, 'Step '+(idx+1));
+      steptimer.appendChild(b);
+    }
+    document.getElementById('prevBtn').disabled = idx===0;
+    document.getElementById('nextBtn').textContent = idx===STEPS.length-1 ? 'Done ✓' : 'Next ▶';
+    renderDots();
+  }
+  const prevB=document.getElementById('prevBtn'), nextB=document.getElementById('nextBtn');
+  if(prevB) prevB.onclick=()=>{ if(idx>0){idx--; renderStep();} };
+  if(nextB) nextB.onclick=()=>{ done.add(idx); if(idx<STEPS.length-1){idx++;} renderStep(); };
+  renderStep();
+
+  // ---- timers ----
+  const bar=document.getElementById('timerbar');
+  let audioCtx=null;
+  function beep(){
+    try{
+      audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type='sine'; o.frequency.value=880; g.gain.value=0.25;
+      o.start();
+      let n=0; const iv=setInterval(()=>{o.frequency.value=n%2?880:660; if(++n>7){clearInterval(iv);o.stop();}},180);
+    }catch(e){}
+    if(navigator.vibrate) navigator.vibrate([300,150,300,150,300]);
+  }
+  function startTimer(seconds, label){
+    const chip=document.createElement('div');
+    chip.className='tchip';
+    const name=document.createElement('span'); name.textContent=label||'Timer';
+    const rem=document.createElement('span'); rem.className='rem'; rem.textContent=fmt(seconds);
+    const x=document.createElement('button'); x.className='x'; x.textContent='✕';
+    chip.appendChild(name); chip.appendChild(rem); chip.appendChild(x);
+    bar.appendChild(chip);
+    let left=seconds, ringing=false, ringIv=null;
+    x.onclick=()=>{clearInterval(iv); if(ringIv) clearInterval(ringIv); chip.remove();};
+    const iv=setInterval(()=>{
+      left--;
+      if(left>0){ rem.textContent=fmt(left); }
+      else if(!ringing){
+        ringing=true; chip.classList.add('done'); name.textContent=(label||'Timer')+' — done!';
+        rem.textContent='00:00'; beep();
+        ringIv=setInterval(beep, 3000);  // keep beeping until dismissed
+      }
+    },1000);
+  }
+</script>
+{% endblock %}

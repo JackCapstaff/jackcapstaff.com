@@ -1,0 +1,111 @@
+{% extends "kitchen/base.html" %}
+{% block title %}{{ 'Edit' if mode=='edit' else 'New' }} recipe{% endblock %}
+{% block head_extra %}
+<style>
+  .step-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}
+  .step-row textarea{flex:1;min-height:60px}
+  .step-row .tm{width:110px;flex:none}
+  .step-row .rm{flex:none}
+  .hint{font-size:13px;color:var(--muted);margin-top:4px}
+</style>
+{% endblock %}
+{% block body %}
+<div class="topbar">
+  <h1>{{ 'Edit recipe' if mode=='edit' else 'New recipe' }}</h1>
+  <a class="btn ghost small" href="{{ url_for('recipes.manage_index') }}">← Back</a>
+</div>
+
+<form method="post">
+  {{ csrf_token() if csrf_token is defined else '' }}
+  <div class="row">
+    <div style="flex:2">
+      <label>Title</label>
+      <input type="text" name="title" value="{{ recipe.title if recipe else '' }}" required>
+    </div>
+    <div>
+      <label>Day number</label>
+      <input type="number" name="day_number" value="{{ recipe.day_number if recipe and recipe.day_number else '' }}">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Meal plan</label>
+      <input type="text" name="meal_plan" value="{{ recipe.meal_plan if recipe and recipe.meal_plan else '' }}" placeholder="14-Day Family Meal Plan">
+    </div>
+    <div>
+      <label>Servings</label>
+      <input type="text" name="servings" value="{{ recipe.servings if recipe and recipe.servings else '' }}" placeholder="2 adults + 1 baby">
+    </div>
+  </div>
+
+  <label>Equipment <span class="hint">(one per line)</span></label>
+  <textarea name="equipment">{{ recipe.equipment | join('\n') if recipe else '' }}</textarea>
+
+  <label>Ingredients <span class="hint">(one per line)</span></label>
+  <textarea name="ingredients">{{ recipe.ingredients | join('\n') if recipe else '' }}</textarea>
+
+  <label>Prep notes <span class="hint">(one per line)</span></label>
+  <textarea name="prep">{{ recipe.prep | join('\n') if recipe else '' }}</textarea>
+
+  <label>Baby note</label>
+  <textarea name="baby_note">{{ recipe.baby_note if recipe and recipe.baby_note else '' }}</textarea>
+
+  <label>Cooking steps
+    <span class="hint">Timer is optional — mm:ss or minutes. Leave blank to auto-detect from the text (e.g. “simmer 25–30 minutes”).</span>
+  </label>
+  <div id="steps"></div>
+  <button type="button" class="btn small" id="addStep">＋ Add step</button>
+
+  <div style="margin-top:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <label style="display:flex;align-items:center;gap:10px;margin:0">
+      <input type="checkbox" name="published" style="width:auto" {{ 'checked' if (recipe is none or recipe.published) else '' }}> Published (visible on menu)
+    </label>
+    {% if mode=='edit' %}
+      <label style="display:flex;align-items:center;gap:10px;margin:0">
+        <input type="checkbox" name="regenerate_slug" style="width:auto"> Update URL from title
+      </label>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+    <button class="btn primary" type="submit">{{ 'Save changes' if mode=='edit' else 'Create recipe' }}</button>
+    <a class="btn ghost" href="{{ url_for('recipes.manage_index') }}">Cancel</a>
+  </div>
+</form>
+
+<template id="stepTpl">
+  <div class="step-row">
+    <textarea name="step_text" placeholder="Describe the step…"></textarea>
+    <input class="tm" type="text" name="step_timer" placeholder="mm:ss">
+    <button type="button" class="btn small danger rm">✕</button>
+  </div>
+</template>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const EXISTING = {{ (recipe.steps if recipe else []) | tojson }};
+  const stepsWrap = document.getElementById('steps');
+  const tpl = document.getElementById('stepTpl');
+
+  function secsToInput(s){
+    if(!s) return '';
+    const m=Math.floor(s/60), ss=s%60;
+    return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;
+  }
+  function addStep(text, timer){
+    const node = tpl.content.cloneNode(true);
+    node.querySelector('textarea').value = text||'';
+    node.querySelector('.tm').value = timer||'';
+    node.querySelector('.rm').onclick = (e)=> e.target.closest('.step-row').remove();
+    stepsWrap.appendChild(node);
+  }
+  if(EXISTING.length){
+    EXISTING.forEach(s=> addStep(s.text, secsToInput(s.timer_seconds)));
+  } else {
+    addStep('', '');
+  }
+  document.getElementById('addStep').onclick = ()=> addStep('', '');
+</script>
+{% endblock %}

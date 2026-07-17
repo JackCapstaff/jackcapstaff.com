@@ -1,0 +1,47 @@
+{% extends "kitchen/base.html" %}
+{% block title %}Menu{% endblock %}
+{% block body %}
+<div class="topbar">
+  <h1>🍽️ Kitchen menu</h1>
+  {% if can_manage %}
+    <a class="btn primary" href="{{ url_for('recipes.manage_index') }}">Manage recipes</a>
+  {% endif %}
+</div>
+
+{% if not recipes %}
+  <div class="card">
+    <h3>No recipes yet</h3>
+    <p class="muted">
+      {% if can_manage %}
+        Head to <a href="{{ url_for('recipes.manage_index') }}">Manage recipes</a> to import the
+        built-in 14-day plan, upload a .docx, or add one manually.
+      {% else %}
+        Nothing has been added yet.
+      {% endif %}
+    </p>
+  </div>
+{% else %}
+  {% set current_plan = namespace(name=None) %}
+  {% for recipe in recipes %}
+    {% if recipe.meal_plan != current_plan.name %}
+      {% set current_plan.name = recipe.meal_plan %}
+      <h2 style="margin:26px 0 12px">{{ recipe.meal_plan or 'Recipes' }}</h2>
+      <div class="grid">
+    {% endif %}
+        <a class="card" href="{{ url_for('recipes.kitchen_recipe', slug=recipe.slug) }}">
+          {% if recipe.day_number %}<span class="day">Day {{ recipe.day_number }}</span>{% endif %}
+          <h3>{{ recipe.title }}</h3>
+          <div style="margin-top:auto;display:flex;gap:8px;flex-wrap:wrap">
+            <span class="pill">{{ recipe.steps|length }} steps</span>
+            {% if recipe.has_timers() %}<span class="pill">⏱ timers</span>{% endif %}
+            {% if recipe.equipment %}<span class="pill">{{ recipe.equipment|length }} equipment</span>{% endif %}
+          </div>
+        </a>
+    {% set is_last = loop.last %}
+    {% set next_plan = (recipes[loop.index].meal_plan if not loop.last else None) %}
+    {% if is_last or next_plan != recipe.meal_plan %}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% endblock %}

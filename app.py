@@ -716,6 +716,7 @@ ShopOrder = models_dict['ShopOrder']
 ShopOrderItem = models_dict['ShopOrderItem']
 PublishingQuote = models_dict['PublishingQuote']
 PublishingOrder = models_dict['PublishingOrder']
+Recipe = models_dict['Recipe']
 # Expose models and db to app context for access in blueprints
 app.db = db
 app.SiteSetting = SiteSetting
@@ -730,6 +731,7 @@ app.ShopOrder = ShopOrder
 app.ShopOrderItem = ShopOrderItem
 app.PublishingQuote = PublishingQuote
 app.PublishingOrder = PublishingOrder
+app.Recipe = Recipe
 app.send_publishing_order_admin_email = _send_publishing_order_admin_email
 
 
@@ -739,6 +741,9 @@ app.register_blueprint(admin_bp)
 
 from shop import shop_bp
 app.register_blueprint(shop_bp)
+
+from recipes import recipes_bp
+app.register_blueprint(recipes_bp)
 
 rehearsal_schedule_app = load_rehearsal_schedule_app()
 

@@ -286,7 +286,102 @@ def init_models(db):
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    
+
+    class Recipe(db.Model):
+        """A recipe / menu item for the hidden kitchen app (Alexa Show friendly).
+
+        List/step data is stored as JSON strings in Text columns so it works
+        identically on SQLite (local) and PostgreSQL (production) with no extra
+        dependency. Use the *_list / steps properties to read/write.
+        """
+        import json as _json
+
+        id = db.Column(db.Integer, primary_key=True)
+        slug = db.Column(db.String(120), unique=True, nullable=False, index=True)
+        title = db.Column(db.String(255), nullable=False)
+        meal_plan = db.Column(db.String(255), index=True)  # e.g. "14-Day Family Meal Plan"
+        day_number = db.Column(db.Integer, index=True)      # ordering within a plan
+        servings = db.Column(db.String(120))
+        baby_note = db.Column(db.Text)                       # e.g. baby portion guidance
+
+        # JSON payloads stored as text
+        equipment_json = db.Column(db.Text, default='[]')    # list[str]
+        ingredients_json = db.Column(db.Text, default='[]')  # list[str]
+        prep_json = db.Column(db.Text, default='[]')         # list[str]
+        steps_json = db.Column(db.Text, default='[]')        # list[{text, timer_seconds, timer_label}]
+
+        published = db.Column(db.Boolean, default=True, nullable=False)
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+        # ---- JSON accessors -------------------------------------------------
+        @staticmethod
+        def _load(raw, default):
+            if not raw:
+                return default
+            try:
+                import json
+                val = json.loads(raw)
+                return val if val is not None else default
+            except Exception:
+                return default
+
+        @staticmethod
+        def _dump(val):
+            import json
+            return json.dumps(val or [])
+
+        @property
+        def equipment(self):
+            return self._load(self.equipment_json, [])
+
+        @equipment.setter
+        def equipment(self, val):
+            self.equipment_json = self._dump(val)
+
+        @property
+        def ingredients(self):
+            return self._load(self.ingredients_json, [])
+
+        @ingredients.setter
+        def ingredients(self, val):
+            self.ingredients_json = self._dump(val)
+
+        @property
+        def prep(self):
+            return self._load(self.prep_json, [])
+
+        @prep.setter
+        def prep(self, val):
+            self.prep_json = self._dump(val)
+
+        @property
+        def steps(self):
+            return self._load(self.steps_json, [])
+
+        @steps.setter
+        def steps(self, val):
+            self.steps_json = self._dump(val)
+
+        def has_timers(self):
+            return any((s or {}).get('timer_seconds') for s in self.steps)
+
+        def to_dict(self):
+            return {
+                'slug': self.slug,
+                'title': self.title,
+                'meal_plan': self.meal_plan,
+                'day_number': self.day_number,
+                'servings': self.servings,
+                'baby_note': self.baby_note,
+                'equipment': self.equipment,
+                'ingredients': self.ingredients,
+                'prep': self.prep,
+                'steps': self.steps,
+                'published': self.published,
+            }
+
+
     return {
         'SiteSetting': SiteSetting,
         'User': User,
@@ -300,4 +395,5 @@ def init_models(db):
         'ShopOrderItem': ShopOrderItem,
         'PublishingQuote': PublishingQuote,
         'PublishingOrder': PublishingOrder,
+        'Recipe': Recipe,
     }
