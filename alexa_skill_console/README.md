@@ -121,14 +121,20 @@ green = done). Voice and touch stay in sync — you can say "next" or tap **Next
 ## Adding / editing recipes
 
 Nothing changes — manage recipes at **`/kitchen/manage`** as before. The skill reads
-them live, so new recipes are instantly available by **day number** and by the built-in
-voice navigation.
+them live, so a **new recipe is instantly available** with **no Alexa rebuild**:
 
-> **Note on recipe *names*:** matching a recipe by spoken *name* uses the `RecipeName`
-> list in `interaction-model.json`, which is seeded with the built-in 14 recipes. If you
-> add brand-new recipes and want to open them by name (rather than "open day N"), add
-> their titles/synonyms to that list and re-**Build Model**. Day-number and the rest of
-> the flow need no changes.
+- **On the screen:** it appears as a new tappable card automatically.
+- **By day number:** "open day 15" works immediately.
+- **By name:** when you launch the skill ("Alexa, open family cookbook"), the app tells
+  Alexa the current recipe names from the database (via *dynamic entities*), so you can
+  say "cook the beef stew" the moment you've added it — the fixed list in
+  `interaction-model.json` is only a fallback and no longer needs editing.
+
+> The app also auto-generates spoken short forms (e.g. "bolognese", "tikka curry"),
+> skipping any that would be ambiguous across recipes. The one edge case: a **one-shot**
+> command with no launch ("Alexa, ask family cookbook to cook <brand-new recipe>") relies
+> on the static fallback list. Just open the skill first, or use "open day N", and any new
+> recipe works by name.
 
 ---
 

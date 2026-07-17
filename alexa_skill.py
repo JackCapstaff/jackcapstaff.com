@@ -206,6 +206,70 @@ def _get_by_slug(slug):
 
 
 # --------------------------------------------------------------------------- #
+# Dynamic entities: teach Alexa the *current* recipe names at runtime, straight
+# from the database, so new recipes added in the web app become voice-openable
+# by name with no interaction-model rebuild. Sent as a Dialog.UpdateDynamicEntities
+# directive at launch; it lasts for the session.
+# --------------------------------------------------------------------------- #
+_SYN_STOPWORDS = {"and", "the", "with", "of", "in", "a"}
+
+
+def _title_synonyms(title):
+    """Likely spoken short forms of a title (last word, last two/three words)."""
+    words = [w for w in _norm(title).split() if w and w not in _SYN_STOPWORDS]
+    cands = set()
+    if words:
+        cands.add(words[-1])
+    if len(words) >= 2:
+        cands.add(" ".join(words[-2:]))
+    if len(words) >= 3:
+        cands.add(" ".join(words[-3:]))
+    return cands
+
+
+def _dynamic_entities_directive(recipes):
+    """Build a REPLACE Dialog.UpdateDynamicEntities directive for RecipeName.
+
+    A candidate short form is only kept as a synonym if it maps to exactly one
+    recipe, so ambiguous words (e.g. "curry", shared by several) don't misroute.
+    """
+    from collections import Counter
+    per_recipe = {r.slug: _title_synonyms(r.title) for r in recipes}
+    counts = Counter()
+    for syns in per_recipe.values():
+        for s in syns:
+            counts[s] += 1
+    values = []
+    for r in recipes:
+        full = _norm(r.title)
+        syns = sorted(s for s in per_recipe[r.slug] if counts[s] == 1 and s != full)
+        entry = {"id": r.slug, "name": {"value": r.title}}
+        if syns:
+            entry["name"]["synonyms"] = syns
+        values.append(entry)
+    return {
+        "type": "Dialog.UpdateDynamicEntities",
+        "updateBehavior": "REPLACE",
+        "types": [{"name": "RecipeName", "values": values}],
+    }
+
+
+def _resolved_slot_id(intent, name):
+    """Return the resolved entity id (our slug) if Alexa matched a slot value."""
+    try:
+        authorities = intent["slots"][name]["resolutions"]["resolutionsPerAuthority"]
+    except (KeyError, TypeError):
+        return None
+    for auth in authorities or []:
+        try:
+            if auth["status"]["code"] == "ER_SUCCESS_MATCH":
+                return auth["values"][0]["value"]["id"] or None
+        except (KeyError, TypeError, IndexError):
+            continue
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Speech helpers
 # --------------------------------------------------------------------------- #
 def _join(items):
@@ -311,7 +375,9 @@ def _launch(envelope):
     speech = (f"Welcome to the kitchen. There are {n} recipes. "
               "Tap a recipe on the screen, or say, open day one, or, cook the chicken tikka curry.")
     reprompt = "Which recipe would you like? Try, open day one, or tap one on screen."
-    directives = [_apl_home_directive(recipes)] if _supports_apl(envelope) else None
+    directives = [_dynamic_entities_directive(recipes)]
+    if _supports_apl(envelope):
+        directives.append(_apl_home_directive(recipes))
     return _resp(speech, reprompt=reprompt, attributes={}, directives=directives)
 
 
@@ -369,8 +435,12 @@ def _open_by_day(envelope, intent):
 
 
 def _open_by_name(envelope, intent):
-    name = _slot(intent, "recipeName")
-    recipe = _find_by_name(name)
+    # Prefer Alexa's resolved entity id (our slug) from the dynamic entity match,
+    # then fall back to fuzzy matching on the raw spoken text.
+    slug = _resolved_slot_id(intent, "recipeName")
+    recipe = _get_by_slug(slug) if slug else None
+    if not recipe:
+        recipe = _find_by_name(_slot(intent, "recipeName"))
     if not recipe:
         return _resp("I couldn't find that recipe. Say, what's on the menu, to hear the list.",
                      reprompt="Which recipe? Try, open day one.")
