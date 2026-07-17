@@ -431,6 +431,33 @@ def kitchen_recipe(slug):
 
 
 # --------------------------------------------------------------------------- #
+# JSON API (read-only, public) — used by the Alexa skill and any external view
+# --------------------------------------------------------------------------- #
+@recipes_bp.route("/api/recipes")
+def api_recipes():
+    db, Recipe = _models()
+    recipes = Recipe.query.filter_by(published=True).order_by(
+        Recipe.meal_plan, Recipe.day_number, Recipe.title
+    ).all()
+    return jsonify({
+        "count": len(recipes),
+        "recipes": [
+            {"slug": r.slug, "title": r.title, "day_number": r.day_number,
+             "meal_plan": r.meal_plan, "servings": r.servings,
+             "steps": len(r.steps), "has_timers": r.has_timers()}
+            for r in recipes
+        ],
+    })
+
+
+@recipes_bp.route("/api/recipe/<slug>")
+def api_recipe(slug):
+    db, Recipe = _models()
+    recipe = Recipe.query.filter_by(slug=slug, published=True).first_or_404()
+    return jsonify(recipe.to_dict())
+
+
+# --------------------------------------------------------------------------- #
 # Admin routes
 # --------------------------------------------------------------------------- #
 @recipes_bp.route("/manage")

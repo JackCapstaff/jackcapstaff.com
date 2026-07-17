@@ -11,6 +11,8 @@ alembic==1.14.0
 gunicorn==22.0.0
 psycopg2-binary==2.9.9
 requests>=2.31
+cryptography>=42.0
+certifi>=2023.7
 cloudinary>=1.41.0
 stripe>=10.12.0
 numpy>=1.26

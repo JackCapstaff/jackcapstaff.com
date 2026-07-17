@@ -745,6 +745,9 @@ app.register_blueprint(shop_bp)
 from recipes import recipes_bp
 app.register_blueprint(recipes_bp)
 
+from alexa_skill import alexa_bp
+app.register_blueprint(alexa_bp)
+
 rehearsal_schedule_app = load_rehearsal_schedule_app()
 
 # Register quiz app blueprints with /quiz prefix

@@ -1,0 +1,159 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "family kitchen",
+      "intents": [
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] },
+        { "name": "AMAZON.NextIntent", "samples": [] },
+        { "name": "AMAZON.PreviousIntent", "samples": [] },
+        { "name": "AMAZON.RepeatIntent", "samples": [] },
+        {
+          "name": "OpenRecipeByDayIntent",
+          "slots": [
+            { "name": "day", "type": "AMAZON.NUMBER" }
+          ],
+          "samples": [
+            "open day {day}",
+            "day {day}",
+            "cook day {day}",
+            "start day {day}",
+            "make day {day}",
+            "recipe for day {day}",
+            "open the recipe for day {day}",
+            "let's cook day {day}"
+          ]
+        },
+        {
+          "name": "OpenRecipeByNameIntent",
+          "slots": [
+            { "name": "recipeName", "type": "RecipeName" }
+          ],
+          "samples": [
+            "open {recipeName}",
+            "cook {recipeName}",
+            "make {recipeName}",
+            "start {recipeName}",
+            "i want to cook {recipeName}",
+            "i want to make {recipeName}",
+            "let's cook {recipeName}",
+            "open the {recipeName}",
+            "cook the {recipeName}"
+          ]
+        },
+        {
+          "name": "ListRecipesIntent",
+          "slots": [],
+          "samples": [
+            "what recipes",
+            "what recipes are there",
+            "list recipes",
+            "list the recipes",
+            "what can i cook",
+            "what can i make",
+            "what's on the menu",
+            "whats on the menu",
+            "the menu",
+            "menu"
+          ]
+        },
+        {
+          "name": "StartCookingIntent",
+          "slots": [],
+          "samples": [
+            "start cooking",
+            "let's cook",
+            "lets cook",
+            "start",
+            "begin",
+            "begin cooking",
+            "let's start",
+            "start the recipe"
+          ]
+        },
+        {
+          "name": "EquipmentIntent",
+          "slots": [],
+          "samples": [
+            "what equipment do i need",
+            "what equipment",
+            "equipment",
+            "what tools do i need",
+            "what do i need",
+            "what will i need"
+          ]
+        },
+        {
+          "name": "IngredientsIntent",
+          "slots": [],
+          "samples": [
+            "what are the ingredients",
+            "ingredients",
+            "list the ingredients",
+            "what do i need to buy",
+            "what are the ingredients for this"
+          ]
+        },
+        {
+          "name": "PrepIntent",
+          "slots": [],
+          "samples": [
+            "what's the prep",
+            "whats the prep",
+            "prep",
+            "preparation",
+            "prep steps",
+            "what do i prepare"
+          ]
+        },
+        {
+          "name": "StartTimerIntent",
+          "slots": [],
+          "samples": [
+            "start the timer",
+            "start timer",
+            "set a timer",
+            "set the timer",
+            "timer",
+            "start a timer for this step"
+          ]
+        },
+        {
+          "name": "WhereAmIIntent",
+          "slots": [],
+          "samples": [
+            "where am i",
+            "what step am i on",
+            "which step",
+            "what step",
+            "remind me where i am"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "RecipeName",
+          "values": [
+            { "name": { "value": "Hidden Veg Beef and Lentil Bolognese", "synonyms": ["bolognese", "beef bolognese", "spaghetti bolognese", "hidden veg bolognese"] } },
+            { "name": { "value": "Chicken Tikka Curry", "synonyms": ["tikka", "chicken tikka", "tikka curry"] } },
+            { "name": { "value": "Creamy Chicken Orzo", "synonyms": ["chicken orzo", "orzo", "creamy orzo"] } },
+            { "name": { "value": "Loaded Burrito Bowls", "synonyms": ["burrito bowls", "burrito bowl", "burritos"] } },
+            { "name": { "value": "Sticky Chicken Noodles", "synonyms": ["chicken noodles", "sticky noodles", "noodles"] } },
+            { "name": { "value": "Naked Burgers and Loaded Potatoes", "synonyms": ["burgers", "naked burgers", "burgers and potatoes"] } },
+            { "name": { "value": "Thai Coconut Chicken Curry", "synonyms": ["thai curry", "thai chicken curry", "coconut curry"] } },
+            { "name": { "value": "Beef Kofta and Bulgur Bowls", "synonyms": ["koftas", "beef kofta", "kofta bowls"] } },
+            { "name": { "value": "Homemade Pizza", "synonyms": ["pizza", "homemade pizza"] } },
+            { "name": { "value": "Crispy White Fish Bowls", "synonyms": ["fish bowls", "white fish", "crispy fish"] } },
+            { "name": { "value": "Honey Garlic Chicken Stir Fry", "synonyms": ["stir fry", "chicken stir fry", "honey garlic chicken"] } },
+            { "name": { "value": "Slow Cooker Chilli", "synonyms": ["chilli", "chili", "slow cooker chilli"] } },
+            { "name": { "value": "Pesto Chicken and Roasted Veg", "synonyms": ["pesto chicken", "pesto chicken and veg"] } },
+            { "name": { "value": "Takeaway Curry", "synonyms": ["takeaway", "takeaway curry"] } }
+          ]
+        }
+      ]
+    }
+  }
+}
