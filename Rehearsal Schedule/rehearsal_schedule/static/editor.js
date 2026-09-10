@@ -34,21 +34,29 @@ function getEditToken() {
 
 function apiBase() {
   const sid = scheduleId();
+  return sid ? `/api/s/${encodeURIComponent(sid)}` : `/api`;
+}
+
+function withEditToken(url) {
   const token = getEditToken();
-  const base = sid ? `/api/s/${encodeURIComponent(sid)}` : `/api`;
-  // We append the token to the base path so all calls are authorized
-  return token ? `${base}?token=${token}` : base;
+  if (!token) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}token=${encodeURIComponent(token)}`;
+}
+
+function apiUrl(path) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return withEditToken(`${apiBase()}${normalizedPath}`);
 }
 
 async function apiGet(path) {
-  const connector = path.includes('?') ? '&' : '?';
-  const res = await fetch(`${apiBase()}${path}`, { credentials: "same-origin" });
+  const res = await fetch(apiUrl(path), { credentials: "same-origin" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 async function apiPost(path, bodyObj) {
-  const res = await fetch(`${apiBase()}${path}`, {
+  const res = await fetch(apiUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
@@ -1394,7 +1402,7 @@ async function uploadXlsx() {
   fd.append("file", input.files[0]);
   msg.textContent = "Uploading...";
 
-  const res = await fetch(`${apiBase()}/import_xlsx`, {
+  const res = await fetch(apiUrl('/import_xlsx'), {
     method: "POST",
     body: fd,
     credentials: "same-origin"
@@ -2103,7 +2111,7 @@ async function saveTimelineToBackend() {
     console.log("Saving STATE.timed to backend...");
     
     // 1. Save the visual timeline edits
-    const res = await fetch(`${apiBase()}/timed_edit`, {
+    const res = await fetch(apiUrl('/timed_edit'), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -4327,8 +4335,7 @@ async function saveRehearsalEditFromModal(rehearsalNum) {
   console.log("Save form values - Date:", newDate, "Start:", newStartTime, "End:", newEndTime, "Include:", newIncludeInAllocation, "Event:", newEvent, "Section:", newSection, "Work:", newWork);
   
   try {
-    // Call API to update rehearsal details - apiBase already includes /api/s/{scheduleId}
-    const url = `${apiBase()}/rehearsal/${rehearsalNum}`;
+    const url = apiUrl(`/rehearsal/${rehearsalNum}`);
     console.log("Saving to URL:", url);
     
     const payloadBody = {
@@ -4440,9 +4447,7 @@ async function saveConcertEditFromModal(rehearsalNum) {
       return;
     }
     
-    // Call API to update concert details using schedule-specific endpoint
-    // apiBase() already includes /api/s/<schedule_id>[?token]; just append concert path
-    const url = `${apiBase()}/concert/${concertId}`;
+    const url = apiUrl(`/concert/${concertId}`);
     
     const payloadBody = {
       title: title,
@@ -4949,7 +4954,7 @@ async function saveTimelineEdits(newTimed, action, description) {
       'Rehearsal Time (minutes)': t['Rehearsal Time (minutes)']
     })));
     
-    const res = await fetch(`${apiBase()}/timed_edit`, {
+    const res = await fetch(apiUrl('/timed_edit'), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -5017,7 +5022,7 @@ async function revertToHistory(historyIndex) {
   if (!confirm(`Revert to this version?`)) return;
 
   try {
-    const res = await fetch(`${apiBase()}/timed_revert`, {
+    const res = await fetch(apiUrl('/timed_revert'), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -5049,7 +5054,7 @@ function toggleHistoryPanel() {
 async function deleteRehearsal(rehearsalNum) {
   try {
     // First, check if there are concerts associated with this rehearsal
-    const url = `${apiBase()}/rehearsal/${rehearsalNum}/concerts`;
+    const url = apiUrl(`/rehearsal/${rehearsalNum}/concerts`);
     const res = await fetch(url, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
@@ -5147,7 +5152,7 @@ function showConcertSelectionModal(rehearsalNum, concerts) {
  */
 async function performRehearsalDeletion(rehearsalNum, concertIds) {
   try {
-    const url = `${apiBase()}/rehearsal/${rehearsalNum}`;
+    const url = apiUrl(`/rehearsal/${rehearsalNum}`);
     const res = await fetch(url, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },

@@ -301,6 +301,12 @@
   let currentScheduleLink = "";
   let customRecipients = [];
 
+  function scheduleApiUrl(path) {
+    const token = new URLSearchParams(window.location.search).get('token') || window.EDIT_TOKEN || '';
+    const url = `/api/s/{{ schedule_id }}${path}`;
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+  }
+
   async function readJsonOrThrow(res) {
     const ct = res.headers.get('content-type') || '';
     if (ct.includes('application/json')) return res.json();
@@ -322,7 +328,7 @@
     modal.style.display = 'block';
 
     try {
-      const res = await fetch(`/api/s/{{ schedule_id }}/notify_update`, { method: 'GET', credentials: 'same-origin' });
+      const res = await fetch(scheduleApiUrl('/notify_update'), { method: 'GET', credentials: 'same-origin' });
       const data = await readJsonOrThrow(res);
       if (!res.ok || !data.ok) {
         throw new Error(data.error || `Unable to load recipients (status ${res.status})`);
@@ -459,7 +465,7 @@
     const message = (bodyInput && bodyInput.value.trim()) || lastDefaultBody || 'Schedule updated';
 
     try {
-      const res = await fetch(`/api/s/{{ schedule_id }}/notify_update`, {
+      const res = await fetch(scheduleApiUrl('/notify_update'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
@@ -533,7 +539,7 @@
     const section = sectionInput.value.trim() || 'Full Ensemble';
     
     try {
-      const response = await fetch(`/api/s/{{ schedule_id }}/rehearsal-event-type/${rehearsalNum}`, {
+      const response = await fetch(scheduleApiUrl(`/rehearsal-event-type/${rehearsalNum}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -571,7 +577,7 @@
     formData.append('file', file);
     
     try {
-      const response = await fetch(`/api/s/${scheduleId}/import_complete_schedule`, {
+      const response = await fetch(scheduleApiUrl('/import_complete_schedule'), {
         method: 'POST',
         body: formData,
         credentials: 'same-origin'

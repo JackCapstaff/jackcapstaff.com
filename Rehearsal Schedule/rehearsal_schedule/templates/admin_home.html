@@ -224,6 +224,12 @@
   </div>
 
   <script>
+    function scheduleApiUrl(scheduleId, path) {
+      const token = new URLSearchParams(window.location.search).get('token') || window.EDIT_TOKEN || '';
+      const url = `/api/s/${scheduleId}${path}`;
+      return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+    }
+
     function runAdminScheduleAction(scheduleId, scheduleName) {
       const select = document.getElementById(`schedule-action-${scheduleId}`);
       if (!select || !select.value) return;
@@ -289,7 +295,7 @@
       formData.append('file', file);
       
       try {
-        const response = await fetch(`/api/s/${scheduleId}/import_complete_schedule`, {
+        const response = await fetch(scheduleApiUrl(scheduleId, '/import_complete_schedule'), {
           method: 'POST',
           body: formData,
           credentials: 'same-origin'
@@ -373,7 +379,7 @@
         modal.style.display = 'flex';
       
         try {
-          const recRes = await fetch(`/api/s/${scheduleId}/notify_update`, { method: 'GET', credentials: 'same-origin' });
+          const recRes = await fetch(scheduleApiUrl(scheduleId, '/notify_update'), { method: 'GET', credentials: 'same-origin' });
           const recData = await readJsonOrThrow(recRes);
           if (!recRes.ok || !recData.ok) {
             throw new Error(recData.error || `Unable to load recipients (status ${recRes.status})`);
@@ -515,7 +521,7 @@
         const body = (bodyInput && bodyInput.value.trim()) || adminLastDefaultBody || 'There have been some updates.';
       
         try {
-          const res = await fetch(`/api/s/${adminNotifyScheduleId}/notify_update`, {
+          const res = await fetch(scheduleApiUrl(adminNotifyScheduleId, '/notify_update'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
