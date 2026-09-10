@@ -298,7 +298,8 @@ textarea {
   height: 40px;
   padding: 0 10px;
   border: none;
-  background: transparent;
+  background: #fff;
+  color: var(--ink);
   outline: none;
   box-sizing: border-box;
   font-family: inherit;
@@ -307,6 +308,10 @@ textarea {
 .grid-input:focus {
   background: #eff6ff;
   box-shadow: inset 0 0 0 2px #2563eb;
+}
+
+.grid-input::placeholder {
+  color: #9ca3af;
 }
 
 .msg {

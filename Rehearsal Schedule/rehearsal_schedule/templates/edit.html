@@ -3,8 +3,37 @@
 {% set subtitle = schedule_name if schedule_name else "Schedule editor" %}
 
 {% block content %}
-<body data-schedule-id="{{ schedule_id }}">
-
+<style>
+  .scheduler-edit-page {
+    color: var(--ink);
+  }
+  .scheduler-edit-page .card,
+  .scheduler-edit-page .accordion-content,
+  .scheduler-edit-page #timelineEditor,
+  .scheduler-edit-page #historyPanel,
+  .scheduler-edit-page .table-wrap {
+    background: #fff;
+    color: var(--ink);
+  }
+  .scheduler-edit-page .small,
+  .scheduler-edit-page .msg {
+    color: #4b5563;
+  }
+  .scheduler-edit-page input,
+  .scheduler-edit-page select,
+  .scheduler-edit-page textarea {
+    background: #fff;
+    color: var(--ink);
+  }
+  .scheduler-edit-page .grid-input {
+    color: var(--ink);
+    background: #fff;
+  }
+  .scheduler-edit-page .accordion-header {
+    color: var(--ink);
+  }
+</style>
+<div class="scheduler-edit-page" data-schedule-id="{{ schedule_id }}">
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
       <div>
@@ -244,8 +273,7 @@
       <div id="timelineContent"></div>
     </div>
   </div>
-
-</body>
+</div>
 
 <!-- Editor logic -->
 <script src="{{ url_for('static', filename='editor.js') }}"></script>

@@ -16,7 +16,11 @@ let STATE = {
 function el(id) { return document.getElementById(id); }
 
 function scheduleId() {
-  return document.body?.dataset?.scheduleId || null;
+  return (
+    document.body?.dataset?.scheduleId ||
+    document.querySelector(".scheduler-edit-page")?.dataset?.scheduleId ||
+    null
+  );
 }
 
 /**
@@ -5186,4 +5190,3 @@ window.timelineUndo = timelineUndo;
 window.timelineRedo = timelineRedo;
 window.deleteRehearsal = deleteRehearsal;
 window.revertToOriginal = revertToOriginal;
-
