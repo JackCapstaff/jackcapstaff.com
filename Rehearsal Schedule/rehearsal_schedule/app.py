@@ -2675,6 +2675,14 @@ def order_bundles_descending_load_with_similarity(
     transition_cost_fn,
     increase_penalty_weight: float = 100.0
 ) -> List[Bundle]:
+    """Keep the heaviest-player bundles at the start of the rehearsal.
+
+    The original heuristic only penalised increases in player load, so a lower-load
+    bundle could still win if it happened to have a slightly smaller transition cost.
+    That lets the heaviest material drift later in the rehearsal order.  We now
+    penalise any drop in player load as well, while still using transition cost as a
+    secondary tie-break between bundles of comparable load.
+    """
     if not bundles:
         return []
     remaining = bundles[:]
@@ -2687,10 +2695,10 @@ def order_bundles_descending_load_with_similarity(
         best_i = 0
         best_key = None
         for i, cand in enumerate(remaining):
-            inc = max(0.0, cand.playerload - last_load)
-            inc_pen = inc * increase_penalty_weight
+            load_drop = max(0.0, last_load - cand.playerload)
+            load_drop_pen = load_drop * increase_penalty_weight
             tc = transition_cost_fn(last.sig, cand.sig)
-            key = (inc_pen, tc, -cand.playerload, -cand.mins)
+            key = (load_drop_pen, tc, -cand.playerload, -cand.mins)
             if best_key is None or key < best_key:
                 best_key = key
                 best_i = i

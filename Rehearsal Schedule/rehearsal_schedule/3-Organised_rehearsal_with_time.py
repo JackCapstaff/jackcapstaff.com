@@ -231,13 +231,16 @@ def greedy_order_bundles(bundles: List[Dict]) -> List[Dict]:
     order = [items.pop(pick_seed_bundle(items))]
     while items:
         last = order[-1]
-        # choose next with min transition cost; prefer higher PlayerLoad and longer minutes
-        best_j, best_tuple = 0, (9999, -1, -1)
+        # Keep the heaviest bundles at the front of the rehearsal.  A lower-load
+        # bundle should only win if it is a much better transition and the drop in
+        # player-load is not large.
+        best_j, best_key = 0, (9999, 9999, 9999, 9999)
         for j, cand in enumerate(items):
             c = transition_cost(last["sig"], cand["sig"])
-            tup = (c, cand.get("PlayerLoad", 0), cand["mins"])
-            if (c, -cand.get("PlayerLoad", 0), -cand["mins"]) < (best_tuple[0], -best_tuple[1], -best_tuple[2]):
-                best_j, best_tuple = j, tup
+            load_drop = max(0.0, float(last.get("PlayerLoad", 0)) - float(cand.get("PlayerLoad", 0)))
+            key = (load_drop * 100.0, c, -float(cand.get("PlayerLoad", 0)), -cand["mins"])
+            if key < best_key:
+                best_j, best_key = j, key
         order.append(items.pop(best_j))
     # small local improvement pass
     def total_cost(seq): return sum(transition_cost(seq[k]["sig"], seq[k+1]["sig"]) for k in range(len(seq)-1))

@@ -228,10 +228,10 @@ def order_bundles(bundles: List[Bundle], increase_penalty_weight: float=100.0) -
         best_i = 0
         best_key = None
         for i, cand in enumerate(remaining):
-            inc = max(0.0, cand.playerload - last_load)
-            inc_pen = inc * increase_penalty_weight
+            load_drop = max(0.0, last_load - cand.playerload)
+            load_drop_pen = load_drop * increase_penalty_weight
             tc = mod3.transition_cost(last.sig, cand.sig)
-            key = (inc_pen, tc, -cand.playerload, -cand.mins)
+            key = (load_drop_pen, tc, -cand.playerload, -cand.mins)
             if best_key is None or key < best_key:
                 best_key = key
                 best_i = i
