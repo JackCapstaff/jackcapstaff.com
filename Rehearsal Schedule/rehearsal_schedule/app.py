@@ -2657,7 +2657,7 @@ def build_bundles_for_rehearsal(df_r: pd.DataFrame, sig_map: Dict[str, Dict[str,
             grp2["MovementOrder"] = pd.to_numeric(grp2["MovementOrder"], errors="coerce")
             grp2 = grp2.sort_values(["MovementOrder", "Title"], na_position="last")
         mins = int(pd.to_numeric(grp2["Rehearsal Time (minutes)"], errors="coerce").fillna(0).sum())
-        playerload = float(pd.to_numeric(grp2["PlayerLoad"], errors="coerce").fillna(0).max())
+        playerload = float(pd.to_numeric(grp2["PlayerLoad"], errors="coerce").fillna(0).sum())
 
         sig = {"Percs": 0, "PercProfile": 0, "Piano": 0, "Harp": 0, "Winds": 0, "Brass": 0, "Strings": 0}
         for t in grp2["Title"].astype(str).tolist():
