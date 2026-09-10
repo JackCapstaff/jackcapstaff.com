@@ -143,25 +143,24 @@ def _count_cell(x) -> float:
     return 0.0
 
 def estimate_player_load(row: pd.Series, groups: Dict[str, List[str]]) -> float:
-    load = 0.0
-    # Winds / Brass / Percussion / Piano / Harp: sum counts × weight
-    for col in groups["WIND"]:   load += WEIGHTS["WIND"]   * _count_cell(row.get(col))
-    for col in groups["BRASS"]:  load += WEIGHTS["BRASS"]  * _count_cell(row.get(col))
-    perc_count = 0.0
-    for col in groups["PERC"]:   perc_count += _count_cell(row.get(col))
-    load += WEIGHTS["PERC"] * perc_count
-    # Keys / Harp
-    for col in groups["PIANO"]:  load += WEIGHTS["PIANO"]  * _count_cell(row.get(col))
-    for col in groups["HARP"]:   load += WEIGHTS["HARP"]   * _count_cell(row.get(col))
-    # Strings: desk counts if available, otherwise baseline if any string present
-    string_cols = groups["STRING"]
-    if string_cols:
-        string_sum = sum(_count_cell(row.get(c)) for c in string_cols)
-        if string_sum > 0:
-            load += WEIGHTS["STRING"] * string_sum
-        elif any_positive(row, string_cols):
-            load += STRINGS_BASELINE_IF_PRESENT
-    return float(load)
+    # Use literal player-count totals (where available) so ordering reflects
+    # "most players first" instead of section-weight heuristics.
+    cols = (
+        list(groups["WIND"]) +
+        list(groups["BRASS"]) +
+        list(groups["PERC"]) +
+        list(groups["PIANO"]) +
+        list(groups["HARP"]) +
+        list(groups["STRING"])
+    )
+    unique_cols = []
+    seen = set()
+    for col in cols:
+        if col in seen:
+            continue
+        seen.add(col)
+        unique_cols.append(col)
+    return float(sum(_count_cell(row.get(col)) for col in unique_cols))
 
 def required_sections_for_work(row: pd.Series, groups: Dict[str, List[str]]) -> Dict[str, bool]:
     return {
