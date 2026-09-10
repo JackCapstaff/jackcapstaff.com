@@ -23,6 +23,17 @@ function scheduleId() {
   );
 }
 
+function appRoot() {
+  const rawRoot = (
+    document.body?.dataset?.appRoot ||
+    document.querySelector(".scheduler-edit-page")?.dataset?.appRoot ||
+    window.SCHEDULE_APP_ROOT ||
+    ""
+  );
+  if (!rawRoot) return "";
+  return rawRoot.endsWith("/") ? rawRoot.slice(0, -1) : rawRoot;
+}
+
 /**
  * Security Fix: Fetches the token from the URL (?token=...) 
  * or a global variable if set in edit.html.
@@ -34,7 +45,8 @@ function getEditToken() {
 
 function apiBase() {
   const sid = scheduleId();
-  return sid ? `/api/s/${encodeURIComponent(sid)}` : `/api`;
+  const root = appRoot();
+  return sid ? `${root}/api/s/${encodeURIComponent(sid)}` : `${root}/api`;
 }
 
 function withEditToken(url) {

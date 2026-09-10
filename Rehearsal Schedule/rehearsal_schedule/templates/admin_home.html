@@ -225,8 +225,9 @@
 
   <script>
     function scheduleApiUrl(scheduleId, path) {
+      const appRoot = {{ (request.script_root or '')|tojson }};
       const token = new URLSearchParams(window.location.search).get('token') || window.EDIT_TOKEN || '';
-      const url = `/api/s/${scheduleId}${path}`;
+      const url = `${appRoot}/api/s/${scheduleId}${path}`;
       return token ? `${url}?token=${encodeURIComponent(token)}` : url;
     }
 

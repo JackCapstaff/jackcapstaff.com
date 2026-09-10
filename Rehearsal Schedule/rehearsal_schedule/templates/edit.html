@@ -33,7 +33,7 @@
     color: var(--ink);
   }
 </style>
-<div class="scheduler-edit-page" data-schedule-id="{{ schedule_id }}">
+<div class="scheduler-edit-page" data-schedule-id="{{ schedule_id }}" data-app-root="{{ request.script_root or '' }}">
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px;">
       <div>
@@ -302,8 +302,9 @@
   let customRecipients = [];
 
   function scheduleApiUrl(path) {
+    const appRoot = {{ (request.script_root or '')|tojson }};
     const token = new URLSearchParams(window.location.search).get('token') || window.EDIT_TOKEN || '';
-    const url = `/api/s/{{ schedule_id }}${path}`;
+    const url = `${appRoot}/api/s/{{ schedule_id }}${path}`;
     return token ? `${url}?token=${encodeURIComponent(token)}` : url;
   }
 
