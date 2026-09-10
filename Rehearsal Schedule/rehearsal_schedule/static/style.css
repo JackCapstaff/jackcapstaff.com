@@ -85,6 +85,42 @@ body .wrap {
   flex-wrap: wrap;
 }
 
+.admin-schedule-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.admin-schedule-meta {
+  flex: 1 1 320px;
+  min-width: 260px;
+}
+
+.admin-schedule-controls {
+  flex: 0 0 360px;
+  min-width: 300px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-action-select {
+  width: 260px;
+  min-width: 220px;
+  max-width: 100%;
+  color: var(--ink) !important;
+  background: #fff;
+}
+
+.admin-action-go {
+  width: 72px;
+  flex: 0 0 72px;
+  text-align: center;
+}
+
 .card {
   background: var(--surface);
   border-radius: 12px;
@@ -229,9 +265,26 @@ textarea {
     border-radius: 14px;
   }
 
+  .admin-schedule-controls {
+    flex: 1 1 100%;
+    min-width: 0;
+    justify-content: stretch;
+  }
+
+  .admin-action-select {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
   .btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .admin-action-go {
+    width: auto;
+    flex: 0 0 auto;
   }
 }
 

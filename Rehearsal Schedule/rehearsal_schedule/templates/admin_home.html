@@ -119,8 +119,8 @@
       <div style="margin-top:14px;">
         {% for s in schedules %}
           {% if s.id %}
-          <div style="border-top:1px solid #eee; padding-top:10px; margin-top:10px; display:flex; justify-content:space-between; gap:12px; align-items:baseline;">
-            <div>
+          <div class="admin-schedule-row" style="border-top:1px solid #eee; padding-top:10px; margin-top:10px;">
+            <div class="admin-schedule-meta">
               <strong>{{ s.name }}</strong>
               <div class="small">
                 Ensemble: {{ ens_by_id.get(s.ensemble_id, {"name": s.ensemble_id}).name }}
@@ -128,39 +128,41 @@
               </div>
             </div>
 
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <a class="btn secondary" href="{{ url_for('admin_edit_schedule', schedule_id=s.id) }}">Edit</a>
-              <a class="btn secondary" href="{{ url_for('schedule_view', schedule_id=s.id) }}">View</a>
-              <a class="btn secondary" href="{{ url_for('admin_schedule_attendance', schedule_id=s.id) }}">Attendance</a>
-              <a class="btn secondary" href="{{ url_for('admin_schedule_audit', schedule_id=s.id) }}">Audit</a>
-
-              <button class="btn secondary" onclick="document.getElementById('upload-complete-schedule-{{ s.id }}').click();">Upload Complete Schedule</button>
+            <div class="admin-schedule-controls">
+              <select
+                id="schedule-action-{{ s.id }}"
+                class="admin-action-select"
+                data-edit-url="{{ url_for('admin_edit_schedule', schedule_id=s.id) }}"
+                data-view-url="{{ url_for('schedule_view', schedule_id=s.id) }}"
+                data-attendance-url="{{ url_for('admin_schedule_attendance', schedule_id=s.id) }}"
+                data-audit-url="{{ url_for('admin_schedule_audit', schedule_id=s.id) }}"
+              >
+                <option value="">Choose action…</option>
+                <option value="edit">Edit schedule</option>
+                <option value="view">View schedule</option>
+                <option value="attendance">Attendance</option>
+                <option value="audit">Audit</option>
+                <option value="upload">Upload complete schedule</option>
+                <option value="notify">Send updates</option>
+                {% if s.status == "draft" %}
+                  <option value="publish">Publish (email members)</option>
+                {% else %}
+                  <option value="unpublish">Unpublish</option>
+                {% endif %}
+                <option value="delete">Delete schedule</option>
+              </select>
+              <button class="btn admin-action-go" type="button" onclick='runAdminScheduleAction("{{ s.id }}", {{ s.name|tojson }})'>Go</button>
               <form id="upload-complete-schedule-form-{{ s.id }}" style="display:none;">
                 <input type="file" id="upload-complete-schedule-{{ s.id }}" accept=".xlsx" onchange="handleCompleteScheduleUpload('{{ s.id }}', this.files[0])">
               </form>
-
-              <button class="btn secondary" type="button" onclick="openAdminNotifyModal('{{ s.id }}')">Send updates</button>
-
-              {% if s.status == "draft" %}
-                <form method="post" action="{{ url_for('admin_set_schedule_status', schedule_id=s.id) }}">
-                  <input type="hidden" name="status" value="published">
-                  <label class="small" style="display:inline-flex; align-items:center; gap:6px; margin-right:8px;">
-                    <input type="checkbox" name="notify_publish" checked>
-                    Email members about publish
-                  </label>
-                  <button class="btn" type="submit">Publish</button>
-                </form>
-              {% else %}
-                <form method="post" action="{{ url_for('admin_set_schedule_status', schedule_id=s.id) }}">
-                  <input type="hidden" name="status" value="draft">
-                  <button class="btn secondary" type="submit">Unpublish</button>
-                </form>
-              {% endif %}
-
-              <form method="post" action="{{ url_for('admin_delete_schedule', schedule_id=s.id) }}"
-                    onsubmit="return confirm('Delete schedule {{ s.name }}?');">
-                <button class="btn secondary" type="submit">Delete</button>
+              <form id="schedule-publish-form-{{ s.id }}" method="post" action="{{ url_for('admin_set_schedule_status', schedule_id=s.id) }}" style="display:none;">
+                <input type="hidden" name="status" value="published">
+                <input type="hidden" name="notify_publish" value="1">
               </form>
+              <form id="schedule-unpublish-form-{{ s.id }}" method="post" action="{{ url_for('admin_set_schedule_status', schedule_id=s.id) }}" style="display:none;">
+                <input type="hidden" name="status" value="draft">
+              </form>
+              <form id="schedule-delete-form-{{ s.id }}" method="post" action="{{ url_for('admin_delete_schedule', schedule_id=s.id) }}" style="display:none;"></form>
             </div>
           </div>
           {% else %}
@@ -222,6 +224,64 @@
   </div>
 
   <script>
+    function runAdminScheduleAction(scheduleId, scheduleName) {
+      const select = document.getElementById(`schedule-action-${scheduleId}`);
+      if (!select || !select.value) return;
+      const action = select.value;
+      const finish = () => {
+        select.value = '';
+      };
+
+      if (action === 'edit') {
+        window.location.href = select.dataset.editUrl;
+        return;
+      }
+      if (action === 'view') {
+        window.location.href = select.dataset.viewUrl;
+        return;
+      }
+      if (action === 'attendance') {
+        window.location.href = select.dataset.attendanceUrl;
+        return;
+      }
+      if (action === 'audit') {
+        window.location.href = select.dataset.auditUrl;
+        return;
+      }
+      if (action === 'upload') {
+        const uploadInput = document.getElementById(`upload-complete-schedule-${scheduleId}`);
+        if (uploadInput) uploadInput.click();
+        finish();
+        return;
+      }
+      if (action === 'notify') {
+        openAdminNotifyModal(scheduleId);
+        finish();
+        return;
+      }
+      if (action === 'publish') {
+        const publishForm = document.getElementById(`schedule-publish-form-${scheduleId}`);
+        if (publishForm) publishForm.submit();
+        finish();
+        return;
+      }
+      if (action === 'unpublish') {
+        const unpublishForm = document.getElementById(`schedule-unpublish-form-${scheduleId}`);
+        if (unpublishForm) unpublishForm.submit();
+        finish();
+        return;
+      }
+      if (action === 'delete') {
+        if (!confirm(`Delete schedule ${scheduleName}?`)) {
+          finish();
+          return;
+        }
+        const deleteForm = document.getElementById(`schedule-delete-form-${scheduleId}`);
+        if (deleteForm) deleteForm.submit();
+        finish();
+      }
+    }
+
     async function handleCompleteScheduleUpload(scheduleId, file) {
       if (!file) return;
       
