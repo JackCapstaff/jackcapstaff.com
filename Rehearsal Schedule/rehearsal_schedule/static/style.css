@@ -14,6 +14,31 @@ body {
   color: var(--ink);
 }
 
+body,
+body h1,
+body h2,
+body h3,
+body h4,
+body h5,
+body h6,
+body p,
+body strong,
+body b,
+body input,
+body select,
+body textarea,
+body label,
+body td,
+body th,
+body .small,
+body .muted,
+body .card,
+body #page-wrapper,
+body .wrap {
+  color: var(--ink) !important;
+}
+
+
 /* HEADER FIX - Ensure header is visible on rehearsal schedule pages */
 #header {
   background-color: #2e3842 !important;
