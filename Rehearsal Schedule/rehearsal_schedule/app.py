@@ -7284,9 +7284,22 @@ def download_schedule_pdf(schedule_id):
             })
         else:
             section = first_row.get("Section", "Full Ensemble")
-            # Sort by actual time in minutes for robust ordering
-            import core
+            # Sort by actual time in minutes for robust ordering. Load the local
+            # core module by file path because this file runs as a mounted app and
+            # the module is not always present on the Python import path.
+            core_path = os.path.join(BASE_DIR, "core.py")
+            try:
+                spec = importlib.util.spec_from_file_location("rehearsal_core", core_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError("Core loader unavailable")
+                core = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(core)
+            except Exception:
+                core = None
+
             def _parse_minutes(val):
+                if core is None:
+                    return None
                 try:
                     return core.minutes_from_timecell(val)
                 except Exception:
