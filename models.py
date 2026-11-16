@@ -382,6 +382,51 @@ def init_models(db):
             }
 
 
+    class ClickTrack(db.Model):
+        """A performance click track: an ordered list of metronome sections.
+
+        Sections are stored as JSON text (list of dicts with name, bpm, meter,
+        bars, advance mode, etc.; validated in clicktrack.py) so it works the
+        same on SQLite and PostgreSQL.
+        """
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+        title = db.Column(db.String(255), nullable=False)
+        notes = db.Column(db.Text)
+        sections_json = db.Column(db.Text, default='[]')
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+        @staticmethod
+        def _load(raw, default):
+            if not raw:
+                return default
+            try:
+                import json
+                val = json.loads(raw)
+                return val if isinstance(val, type(default)) else default
+            except Exception:
+                return default
+
+        @property
+        def sections(self):
+            return self._load(self.sections_json, [])
+
+        @sections.setter
+        def sections(self, val):
+            import json
+            self.sections_json = json.dumps(val or [])
+
+        def to_dict(self):
+            return {
+                'id': self.id,
+                'title': self.title,
+                'notes': self.notes or '',
+                'sections': self.sections,
+                'updated_at': self.updated_at.isoformat() + 'Z' if self.updated_at else None,
+            }
+
+
     return {
         'SiteSetting': SiteSetting,
         'User': User,
@@ -396,4 +441,5 @@ def init_models(db):
         'PublishingQuote': PublishingQuote,
         'PublishingOrder': PublishingOrder,
         'Recipe': Recipe,
+        'ClickTrack': ClickTrack,
     }

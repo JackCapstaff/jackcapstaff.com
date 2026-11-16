@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0d1117">
+  <title>Click Track · Jack Capstaff</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/clicktrack.css') }}">
+</head>
+<body>
+  <div id="flash-layer" aria-hidden="true"></div>
+
+  <header class="ct-top">
+    <a class="ct-brand" href="{{ url_for('index') }}" title="Back to jackcapstaff.com">Click Track</a>
+    <div class="ct-trackpick">
+      <select id="track-select" aria-label="Choose track"></select>
+      <button class="btn small" id="btn-new-track" title="New track">+ New</button>
+      <details class="ct-menu">
+        <summary class="btn small" title="Track options">⋯</summary>
+        <div class="ct-menu-body">
+          <button class="btn small ghost" id="btn-dup-track">Duplicate track</button>
+          <button class="btn small ghost" id="btn-export-track">Export (.json)</button>
+          <label class="btn small ghost" for="import-file">Import (.json)</label>
+          <input type="file" id="import-file" accept="application/json,.json" hidden>
+          <button class="btn small danger" id="btn-delete-track">Delete track</button>
+        </div>
+      </details>
+    </div>
+    <nav class="ct-tabs" role="tablist">
+      <button class="tab active" data-view="perform" role="tab">Perform</button>
+      <button class="tab" data-view="edit" role="tab">Edit</button>
+    </nav>
+    <div class="ct-account">
+      <span id="save-status" class="muted small"></span>
+      {% if current_user.is_authenticated %}
+        <span class="muted small" title="Tracks are saved to your account">☁ {{ current_user.username }}</span>
+      {% else %}
+        <a class="small" href="{{ url_for('login', next=request.path) }}" title="Tracks are currently stored in this browser only">Log in to save to your account</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <!-- ===================== PERFORM ===================== -->
+  <main id="view-perform" class="view">
+    <section class="stage" id="stage">
+      <div class="stage-head">
+        <div class="stage-secnum" id="d-secnum"></div>
+        <div class="stage-name" id="d-name">—</div>
+        <div class="stage-notes" id="d-notes"></div>
+      </div>
+
+      <div class="stage-main">
+        <div class="stage-col">
+          <div class="lbl">Bar</div>
+          <div class="big" id="d-bar">–</div>
+          <div class="sub" id="d-barof"></div>
+        </div>
+        <div class="stage-col">
+          <div class="lbl">Meter</div>
+          <div class="big" id="d-meter">–</div>
+          <div class="sub" id="d-grouping"></div>
+        </div>
+        <div class="stage-col">
+          <div class="lbl">Tempo</div>
+          <div class="big" id="d-tempo">–</div>
+          <div class="sub" id="d-tempo-sub"></div>
+        </div>
+      </div>
+
+      <div class="beats" id="d-beats" aria-hidden="true"></div>
+      <div class="stage-countin" id="d-countin" hidden></div>
+      <div class="stage-next" id="d-next"></div>
+    </section>
+
+    <section class="transport">
+      <button class="btn" id="btn-prev" title="Previous section / cancel queued jump (← / PageUp)">⏮ Prev</button>
+      <button class="btn primary huge" id="btn-play" title="Start / stop (Space)">▶ Start</button>
+      <button class="btn green huge" id="btn-next" title="Advance (→ / PageDown / pedal)">Next ⏭</button>
+    </section>
+
+    <section class="prefs">
+      <label class="pref">Volume <input type="range" id="pref-volume" min="0" max="1.5" step="0.05"></label>
+      <label class="pref">Sound
+        <select id="pref-sound">
+          <option value="beep">Beep</option>
+          <option value="wood">Woodblock</option>
+          <option value="hihat">Hi-hat</option>
+        </select>
+      </label>
+      <label class="pref"><input type="checkbox" id="pref-flash"> Flash on downbeat</label>
+      <label class="pref"><input type="checkbox" id="pref-midi"> MIDI pedal</label>
+      <button class="btn small" id="btn-learn" title="Press this, then press your pedal">Learn pedal key</button>
+      <button class="btn small ghost" id="btn-reset-keys" title="Restore default pedal keys">Reset keys</button>
+      <span class="muted small" id="pedal-keys"></span>
+    </section>
+
+    <section class="setlist">
+      <h3>Sections <span class="muted small">Tap one to start from it, or to jump there at the next barline while playing.</span></h3>
+      <ol id="setlist"></ol>
+    </section>
+  </main>
+
+  <!-- ===================== EDIT ===================== -->
+  <main id="view-edit" class="view" hidden>
+    <section class="track-meta">
+      <label>Title <input type="text" id="track-title" maxlength="255"></label>
+      <label>Notes <textarea id="track-notes" maxlength="2000" rows="2" placeholder="Optional notes about this track"></textarea></label>
+      <div class="muted small" id="track-summary"></div>
+    </section>
+
+    <details class="sec-help muted small">
+      <summary>How the fields work</summary>
+      <ul>
+        <li><strong>Tempo</strong> is per <em>beat unit</em>. “Auto” uses the dotted beat in compound time (♩. in 6/8, 9/8, 12/8) and the bottom number otherwise.</li>
+        <li><strong>End tempo</strong> (optional) makes a gradual accel./rit. across the whole section.</li>
+        <li><strong>Grouping</strong> sets the beats in odd or compound meters, e.g. <code>3+2</code> for 5/8 or <code>2+2+3</code> for 7/8. Leave it blank for the default.</li>
+        <li><strong>Click</strong>: beats only, every bottom-number note (e.g. all quavers), or extra subdivisions. “Silent” shows the beats on screen without any sound.</li>
+        <li><strong>Advance</strong>: <em>auto</em> moves on after the bar count. <em>Wait for pedal</em> keeps looping (vamp) until you press Next or the pedal. Next/pedal always moves on at the next barline.</li>
+        <li><strong>Pause / cue</strong> sections make no sound and wait for the pedal (dialogue, applause, page turns…). The next section starts as soon as you press it.</li>
+        <li><strong>Count-in</strong> plays when you start from that section or come out of a pause. It doesn’t play when the music flows straight into it.</li>
+        <li><strong>Score bar</strong> (optional) sets the printed bar number at the start of the section. Later sections carry on counting from there.</li>
+      </ul>
+    </details>
+
+    <div id="sections"></div>
+    <div class="edit-actions">
+      <button class="btn primary" id="btn-add-section">+ Add section</button>
+      <button class="btn" id="btn-add-pause">+ Add pause / cue</button>
+    </div>
+  </main>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    window.CLICKTRACK_CONFIG = {
+      authenticated: {{ 'true' if current_user.is_authenticated else 'false' }},
+      userKey: {{ (('u' ~ current_user.id) if current_user.is_authenticated else 'anon') | tojson }},
+      apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }}
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/clicktrack.js') }}"></script>
+</body>
+</html>
