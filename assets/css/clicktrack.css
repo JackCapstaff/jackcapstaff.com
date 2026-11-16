@@ -104,7 +104,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .stage-next.waiting { color: var(--beat-on); font-weight: 700; }
 
 .transport { display: flex; gap: 12px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
-.transport #btn-prev { min-height: 76px; }
+.transport #btn-prev, .transport #btn-tap { min-height: 76px; }
+.transport #btn-tap { touch-action: manipulation; user-select: none; }
 
 .prefs { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: center; padding: 10px; color: var(--muted); }
 .pref { display: inline-flex; align-items: center; gap: 8px; }
@@ -144,6 +145,9 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .sec .fields label.wide { grid-column: span 2; }
 .sec .fields .meter { display: flex; align-items: center; gap: 4px; }
 .sec .fields .meter input { text-align: center; padding: 8px 4px; }
+.sec .fields .tapwrap { display: flex; align-items: center; gap: 4px; }
+.sec .fields .tapwrap input { min-width: 0; }
+.sec .fields .tapwrap .tap { touch-action: manipulation; }
 .sec .acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 120px; padding-top: 18px; }
 .sec .info { grid-column: 2 / -1; font-size: 13px; color: var(--muted); }
 .sec .info.warn { color: #ff8a72; }

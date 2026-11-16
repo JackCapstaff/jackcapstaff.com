@@ -410,6 +410,33 @@
     renderSetlist();
   }
 
+  // -------------------------------------------------------------- tap tempo
+  // Averages the last few taps; a gap over 2s starts a fresh measurement.
+  const tap = { times: [], idx: -1 };
+  function tapTempo(idx) {
+    if (idx == null) idx = E.playing ? E.secIdx : selectedIdx;
+    const s = sections()[idx];
+    if (!s || s.type === 'pause') { toast('Pick a click section to tap a tempo into'); return; }
+    const now = performance.now();
+    const last = tap.times[tap.times.length - 1];
+    if (tap.idx !== idx || (last && now - last > 2000)) tap.times = [];
+    tap.idx = idx;
+    tap.times.push(now);
+    if (tap.times.length > 8) tap.times.shift();
+    const n = tap.times.length;
+    if (n < 2) { toast('Tap tempo: keep tapping…'); return; }
+    const bpm = Math.round(60000 * (n - 1) / (tap.times[n - 1] - tap.times[0]));
+    const ns = normSection(Object.assign({}, s, { bpm }));
+    current.sections[idx] = ns;
+    markDirty();
+    updateInfos();
+    renderSetlist();
+    if (!E.playing) renderIdle();
+    const field = document.querySelector('[data-f="bpm"][data-i="' + idx + '"]');
+    if (field) field.value = ns.bpm;
+    toast('Tempo ' + unitLabel(ns) + '=' + ns.bpm + (n < 4 ? ' (keep tapping to refine)' : ''));
+  }
+
   // ----------------------------------------------------------- perform view
   let beatsKey = '';
   let litBeat = null;
@@ -804,7 +831,8 @@
         + fld('Notes / cue (shown on screen)', inp(i, 'notes', s.notes, 'type="text" maxlength="500"'), true);
     } else {
       f += fld('Name', inp(i, 'name', s.name, 'type="text" maxlength="120" placeholder="Section ' + (i + 1) + '"'), true)
-        + fld('Tempo', inp(i, 'bpm', s.bpm, 'type="number" min="10" max="400" step="any" inputmode="decimal"'))
+        + fld('Tempo', '<span class="tapwrap">' + inp(i, 'bpm', s.bpm, 'type="number" min="10" max="400" step="any" inputmode="decimal"')
+          + '<button class="btn icon tap" data-act="tap" data-i="' + i + '" title="Tap tempo: tap this repeatedly in time">Tap</button></span>')
         + fld('End tempo', inp(i, 'bpmEnd', s.bpmEnd, 'type="number" min="10" max="400" step="any" inputmode="decimal" placeholder="steady"'))
         + fld('Beat unit', sel(i, 'beatUnit', BEAT_UNITS, s.beatUnit))
         + fld('Meter', '<span class="meter">' + inp(i, 'num', s.num, 'type="number" min="1" max="32" inputmode="numeric"')
@@ -888,6 +916,7 @@
     const b = e.target.closest('[data-act]');
     if (!b || !current) return;
     const i = +b.dataset.i, secs = current.sections, act = b.dataset.act;
+    if (act === 'tap') { tapTempo(i); return; }
     if (act === 'play') {
       if (E.playing) stop(false);
       switchView('perform');
@@ -937,7 +966,7 @@
   const KEY_NAMES = { ArrowRight: '→', ArrowLeft: '←', ArrowUp: '↑', ArrowDown: '↓', ' ': 'Space' };
   const keyName = (k) => KEY_NAMES[k] || k;
   function renderPedalKeys() {
-    $('pedal-keys').textContent = 'Next/pedal: ' + prefs.keys.map(keyName).join(' ') + ' · Back: ← PgUp · Start/stop: Space · Stop: Esc';
+    $('pedal-keys').textContent = 'Next/pedal: ' + prefs.keys.map(keyName).join(' ') + ' · Back: ← PgUp · Start/stop: Space · Stop: Esc · Tap tempo: T';
   }
 
   let learning = false;
@@ -1004,6 +1033,11 @@
     }
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key;
+    if ((k === 't' || k === 'T') && !prefs.keys.includes(k)) {
+      e.preventDefault();
+      if (!e.repeat) tapTempo();
+      return;
+    }
     const handled = k === ' ' || k === 'Escape' || prefs.keys.includes(k) || BACK_KEYS.includes(k);
     if (!handled) return;
     e.preventDefault();
@@ -1022,17 +1056,21 @@
     $('btn-play').addEventListener('click', togglePlay);
     $('btn-next').addEventListener('click', () => (E.playing ? advance() : selectIdx(selectedIdx + 1)));
     $('btn-prev').addEventListener('click', () => (E.playing ? back() : selectIdx(selectedIdx - 1)));
+    // pointerdown gives tighter timing than click for tapping.
+    $('btn-tap').addEventListener('pointerdown', (e) => { e.preventDefault(); tapTempo(); });
+    $('btn-tap').addEventListener('keydown', (e) => { if (e.key === 'Enter') tapTempo(); });
     $('setlist').addEventListener('click', (e) => { const li = e.target.closest('li[data-i]'); if (li) jumpTo(+li.dataset.i); });
     $('setlist').addEventListener('dblclick', (e) => { const li = e.target.closest('li[data-i]'); if (li && !E.playing) start(+li.dataset.i); });
     document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
 
     $('track-select').addEventListener('change', (e) => { selectTrack(e.target.value); e.target.blur(); });
     const closeMenu = () => { document.querySelector('.ct-menu').open = false; };
+    // No window.prompt here: some browsers (in-app / embedded) block it, which made New appear to do nothing.
     $('btn-new-track').addEventListener('click', () => {
-      const title = window.prompt('Name for the new click track', 'New click track');
-      if (title == null) return;
-      addTrack(makeTrack(title.trim() || 'New click track', [{ countIn: 1 }]));
+      addTrack(makeTrack('New click track', [{ countIn: 1 }]));
       switchView('edit');
+      const t = $('track-title');
+      t.focus(); t.select();
     });
     $('btn-dup-track').addEventListener('click', () => {
       closeMenu();
