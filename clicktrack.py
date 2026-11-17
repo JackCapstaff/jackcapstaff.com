@@ -1,19 +1,18 @@
 """
 Click track / programmable metronome.
 
-  /clicktrack/                    performance + editor page (open to everyone)
+  /clicktrack/                    performance + editor page (login required)
   /clicktrack/api/tracks          GET list, POST create        (login required)
   /clicktrack/api/tracks/<id>     PUT update, DELETE           (login required)
 
-Signed-in users have tracks saved to their account; anonymous visitors keep
-tracks in browser localStorage (handled entirely client-side).
+Tracks are saved to the signed-in user's account, with a browser-local cache.
 """
 import math
 import re
 from functools import wraps
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 clicktrack_bp = Blueprint("clicktrack", __name__, url_prefix="/clicktrack")
 
@@ -140,6 +139,7 @@ def _bad_request(err):
 
 
 @clicktrack_bp.route("/")
+@login_required
 def clicktrack_index():
     return render_template("clicktrack/index.html")
 
