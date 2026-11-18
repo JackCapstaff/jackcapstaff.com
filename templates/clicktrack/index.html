@@ -43,6 +43,9 @@
 
   <!-- ===================== PERFORM ===================== -->
   <main id="view-perform" class="view">
+    <div class="performance-tools">
+      <button class="btn small" id="btn-fullscreen" aria-pressed="false">Fullscreen performance</button>
+    </div>
     <section class="stage" id="stage">
       <div class="stage-head">
         <div class="stage-secnum" id="d-secnum"></div>
@@ -71,6 +74,12 @@
       <div class="beats" id="d-beats" aria-hidden="true"></div>
       <div class="stage-countin" id="d-countin" hidden></div>
       <div class="stage-next" id="d-next"></div>
+      <div class="next-preview" id="next-preview" hidden>
+        <div class="next-heading" id="d-next-name"></div>
+        <div id="d-next-details"></div>
+        <div class="next-change" id="d-next-change"></div>
+        <div class="next-notes" id="d-next-notes"></div>
+      </div>
     </section>
 
     <section class="transport">
@@ -117,6 +126,9 @@
         <li><strong>End tempo</strong> (optional) makes a gradual accel./rit. across the whole section.</li>
         <li><strong>Grouping</strong> sets the beats in odd or compound meters, e.g. <code>3+2</code> for 5/8 or <code>2+2+3</code> for 7/8. Leave it blank for the default.</li>
         <li><strong>Click</strong>: beats only, every bottom-number note (e.g. all quavers), or extra subdivisions. “Silent” shows the beats on screen without any sound.</li>
+        <li>For <strong>all six quavers in 6/8</strong>, choose <em>Every meter unit</em>. The two dotted-crotchet beats stay accented. Extra subdivisions divide each bottom-number note further.</li>
+        <li><strong>Subdivision sound</strong> sets pitch offsets (semitones, ±24) and velocity (0–127, zero mutes) separately for inner meter notes and extra subdivisions. Pitch changes the tone or, for hi-hat, its filter frequency. Main beat accents stay unchanged.</li>
+        <li><strong>Performance notes</strong> appear prominently for the current section, including in fullscreen. The preview shows the next section's notes, score bar, meter and tempo. Countdowns include the current bar; repeating sections wait for a cue rather than counting down to an automatic change.</li>
         <li><strong>Advance</strong>: <em>auto</em> moves on after the bar count. <em>Wait for pedal</em> keeps looping (vamp) until you press Next or the pedal. Next/pedal always moves on at the next barline.</li>
         <li><strong>Pause / cue</strong> sections make no sound and wait for the pedal (dialogue, applause, page turns…). The next section starts as soon as you press it.</li>
         <li><strong>Count-in</strong> plays when you start from that section or come out of a pause. It doesn’t play when the music flows straight into it.</li>

@@ -23,7 +23,7 @@
     '3/2': 'dotted semibreve', '3/4': 'dotted minim', '3/8': '♩.', '3/16': '♪.', '3/32': 'dotted semiquaver',
   };
   const CLICK_MODES = [
-    ['beats', 'Beats'], ['units', 'Every unit'], ['sub2', 'Subdivide ×2'],
+    ['beats', 'Beats only'], ['units', 'Every meter unit'], ['sub2', 'Subdivide ×2'],
     ['sub3', 'Subdivide ×3'], ['sub4', 'Subdivide ×4'], ['silent', 'Silent (visual)'],
   ];
   const DENOMS = [1, 2, 4, 8, 16, 32];
@@ -63,6 +63,7 @@
     return Object.assign({
       type: 'click', name: '', notes: '', bpm: 120, bpmEnd: null, beatUnit: 'auto',
       num: 4, den: 4, grouping: '', bars: 8, advance: 'auto', click: 'beats', countIn: 0, startBar: null,
+      unitPitch: 0, unitVelocity: 53, subPitch: 0, subVelocity: 32,
     }, over || {});
   }
 
@@ -81,6 +82,10 @@
     s.bars = num(raw.bars, 4, 1, 9999, true);
     s.advance = raw.advance === 'manual' ? 'manual' : 'auto';
     s.click = CLICK_MODES.some((c) => c[0] === raw.click) ? raw.click : 'beats';
+    s.unitPitch = num(raw.unitPitch, 0, -24, 24);
+    s.unitVelocity = num(raw.unitVelocity, 53, 0, 127, true);
+    s.subPitch = num(raw.subPitch, 0, -24, 24);
+    s.subVelocity = num(raw.subVelocity, 32, 0, 127, true);
     s.countIn = num(raw.countIn, 0, 0, 8, true);
     s.startBar = raw.startBar == null || raw.startBar === '' ? null : num(raw.startBar, null, 1, 99999, true);
     return s;
@@ -219,16 +224,22 @@
   }
 
   // level: 3 downbeat, 2 beat, 1 unit, 0 subdivision
-  function playClick(time, level) {
-    const peak = [0.25, 0.42, 0.7, 1][level];
+  function playClick(time, level, section) {
+    let peak = [0.25, 0.42, 0.7, 1][level], pitch = 1;
+    if (section && level < 2) {
+      const prefix = level === 1 ? 'unit' : 'sub';
+      peak = section[prefix + 'Velocity'] / 127;
+      pitch = Math.pow(2, section[prefix + 'Pitch'] / 12);
+    }
+    if (peak === 0) return;
     if (prefs.sound === 'wood') {
       const g = envGain(time, peak, 0.06);
-      tone(time, 'sine', [700, 900, 1100, 1500][level], 0.07, g);
-      noise(time, 0.03, 'bandpass', [1800, 2200, 2600, 3400][level], 6, envGain(time, peak * 0.8, 0.025));
+      tone(time, 'sine', [700, 900, 1100, 1500][level] * pitch, 0.07, g);
+      noise(time, 0.03, 'bandpass', [1800, 2200, 2600, 3400][level] * pitch, 6, envGain(time, peak * 0.8, 0.025));
     } else if (prefs.sound === 'hihat') {
-      noise(time, 0.12, 'highpass', level === 3 ? 5000 : 7500, 0.7, envGain(time, peak, [0.03, 0.04, 0.05, 0.1][level]));
+      noise(time, 0.12, 'highpass', Math.min(ctx.sampleRate / 2, (level === 3 ? 5000 : 7500) * pitch), 0.7, envGain(time, peak, [0.03, 0.04, 0.05, 0.1][level]));
     } else {
-      tone(time, 'square', [660, 880, 1050, 1760][level], 0.06, envGain(time, peak * 0.5, 0.045));
+      tone(time, 'square', [660, 880, 1050, 1760][level] * pitch, 0.06, envGain(time, peak * 0.5, 0.045));
     }
   }
 
@@ -301,7 +312,7 @@
     const subN = counting ? 1 : subdivOf(s);
     const level = E.sub === 0 ? levels[E.tick] : 0;
     const bpm = counting ? s.bpm : bpmAt(s, (E.bar + (E.tick + E.sub / subN) / s.num) / s.bars);
-    if (audible(s, level, E.phase)) playClick(E.nextTime, level);
+    if (audible(s, level, E.phase)) playClick(E.nextTime, level, s);
     pushVis('tick', { level, bpm });
     E.nextTime += unitSeconds(s, bpm) / subN;
 
@@ -544,22 +555,50 @@
   }
 
   function renderNext(st) {
-    st = st || shown || { secIdx: selectedIdx, phase: 'stopped', bar: 0 };
+    st = st || shown || { secIdx: selectedIdx, phase: 'stopped', bar: 0, tick: 0 };
     const el = $('d-next');
     const secs = sections();
     const s = secs[st.secIdx];
     const queued = E.playing ? (E.queued != null ? E.queued : st.queued) : null;
-    const titleAt = (i) => (i >= secs.length ? 'End' : sectionTitle(secs[i], i));
+    const target = queued != null ? queued : st.secIdx + 1;
+    const next = secs[target];
+    const sb = startBars(secs);
+    const title = next ? sectionTitle(next, target) : 'End of track';
+    const preview = $('next-preview');
+    preview.hidden = !s;
+    $('d-next-name').textContent = 'Up next: ' + title;
+    $('d-next-details').textContent = !next ? '' : next.type === 'pause' ? 'Pause / cue — waits for pedal'
+      : 'Score bar ' + sb[target] + ' · ' + next.num + '/' + next.den + ' · ' + unitLabel(next) + '=' + next.bpm
+        + (next.bpmEnd != null ? ' → ' + next.bpmEnd : '');
+    $('d-next-notes').textContent = next ? next.notes : '';
+    let change = '';
+    if (s && s.type !== 'pause' && next && next.type !== 'pause') {
+      // Compare physical note durations, not BPM numbers with potentially different beat units.
+      const currentBpm = E.playing && st.phase === 'play' && st.bpm != null ? st.bpm : s.bpm;
+      const quarterSeconds = (section, bpm) => unitSeconds(section, bpm) * section.den / 4;
+      const ratio = quarterSeconds(s, currentBpm) / quarterSeconds(next, next.bpm);
+      change = ratio > 1.01 ? 'Faster' : ratio < 0.99 ? 'Slower' : 'Same pace';
+      if (s.num !== next.num || s.den !== next.den) change += ' · meter change';
+      if (unitLabel(s) !== unitLabel(next)) change += ' · beat unit changes';
+    }
+    $('d-next-change').textContent = change;
     let text = '', cls = '';
     if (!s) text = '';
     else if (!E.playing) text = 'Press Start, Next or the pedal to begin';
-    else if (st.phase === 'pause') { text = 'Waiting — press Next / pedal for ' + titleAt(st.secIdx + 1); cls = 'waiting'; }
-    else if (queued != null) { text = '→ ' + titleAt(queued) + ' at the next barline'; cls = 'queued'; }
-    else if (st.phase === 'countin') text = 'Counting in…';
-    else if (s.advance === 'manual') { text = 'Repeating — press Next / pedal for ' + titleAt(st.secIdx + 1); cls = 'waiting'; }
+    else if (st.phase === 'pause') { text = 'Waiting — press Next / pedal for ' + title; cls = 'waiting'; }
+    else if (st.phase === 'countin') {
+      const left = s.countIn - st.bar;
+      text = 'Count-in: ' + left + ' bar' + (left === 1 ? '' : 's') + ' left before ' + sectionTitle(s, st.secIdx)
+        + ' · score bar ' + sb[st.secIdx] + (queued != null ? ' · next jump queued' : '');
+    }
+    else if (s.advance === 'manual' && queued == null) { text = 'Repeating — press Next / pedal for ' + title; cls = 'waiting'; }
     else {
-      const left = s.bars - st.bar;
-      text = 'Next: ' + titleAt(st.secIdx + 1) + (left <= 1 ? ' after this bar' : ' in ' + left + ' bars');
+      const left = queued != null ? 1 : Math.max(1, s.bars - st.bar);
+      const beatsLeft = groupsOf(s).length - groupIndexOf(s, Math.max(0, st.tick));
+      text = left > 1 ? left + ' bars left (including this bar)'
+        : 'After this bar · ' + beatsLeft + ' beat' + (beatsLeft === 1 ? '' : 's') + ' left';
+      text += ' → ' + title;
+      if (queued != null) cls = 'queued';
     }
     el.textContent = text;
     el.className = 'stage-next ' + cls;
@@ -820,6 +859,9 @@
   const fld = (label, inner, wide) => '<label' + (wide ? ' class="wide"' : '') + '>' + label + inner + '</label>';
   const inp = (i, f, val, attrs) => '<input data-i="' + i + '" data-f="' + f + '" value="' + esc(val == null ? '' : val) + '" ' + (attrs || 'type="text"') + '>';
   const sel = (i, f, list, val) => '<select data-i="' + i + '" data-f="' + f + '">' + opts(list, val) + '</select>';
+  const performanceNotes = (i, s) => fld('Performance notes / cue',
+    '<textarea data-i="' + i + '" data-f="notes" rows="3" maxlength="500" placeholder="Cues to read while performing">'
+    + esc(s.notes) + '</textarea>', true);
 
   function sectionRow(s, i, n) {
     const btn = (act, label, title, disabled) => '<button class="btn icon' + (act === 'del' ? ' danger' : '') + '" data-act="' + act + '" data-i="' + i + '" title="' + title + '"' + (disabled ? ' disabled' : '') + '>' + label + '</button>';
@@ -828,7 +870,7 @@
     let f = fld('Type', sel(i, 'type', [['click', 'Click'], ['pause', 'Pause / cue']], s.type));
     if (s.type === 'pause') {
       f += fld('Name', inp(i, 'name', s.name, 'type="text" maxlength="120" placeholder="e.g. Narration"'), true)
-        + fld('Notes / cue (shown on screen)', inp(i, 'notes', s.notes, 'type="text" maxlength="500"'), true);
+        + performanceNotes(i, s);
     } else {
       f += fld('Name', inp(i, 'name', s.name, 'type="text" maxlength="120" placeholder="Section ' + (i + 1) + '"'), true)
         + fld('Tempo', '<span class="tapwrap">' + inp(i, 'bpm', s.bpm, 'type="number" min="10" max="400" step="any" inputmode="decimal"')
@@ -843,7 +885,13 @@
         + fld('Advance', sel(i, 'advance', [['auto', 'Auto'], ['manual', 'Wait for pedal']], s.advance))
         + fld('Count-in bars', inp(i, 'countIn', s.countIn, 'type="number" min="0" max="8" inputmode="numeric"'))
         + fld('Score bar', inp(i, 'startBar', s.startBar, 'type="number" min="1" max="99999" inputmode="numeric" placeholder="auto"'))
-        + fld('Notes (shown on screen)', inp(i, 'notes', s.notes, 'type="text" maxlength="500"'), true);
+        + performanceNotes(i, s)
+        + '<details class="subdivision-settings"><summary>Subdivision sound</summary><p class="muted small">Choose Every meter unit to hear all six quavers in 6/8. Pitch is a semitone offset; velocity 0 mutes these notes.</p><div class="sound-fields">'
+        + fld('Inner notes pitch (semitones)', inp(i, 'unitPitch', s.unitPitch, 'type="number" min="-24" max="24" step="1"'))
+        + fld('Inner notes velocity (0–127)', inp(i, 'unitVelocity', s.unitVelocity, 'type="number" min="0" max="127" step="1"'))
+        + fld('Extra subdivisions pitch (semitones)', inp(i, 'subPitch', s.subPitch, 'type="number" min="-24" max="24" step="1"'))
+        + fld('Extra subdivisions velocity (0–127)', inp(i, 'subVelocity', s.subVelocity, 'type="number" min="0" max="127" step="1"'))
+        + '</div></details>';
     }
     return '<div class="sec ' + s.type + '" data-row="' + i + '"><div class="num">' + (i + 1) + '</div><div class="fields">'
       + f + '</div>' + acts + '<div class="info" id="info-' + i + '"></div></div>';
@@ -949,6 +997,38 @@
   }
 
   // ------------------------------------------------------------ views & UI
+  let performanceMode = false, nativeFullscreen = false;
+  function setPerformanceMode(on) {
+    performanceMode = on;
+    document.body.classList.toggle('performance-mode', on);
+    $('btn-fullscreen').textContent = on ? 'Exit fullscreen performance' : 'Fullscreen performance';
+    $('btn-fullscreen').setAttribute('aria-pressed', String(on));
+  }
+
+  async function toggleFullscreen() {
+    if (performanceMode) {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+      } catch (e) {
+        toast('Could not exit browser fullscreen: ' + e.message);
+      }
+      nativeFullscreen = false;
+      setPerformanceMode(false);
+      return;
+    }
+    setPerformanceMode(true);
+    if (!document.documentElement.requestFullscreen) {
+      toast('Browser fullscreen is unavailable — using distraction-free view');
+      return;
+    }
+    try {
+      await document.documentElement.requestFullscreen();
+      nativeFullscreen = true;
+    } catch (e) {
+      toast('Browser fullscreen unavailable — using distraction-free view (' + e.message + ')');
+    }
+  }
+
   function switchView(name) {
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
     $('view-perform').hidden = name !== 'perform';
@@ -1043,13 +1123,23 @@
     e.preventDefault();
     if (e.repeat) return;
     if (k === ' ') togglePlay();
-    else if (k === 'Escape') stop(false);
+    else if (k === 'Escape') {
+      stop(false);
+      if (performanceMode) toggleFullscreen();
+    }
     else if (prefs.keys.includes(k)) advance();
     else back();
   }
 
   function wire() {
     document.addEventListener('keydown', onKeyDown);
+    $('btn-fullscreen').addEventListener('click', toggleFullscreen);
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && nativeFullscreen) {
+        nativeFullscreen = false;
+        setPerformanceMode(false);
+      }
+    });
     // Keep focus off buttons/selects so pedal keys and Space never re-trigger them.
     document.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) b.blur(); });
 

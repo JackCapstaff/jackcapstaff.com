@@ -43,7 +43,7 @@ def _api_login_required(view):
 def _clamp_int(value, default, lo, hi):
     try:
         v = int(float(value))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
     return max(lo, min(hi, v))
 
@@ -98,6 +98,10 @@ def _clean_section(raw):
         "bars": _clamp_int(raw.get("bars"), 4, 1, 9999),
         "advance": raw.get("advance") if raw.get("advance") in ADVANCE_MODES else "auto",
         "click": raw.get("click") if raw.get("click") in CLICK_MODES else "beats",
+        "unitPitch": _clamp_float(raw.get("unitPitch"), 0, -24, 24),
+        "unitVelocity": _clamp_int(raw.get("unitVelocity"), 53, 0, 127),
+        "subPitch": _clamp_float(raw.get("subPitch"), 0, -24, 24),
+        "subVelocity": _clamp_int(raw.get("subVelocity"), 32, 0, 127),
         "countIn": _clamp_int(raw.get("countIn"), 0, 0, 8),
         "startBar": _clamp_int(raw.get("startBar"), None, 1, 99999) if raw.get("startBar") not in (None, "") else None,
     }
