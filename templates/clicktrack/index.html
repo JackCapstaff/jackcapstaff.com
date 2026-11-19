@@ -46,14 +46,16 @@
   <section class="pedal-setup view" id="pedal-setup" aria-label="Pedal setup" hidden>
     <h2>Bluetooth / keyboard pedal</h2>
     <p>For a JOYO JSP-01, select an arrow-key or Page Up / Page Down keyboard mode. Pair it in your device's Bluetooth settings, then click here so this page has keyboard focus. A keyboard pedal does not need the MIDI option.</p>
-    <p>Choose <strong>Learn pedal key</strong>, then press and release the pedal once. Repeat to add another key. Learned keys start playback when stopped, resume when paused, and advance at the next barline while playing.</p>
+    <p>Click the <strong>pedal input box</strong> below, or choose <strong>Learn pedal key</strong> to focus it automatically. While learning, press and release the pedal once; repeat to add another key. Outside learning, learned keys start playback when stopped, resume when paused, and advance at the next barline while playing.</p>
+    <label for="pedal-capture">Pedal input — click here before pressing the pedal</label>
+    <input id="pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Click here, then press the pedal" aria-describedby="pedal-focus pedal-input">
     <div class="pedal-actions">
       <button class="btn" id="btn-learn">Learn pedal key</button>
       <button class="btn ghost" id="btn-reset-keys">Reset keys</button>
     </div>
     <p id="pedal-focus" class="muted small"></p>
     <p id="pedal-input" role="status" aria-live="polite">No key received yet. Press Learn to test without starting playback.</p>
-    <p class="muted small">If nothing appears, click this panel and try a normal keyboard arrow first. If that works but the pedal does not, check the pedal's mode and Bluetooth pairing. Mouse, volume and other media modes may not send usable keys to a web page. The browser cannot read keys sent to another app or its address bar.</p>
+    <p class="muted small">If nothing appears, click the pedal input box and try a normal keyboard arrow first. If that works but the pedal does not, check the pedal's mode and Bluetooth pairing. Mouse, volume and other media modes may not send usable keys to a web page. The browser cannot read keys sent to another app or its address bar.</p>
     <p id="pedal-keys" class="muted small"></p>
   </section>
 

@@ -1274,17 +1274,19 @@
 
   let learning = false, learnTimer = null;
   function renderPedalFocus() {
-    $('pedal-focus').textContent = document.hasFocus()
-      ? 'Page focused — ready for keyboard input.'
-      : 'Page not focused — click this panel before pressing the pedal.';
+    const focused = document.hasFocus() && document.activeElement === $('pedal-capture');
+    $('pedal-focus').textContent = focused
+      ? 'Pedal input focused — press your pedal.'
+      : 'Click the pedal input box or Learn pedal key to focus pedal input.';
   }
   function showPedalSetup(on) {
     $('pedal-setup').hidden = !on;
     document.querySelectorAll('[data-pedal-setup]').forEach((b) => b.setAttribute('aria-expanded', String(on)));
     if (!on) setLearning(false);
     else {
-      renderPedalFocus();
       $('pedal-setup').scrollIntoView({ block: 'start' });
+      $('pedal-capture').focus({ preventScroll: true });
+      renderPedalFocus();
     }
   }
   function setLearning(on) {
@@ -1293,10 +1295,11 @@
     $('btn-learn').classList.toggle('learning', on);
     $('btn-learn').textContent = on ? 'Cancel learning' : 'Learn pedal key';
     if (on) {
+      $('pedal-capture').focus({ preventScroll: true });
       $('pedal-input').textContent = 'Listening — press and release the pedal (Esc cancels). Space and arrow keys are supported.';
       learnTimer = setTimeout(() => {
         setLearning(false);
-        $('pedal-input').textContent = 'No usable key received. Click this panel, check keyboard mode and Bluetooth pairing, then try Learn again.';
+        $('pedal-input').textContent = 'No usable key received. Click the pedal input box, check keyboard mode and Bluetooth pairing, then try Learn again.';
       }, 12000);
     }
   }
@@ -1346,6 +1349,7 @@
 
   function isTyping(t) {
     if (!t) return false;
+    if (t === $('pedal-capture')) return false;
     if (t.tagName === 'TEXTAREA' || t.isContentEditable) return true;
     if (t.tagName === 'INPUT') return !['checkbox', 'range', 'button', 'file'].includes(t.type);
     return false;
@@ -1354,6 +1358,7 @@
   function onKeyDown(e) {
     const k = pedalKey(e);
     if ((learning || (!$('pedal-setup').hidden && !isTyping(e.target))) && !e.repeat) {
+      $('pedal-capture').value = k ? keyName(k) : 'Unidentified key';
       $('pedal-input').textContent = 'Received: ' + (k ? keyName(k) : 'unidentified key')
         + (e.code ? ' (code: ' + e.code + ')' : '');
     }
@@ -1400,6 +1405,8 @@
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('focus', renderPedalFocus);
     window.addEventListener('blur', renderPedalFocus);
+    document.addEventListener('focusin', renderPedalFocus);
+    document.addEventListener('focusout', renderPedalFocus);
     document.querySelectorAll('[data-pedal-setup]').forEach((b) => b.addEventListener('click', () => showPedalSetup($('pedal-setup').hidden)));
     $('btn-editor-fullscreen').addEventListener('click', () => {
       switchView('perform');
