@@ -114,6 +114,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .pedal-setup { background: var(--panel); border-bottom: 1px solid var(--line); padding-bottom: 14px; }
 .pedal-setup h2 { margin: 0; font-size: 20px; }
 .pedal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.performance-pedal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; }
+.performance-pedal input { max-width: 320px; }
 #pedal-input { color: var(--beat-on); overflow-wrap: anywhere; }
 
 /* CSS focus mode also works when a mobile browser cannot enter native fullscreen. */

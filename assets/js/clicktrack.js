@@ -1212,6 +1212,7 @@
     document.body.classList.toggle('performance-mode', on);
     $('btn-fullscreen').textContent = on ? 'Exit fullscreen performance' : 'Fullscreen performance';
     $('btn-fullscreen').setAttribute('aria-pressed', String(on));
+    focusPerformancePedal();
   }
 
   async function toggleFullscreen() {
@@ -1238,6 +1239,8 @@
       nativeFullscreen = true;
     } catch (e) {
       toast('Browser fullscreen unavailable — using distraction-free view (' + e.message + ')');
+    } finally {
+      focusPerformancePedal();
     }
   }
 
@@ -1248,6 +1251,7 @@
     $('view-perform').hidden = name !== 'perform';
     $('view-edit').hidden = name !== 'edit';
     if (name === 'edit') renderEditor();
+    else focusPerformancePedal();
   }
 
   function renderAll() {
@@ -1273,16 +1277,25 @@
   }
 
   let learning = false, learnTimer = null;
+  function focusPerformancePedal() {
+    if (!$('view-perform').hidden && $('pedal-setup').hidden) {
+      $('performance-pedal-capture').focus({ preventScroll: true });
+      renderPedalFocus();
+    }
+  }
   function renderPedalFocus() {
     const focused = document.hasFocus() && document.activeElement === $('pedal-capture');
     $('pedal-focus').textContent = focused
       ? 'Pedal input focused — press your pedal.'
       : 'Click the pedal input box or Learn pedal key to focus pedal input.';
+    $('performance-pedal-focus').textContent = document.hasFocus() && document.activeElement === $('performance-pedal-capture')
+      ? 'Pedal ready'
+      : 'Tap the pedal input to enable pedal keys';
   }
   function showPedalSetup(on) {
     $('pedal-setup').hidden = !on;
     document.querySelectorAll('[data-pedal-setup]').forEach((b) => b.setAttribute('aria-expanded', String(on)));
-    if (!on) setLearning(false);
+    if (!on) { setLearning(false); focusPerformancePedal(); }
     else {
       $('pedal-setup').scrollIntoView({ block: 'start' });
       $('pedal-capture').focus({ preventScroll: true });
@@ -1349,7 +1362,7 @@
 
   function isTyping(t) {
     if (!t) return false;
-    if (t === $('pedal-capture')) return false;
+    if (t === $('pedal-capture') || t === $('performance-pedal-capture')) return false;
     if (t.tagName === 'TEXTAREA' || t.isContentEditable) return true;
     if (t.tagName === 'INPUT') return !['checkbox', 'range', 'button', 'file'].includes(t.type);
     return false;
@@ -1357,6 +1370,9 @@
 
   function onKeyDown(e) {
     const k = pedalKey(e);
+    if (e.target === $('performance-pedal-capture') && !e.repeat) {
+      $('performance-pedal-capture').value = k ? keyName(k) : 'Unidentified key';
+    }
     if ((learning || (!$('pedal-setup').hidden && !isTyping(e.target))) && !e.repeat) {
       $('pedal-capture').value = k ? keyName(k) : 'Unidentified key';
       $('pedal-input').textContent = 'Received: ' + (k ? keyName(k) : 'unidentified key')
@@ -1403,7 +1419,10 @@
 
   function wire() {
     window.addEventListener('keydown', onKeyDown, true);
-    window.addEventListener('focus', renderPedalFocus);
+    window.addEventListener('focus', () => {
+      if (document.activeElement === document.body || document.activeElement === $('performance-pedal-capture')) focusPerformancePedal();
+      renderPedalFocus();
+    });
     window.addEventListener('blur', renderPedalFocus);
     document.addEventListener('focusin', renderPedalFocus);
     document.addEventListener('focusout', renderPedalFocus);
@@ -1426,7 +1445,11 @@
       }
     });
     // Keep focus off buttons/selects so pedal keys and Space never re-trigger them.
-    document.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) b.blur(); });
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (b) b.blur();
+      if (!e.target.closest('input, select, textarea, a, [contenteditable]')) focusPerformancePedal();
+    });
 
     $('btn-play').addEventListener('click', togglePlay);
     $('btn-stop').addEventListener('click', () => stop(false));

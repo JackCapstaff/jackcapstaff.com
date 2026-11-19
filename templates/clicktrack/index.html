@@ -66,6 +66,11 @@
       <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
       <button class="btn small" id="btn-fullscreen" aria-pressed="false">Fullscreen performance</button>
     </div>
+    <div class="performance-pedal">
+      <label for="performance-pedal-capture">Pedal input — tap here if the pedal scrolls</label>
+      <input id="performance-pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Tap here to focus pedal input" aria-describedby="performance-pedal-focus">
+      <span id="performance-pedal-focus" class="muted small" role="status"></span>
+    </div>
     <section class="stage" id="stage">
       <div class="stage-head">
         <div class="stage-secnum" id="d-secnum"></div>
@@ -126,7 +131,7 @@
       </label>
       <label class="pref"><input type="checkbox" id="pref-flash"> Flash on downbeat</label>
       <label class="pref"><input type="checkbox" id="pref-midi"> MIDI pedal</label>
-      <span class="muted small">Set up and test Bluetooth keyboard pedals with Pedal setup above.</span>
+      <span class="muted small">Set up Bluetooth keyboard pedals with Pedal setup above. Performance keeps its own pedal input focused, including in distraction-free mode. Tap that input again after switching apps if the pedal scrolls.</span>
     </section>
 
     <section class="setlist">
