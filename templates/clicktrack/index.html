@@ -6,9 +6,10 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#0d1117">
   <title>Click Track · Jack Capstaff</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/clicktrack.css') }}">
+  {% if offline %}<style>{{ offline_css | safe }}</style>
+  {% else %}<link rel="stylesheet" href="{{ url_for('static', filename='css/clicktrack.css') }}">{% endif %}
 </head>
-<body>
+<body{% if offline %} class="offline-performance"{% endif %}>
   <div id="flash-layer" aria-hidden="true"></div>
 
   <header class="ct-top">
@@ -31,11 +32,15 @@
       <button class="tab active" data-view="perform" role="tab">Perform</button>
       <button class="tab" data-view="edit" role="tab">Edit</button>
     </nav>
+    {% if not offline %}<button class="btn small" id="btn-video-track">New click track from video</button>{% endif %}
     <button class="btn small" id="btn-pedal-setup" aria-controls="pedal-setup" aria-expanded="false" hidden>Pedal setup</button>
     <button class="btn small" id="btn-editor-fullscreen" hidden>Fullscreen performance</button>
     <div class="ct-account">
       <span id="save-status" class="muted small"></span>
-      {% if current_user.is_authenticated %}
+      {% if offline %}
+        <span class="muted small" id="offline-copy-status"></span>
+        <button class="btn small ghost" id="btn-remove-offline">Remove offline copy</button>
+      {% elif current_user.is_authenticated %}
         <span class="muted small" title="Tracks are saved to your account">☁ {{ current_user.username }}</span>
       {% else %}
         <a class="small" href="{{ url_for('login', next=request.path) }}" title="Tracks are currently stored in this browser only">Log in to save to your account</a>
@@ -99,6 +104,7 @@
       </div>
       <div class="stage-countin" id="d-countin" hidden></div>
       <div class="stage-next" id="d-next"></div>
+      <div id="d-pedal-feedback" class="stage-feedback" role="status" hidden></div>
       <div class="next-preview" id="next-preview" hidden>
         <div class="next-heading" id="d-next-name"></div>
         <div id="d-next-details"></div>
@@ -124,9 +130,55 @@
       <input id="performance-pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Tap here to focus pedal input" aria-describedby="performance-pedal-focus">
       <span id="performance-pedal-focus" class="muted small" role="status"></span>
     </div>
-    <details class="performance-menu" id="performance-menu" hidden>
+    <details class="performance-menu" id="performance-menu">
       <summary>Performance options</summary>
-      <button class="btn small" id="btn-exit-fullscreen">Exit fullscreen</button>
+      <div class="stage-tool-row">
+        <label>Jump to cue or score bar
+          <input type="search" id="cue-filter" placeholder="Filter by name or bar">
+        </label>
+        <label>Section <select id="cue-target"></select></label>
+        <button class="btn small" id="btn-recover-cue">Restart from cue</button>
+        <button class="btn small" id="btn-exit-fullscreen" hidden>Exit fullscreen</button>
+      </div>
+      <p class="muted small">Restart jumps to the start of the chosen section and plays its count-in, if set.</p>
+      <details id="pre-show">
+        <summary>Pre-show check</summary>
+        <p class="muted small">Connect your glasses or headphones over Bluetooth first. Select an output, then listen for four clicks on that device. Pedal presses are reported here without changing the track while this check is open.</p>
+        <div class="stage-tool-row" id="audio-output-controls" hidden>
+          <label>Click audio output
+            <select id="audio-output" aria-describedby="audio-output-status"><option value="">System default</option></select>
+          </label>
+          <button class="btn small" id="btn-choose-output" hidden>Choose another output…</button>
+        </div>
+        <p id="audio-output-status" class="muted small" role="status"></p>
+        <div class="stage-tool-row">
+          <button class="btn small" id="btn-test-clicks">Play four test clicks</button>
+          <button class="btn small" id="btn-test-wake">Check screen awake</button>
+          <button class="btn small" id="btn-test-pedal">Focus pedal test</button>
+        </div>
+        <p id="pre-show-audio" role="status"></p>
+        <p id="pre-show-wake" role="status"></p>
+        <p id="pre-show-pedal" role="status">No pedal input yet.</p>
+      </details>
+      <details id="stage-backups">
+        <summary>Show backups</summary>
+        {% if not offline %}
+        <p class="muted small">Prepare on the device and browser you will use. This stores one track snapshot on this browser, accessible without login; use only a trusted device. Re-prepare after edits and test the bookmarked page in airplane mode.</p>
+        <div class="stage-tool-row">
+          <button class="btn small" id="btn-prepare-offline">Prepare offline show</button>
+          <a id="open-offline" href="{{ url_for('clicktrack.offline_performance') }}" hidden>Open offline show</a>
+        </div>
+        <p id="offline-prepare-status" role="status"></p>
+        {% endif %}
+        <div class="stage-tool-row">
+          <button class="btn small" id="btn-print-cues">Print cue sheet</button>
+          <button class="btn small" id="btn-backup-json">Export track JSON</button>
+          <label>Fixed run <select id="wav-run"></select></label>
+          <button class="btn small" id="btn-export-wav">Download click WAV</button>
+        </div>
+        <p class="muted small">WAV includes only the selected automatic run and its starting count-in, if set. Cue waits and pedal repeats split runs; the WAV does not include video or follow live cues.</p>
+        <p id="wav-status" role="status"></p>
+      </details>
     </details>
 
     <section class="prefs">
@@ -194,15 +246,22 @@
     </aside>
   </main>
 
+  {% if not offline %}{% include 'clicktrack/video_builder.html' %}{% endif %}
+
   <div id="toast" role="status" aria-live="polite"></div>
+  <section id="cue-print" class="cue-print" hidden></section>
 
   <script>
     window.CLICKTRACK_CONFIG = {
-      authenticated: {{ 'true' if current_user.is_authenticated else 'false' }},
-      userKey: {{ (('u' ~ current_user.id) if current_user.is_authenticated else 'anon') | tojson }},
-      apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }}
+      offline: {{ 'true' if offline else 'false' }},
+      authenticated: {{ 'true' if not offline and current_user.is_authenticated else 'false' }},
+      userKey: {{ (('u' ~ current_user.id) if not offline and current_user.is_authenticated else 'anon') | tojson }},
+      apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }},
+      offlinePage: {{ url_for('clicktrack.offline_performance') | tojson }},
+      offlineWorker: {{ url_for('clicktrack.offline_worker') | tojson }}
     };
   </script>
-  <script src="{{ url_for('static', filename='js/clicktrack.js') }}"></script>
+  {% if offline %}<script>{{ offline_js | safe }}</script>
+  {% else %}<script src="{{ url_for('static', filename='js/clicktrack.js') }}"></script>{% endif %}
 </body>
 </html>

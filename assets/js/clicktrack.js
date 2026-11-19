@@ -8,6 +8,8 @@
   const LS_TRACKS = 'clicktrack.tracks.' + (CFG.userKey || 'anon');
   const LS_ANON = 'clicktrack.tracks.anon';
   const LS_LAST = 'clicktrack.last.' + (CFG.userKey || 'anon');
+  const OFFLINE_KEY = 'clicktrack.offline-show.v1';
+  const OFFLINE_CACHE = 'clicktrack-offline-shell-v1';
 
   const LOOKAHEAD = 0.12;       // seconds of audio scheduled ahead
   const TIMER_MS = 25;
@@ -214,7 +216,9 @@
   }
 
   // ------------------------------------------------------------------ prefs
-  const prefs = Object.assign({ volume: 1, sound: 'beep', flash: true, midi: false }, loadJSON(LS_PREFS, {}));
+  const offlineShow = CFG.offline ? loadJSON(OFFLINE_KEY, null) : null;
+  const prefs = Object.assign({ volume: 1, sound: 'beep', flash: true, midi: false },
+    CFG.offline ? offlineShow && offlineShow.prefs : loadJSON(LS_PREFS, {}));
   const bindings = defaultBindings();
   if (prefs.pedalBindings) {
     for (const gesture of ['single', 'double']) {
@@ -231,7 +235,7 @@
   }
   prefs.pedalBindings = bindings;
   delete prefs.keys;
-  const savePrefs = () => saveJSON(LS_PREFS, prefs);
+  const savePrefs = () => { if (!CFG.offline) saveJSON(LS_PREFS, prefs); };
 
   // ------------------------------------------------------------------ audio
   let ctx = null, master = null, noiseBuf = null;
@@ -262,35 +266,112 @@
 
   function applyVolume() { if (master) master.gain.value = prefs.volume; }
 
-  function envGain(time, peak, decay) {
-    const g = ctx.createGain();
+  const mediaDevices = navigator.mediaDevices;
+  const canRouteAudio = typeof (window.AudioContext || window.webkitAudioContext)?.prototype.setSinkId === 'function';
+  const outputHint = 'If your glasses are not listed, select them in your device’s audio output controls (Control Centre on iPhone), use System default if shown here, then play the test clicks.';
+  let audioOutput = { id: '', label: 'System default' }, outputBusy = false, outputRequest = 0;
+
+  function renderOutputControls() {
+    $('audio-output').disabled = $('btn-choose-output').disabled = E.playing || outputBusy;
+    $('btn-test-clicks').disabled = E.playing || outputBusy;
+  }
+
+  async function refreshAudioOutputs() {
+    const request = ++outputRequest;
+    const select = $('audio-output');
+    let outputs = [];
+    try {
+      outputs = (await mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default');
+    } catch (e) {
+      if (request === outputRequest && !outputBusy) {
+        $('audio-output-status').textContent = 'Could not list audio outputs: ' + e.message + ' ' + outputHint;
+      }
+      return;
+    }
+    if (request !== outputRequest) return;
+    const wasListed = Array.from(select.options).some((o) => o.value === audioOutput.id && !o.disabled);
+    select.replaceChildren(new Option('System default', ''));
+    outputs.forEach((d, i) => select.add(new Option(d.label || 'Audio output ' + (i + 1), d.deviceId)));
+    if (audioOutput.id && !outputs.some((d) => d.deviceId === audioOutput.id)) {
+      const option = new Option(audioOutput.label, audioOutput.id);
+      option.disabled = true;
+      select.add(option);
+      if (wasListed && !outputBusy) {
+        $('audio-output-status').textContent = audioOutput.label + ' is no longer listed. Reconnect it or select another output, then test again.';
+      }
+    }
+    select.value = audioOutput.id;
+  }
+
+  async function selectAudioOutput(choose) {
+    if (E.playing || tester.running || outputBusy) { $('audio-output').value = audioOutput.id; return; }
+    const select = $('audio-output'), status = $('audio-output-status');
+    outputBusy = true;
+    renderOutputControls();
+    status.textContent = 'Choosing audio output…';
+    try {
+      const device = choose ? await mediaDevices.selectAudioOutput()
+        : { deviceId: select.value, label: select.selectedOptions[0].textContent };
+      cancelClicks();
+      await ensureAudio().setSinkId(device.deviceId);
+      audioOutput = { id: device.deviceId, label: device.label || 'Selected audio device' };
+      status.textContent = 'Output: ' + audioOutput.label + '. Play the test clicks to confirm.';
+      $('pre-show-audio').textContent = '';
+    } catch (e) {
+      const message = e.name === 'NotAllowedError' ? 'Selection cancelled or not permitted.' : e.message;
+      status.textContent = 'Output not changed (' + audioOutput.label + '): ' + message + ' ' + outputHint;
+    } finally {
+      if (!Array.from(select.options).some((o) => o.value === audioOutput.id)) {
+        select.add(new Option(audioOutput.label, audioOutput.id));
+      }
+      select.value = audioOutput.id;
+      outputBusy = false;
+      renderOutputControls();
+    }
+  }
+
+  function wireAudioOutputs() {
+    if (!canRouteAudio || !mediaDevices?.enumerateDevices) {
+      $('audio-output-status').textContent = 'This browser uses your system audio output. ' + outputHint;
+      return;
+    }
+    $('audio-output-controls').hidden = false;
+    $('btn-choose-output').hidden = typeof mediaDevices.selectAudioOutput !== 'function';
+    $('audio-output-status').textContent = 'Output: System default. Selection applies to click audio in this page until it is reloaded. ' + outputHint;
+    $('audio-output').addEventListener('change', () => selectAudioOutput(false));
+    $('btn-choose-output').addEventListener('click', () => selectAudioOutput(true));
+    mediaDevices.addEventListener('devicechange', refreshAudioOutputs);
+  }
+
+  function envGain(audio, time, peak, decay) {
+    const g = audio.ctx.createGain();
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(peak, time + 0.002);
     g.gain.exponentialRampToValueAtTime(0.0001, time + decay);
-    g.connect(master);
+    g.connect(audio.master);
     return g;
   }
 
-  function noise(time, dur, filterType, freq, q, out) {
-    const src = ctx.createBufferSource();
-    trackSource(src);
-    src.buffer = noiseBuf;
-    const f = ctx.createBiquadFilter();
+  function noise(audio, time, dur, filterType, freq, q, out) {
+    const src = audio.ctx.createBufferSource();
+    if (audio.track) audio.track(src);
+    src.buffer = audio.noiseBuf;
+    const f = audio.ctx.createBiquadFilter();
     f.type = filterType; f.frequency.value = freq; f.Q.value = q;
     src.connect(f); f.connect(out);
     src.start(time); src.stop(time + dur);
   }
 
-  function tone(time, type, freq, dur, out) {
-    const o = ctx.createOscillator();
-    trackSource(o);
+  function tone(audio, time, type, freq, dur, out) {
+    const o = audio.ctx.createOscillator();
+    if (audio.track) audio.track(o);
     o.type = type; o.frequency.value = freq;
     o.connect(out);
     o.start(time); o.stop(time + dur);
   }
 
   // level: 3 downbeat, 2 beat, 1 unit, 0 subdivision
-  function playClick(time, level, section) {
+  function playClick(time, level, section, audio = { ctx, master, noiseBuf, track: trackSource, sound: prefs.sound }) {
     let peak = [0.25, 0.42, 0.7, 1][level], pitch = 1;
     if (section && level < 2) {
       const prefix = level === 1 ? 'unit' : 'sub';
@@ -298,14 +379,14 @@
       pitch = Math.pow(2, section[prefix + 'Pitch'] / 12);
     }
     if (peak === 0) return;
-    if (prefs.sound === 'wood') {
-      const g = envGain(time, peak, 0.06);
-      tone(time, 'sine', [700, 900, 1100, 1500][level] * pitch, 0.07, g);
-      noise(time, 0.03, 'bandpass', [1800, 2200, 2600, 3400][level] * pitch, 6, envGain(time, peak * 0.8, 0.025));
-    } else if (prefs.sound === 'hihat') {
-      noise(time, 0.12, 'highpass', Math.min(ctx.sampleRate / 2, (level === 3 ? 5000 : 7500) * pitch), 0.7, envGain(time, peak, [0.03, 0.04, 0.05, 0.1][level]));
+    if (audio.sound === 'wood') {
+      const g = envGain(audio, time, peak, 0.06);
+      tone(audio, time, 'sine', [700, 900, 1100, 1500][level] * pitch, 0.07, g);
+      noise(audio, time, 0.03, 'bandpass', [1800, 2200, 2600, 3400][level] * pitch, 6, envGain(audio, time, peak * 0.8, 0.025));
+    } else if (audio.sound === 'hihat') {
+      noise(audio, time, 0.12, 'highpass', Math.min(audio.ctx.sampleRate / 2, (level === 3 ? 5000 : 7500) * pitch), 0.7, envGain(audio, time, peak, [0.03, 0.04, 0.05, 0.1][level]));
     } else {
-      tone(time, 'square', [660, 880, 1050, 1760][level] * pitch, 0.06, envGain(time, peak * 0.5, 0.045));
+      tone(audio, time, 'square', [660, 880, 1050, 1760][level] * pitch, 0.06, envGain(audio, time, peak * 0.5, 0.045));
     }
   }
 
@@ -327,11 +408,39 @@
     if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
   }
 
-  let wakeLock = null;
+  let wakeLock = null, wakeRequest = null, wakeGeneration = 0;
+  const showWake = (message) => { $('pre-show-wake').textContent = message; };
   async function requestWake() {
-    try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) { /* ignore */ }
+    if (!('wakeLock' in navigator)) { showWake('Screen wake lock is unavailable in this browser. Check your device auto-lock settings.'); return; }
+    if (wakeLock || wakeRequest) return;
+    const generation = wakeGeneration;
+    const request = navigator.wakeLock.request('screen');
+    wakeRequest = request;
+    try {
+      const lock = await request;
+      if (generation !== wakeGeneration && !(E.playing && !E.suspended)) { await lock.release(); return; }
+      wakeLock = lock;
+      showWake('Screen wake lock active.');
+      lock.addEventListener('release', () => {
+        if (wakeLock !== lock) return;
+        wakeLock = null;
+        showWake('Screen wake lock released by the browser.');
+      });
+    } catch (e) {
+      if (generation === wakeGeneration) showWake('Could not keep the screen awake: ' + e.message);
+    } finally {
+      if (wakeRequest === request) wakeRequest = null;
+    }
   }
-  function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
+  function releaseWake() {
+    wakeGeneration++;
+    if (wakeLock) {
+      const lock = wakeLock;
+      wakeLock = null;
+      lock.release().catch((e) => showWake('Could not release screen wake lock: ' + e.message));
+    }
+    showWake('Screen wake lock not active.');
+  }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && E.playing && !E.suspended) requestWake(); });
 
   // ----------------------------------------------------------------- engine
@@ -343,6 +452,13 @@
   let shown = null;          // snapshot currently displayed
   let selectedIdx = 0;       // where Start begins
   let lastAdvanceAt = 0;
+  let actionFeedback = '', actionFeedbackTimer;
+  function confirmAction(message) {
+    actionFeedback = message;
+    clearTimeout(actionFeedbackTimer);
+    actionFeedbackTimer = setTimeout(() => { actionFeedback = ''; renderNext(); }, 1800);
+    renderNext();
+  }
 
   let tracks = [];
   let current = null;
@@ -406,8 +522,11 @@
   }
 
   function start(fromIdx) {
+    if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
     if (!sections().length) return;
     stopTester();
+    $('pre-show').open = false;
+    cancelClicks();
     ensureAudio();
     visQ.length = 0;
     E.playing = true;
@@ -429,6 +548,7 @@
 
   function stop(reachedEnd) {
     cancelPendingPedal();
+    actionFeedback = '';
     if (!E.playing) return;
     clock.elapsed = Math.max(0, ctx.currentTime - clock.start);
     cancelClicks();
@@ -473,6 +593,7 @@
       }
       renderTransport();
       renderClock();
+      confirmAction(E.suspended ? 'Paused' : 'Resumed');
     } catch (e) {
       toast('Could not pause/resume audio: ' + e.message);
     } finally {
@@ -486,10 +607,15 @@
     if (now - lastAdvanceAt < 180) return;   // pedal bounce
     lastAdvanceAt = now;
     if (!current) return;
-    if (!E.playing) { start(selectedIdx); return; }
+    if (!E.playing) {
+      start(selectedIdx);
+      if (E.playing) confirmAction('Playback started');
+      return;
+    }
     if (E.suspended) { togglePlay(); return; }
     if (E.phase === 'pause') {
       leaveCue(E.secIdx + 1);
+      confirmAction('Next accepted');
       scheduler();
       return;
     }
@@ -502,7 +628,9 @@
   function back() {
     if (!E.playing) { selectIdx(selectedIdx - 1); return; }
     if (E.phase === 'end' || E.secIdx === 0) return;
+    const immediate = E.phase === 'pause' && !E.suspended;
     jumpTo(E.secIdx - 1);
+    if (immediate) confirmAction('Back accepted');
   }
 
   function leaveCue(idx) {
@@ -535,6 +663,7 @@
   // Averages the last few taps; a gap over 2s starts a fresh measurement.
   const tap = { times: [], idx: -1 };
   function tapTempo(idx) {
+    if (CFG.offline) return;
     if (idx == null) idx = document.body.classList.contains('editing') ? tester.idx : E.playing ? E.secIdx : selectedIdx;
     const s = sections()[idx];
     if (!s || s.type === 'pause') { toast('Pick a click section to tap a tempo into'); return; }
@@ -675,6 +804,16 @@
     const next = secs[target];
     const sb = startBars(secs);
     const title = next ? sectionTitle(next, target) : 'End of track';
+    const feedback = $('d-pedal-feedback');
+    if (queued != null && queued !== st.secIdx) {
+      feedback.hidden = false;
+      const message = (queued < st.secIdx ? 'Back' : 'Next') + ' queued → '
+        + (sb[target] == null ? title : 'b. ' + sb[target] + ' · ' + title);
+      if (feedback.textContent !== message) feedback.textContent = message;
+    } else {
+      feedback.hidden = !actionFeedback;
+      if (feedback.textContent !== actionFeedback) feedback.textContent = actionFeedback;
+    }
     const preview = $('next-preview');
     preview.hidden = !s;
     $('d-next-name').textContent = 'Up next: ' + title;
@@ -745,6 +884,8 @@
     $('btn-play').textContent = !E.playing ? '▶ Start' : E.suspended ? '▶ Resume' : 'Pause';
     $('btn-play').classList.toggle('primary', !E.playing);
     $('btn-stop').disabled = !E.playing;
+    renderOutputControls();
+    $('btn-export-wav').disabled = E.playing || wavBusy || !$('wav-run').value;
     $('stage').classList.toggle('transport-paused', E.suspended);
   }
 
@@ -806,7 +947,7 @@
       id: t.id != null ? t.id : newLocalId(),
       title: String(t.title || 'Untitled').slice(0, 255),
       notes: String(t.notes || '').slice(0, 2000),
-      videoOffset: num(t.videoOffset, 0, 0, 86400),
+      videoOffset: clamp(Number(t.videoOffset) || 0, 0, 86400),
       sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
       _dirty: !!t._dirty, _auto: !!t._auto, _ver: 1,
     };
@@ -846,6 +987,7 @@
 
   let saveTimer = null, saving = false, saveAgain = false;
   function markDirty(t) {
+    if (CFG.offline) return;
     t = t || current;
     if (!t) return;
     t._dirty = true;
@@ -932,6 +1074,7 @@
     beatsKey = '';
     refreshTrackSelect();
     renderAll();
+    renderStageTools();
   }
 
   function addTrack(t) {
@@ -945,11 +1088,197 @@
   function exportTrack() {
     if (!current) return;
     const data = { format: 'jackcapstaff-clicktrack', version: 1, title: current.title, notes: current.notes, videoOffset: current.videoOffset, sections: current.sections };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), slug(current.title) + '.clicktrack.json');
+  }
+
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = slug(current.title) + '.clicktrack.json';
+    a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  // --------------------------------------------------------------- stage tools
+  function renderStageTools() {
+    const filter = $('cue-filter').value.trim().toLowerCase().replace(/^b(?:ar)?\.?\s+(?=\d)/, '');
+    const bar = /^\d+$/.test(filter) ? Number(filter) : null;
+    const bars = startBars(sections());
+    const cue = $('cue-target'), previous = cue.value;
+    cue.replaceChildren();
+    sections().forEach((section, i) => {
+      const label = (bars[i] == null ? 'Cue' : 'b. ' + bars[i]) + ' · ' + sectionTitle(section, i);
+      if (!filter || (bar == null ? label.toLowerCase().includes(filter)
+        : bars[i] != null && bar >= bars[i] && bar < bars[i] + section.bars)) {
+        cue.add(new Option(label, i));
+      }
+    });
+    if (Array.from(cue.options).some((o) => o.value === previous)) cue.value = previous;
+    $('btn-recover-cue').disabled = !cue.options.length;
+    const select = $('wav-run'), run = select.value;
+    select.replaceChildren();
+    const secs = sections();
+    for (let i = 0; i < secs.length;) {
+      if (secs[i].type === 'pause' || secs[i].advance !== 'auto') { i++; continue; }
+      const first = i++;
+      while (i < secs.length && secs[i].type === 'click' && secs[i].advance === 'auto') i++;
+      const label = (first === i - 1 ? sectionTitle(secs[first], first)
+        : sectionTitle(secs[first], first) + ' → ' + sectionTitle(secs[i - 1], i - 1));
+      select.add(new Option('b. ' + bars[first] + ' · ' + label, first + ':' + i));
+    }
+    if (Array.from(select.options).some((o) => o.value === run)) select.value = run;
+    if (!select.options.length) select.add(new Option('No automatic sections', ''));
+    $('btn-export-wav').disabled = !select.value || wavBusy || E.playing;
+    $('btn-print-cues').disabled = $('btn-backup-json').disabled = !current;
+    if (!CFG.offline) $('btn-prepare-offline').disabled = !secs.length || offlineBusy;
+  }
+
+  function printCues() {
+    const bars = startBars(sections()), timeline = sectionTimeline();
+    const rows = sections().map((s, i) => {
+      const t = timeline[i];
+      const timing = (t.startEstimated ? '≈ ' : '') + timecode(t.start) + ' → '
+        + (s.type === 'pause' ? 'cue (unknown)' : (t.endEstimated ? '≈ ' : '') + timecode(t.end));
+      const cells = [sectionTitle(s, i), bars[i] == null ? '—' : bars[i] + (s.bars > 1 ? '–' + (bars[i] + s.bars - 1) : ''),
+        timing, s.type === 'pause' ? '—' : s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd),
+        s.type === 'pause' ? 'Wait for cue' : (s.advance === 'manual' ? 'Repeat until pedal' : 'Automatic') + (s.countIn ? ' · ' + s.countIn + ' count-in bars on entry from start/cue' : ''),
+        s.notes];
+      return '<tr>' + cells.map((cell) => '<td>' + esc(cell) + '</td>').join('') + '</tr>';
+    }).join('');
+    $('cue-print').innerHTML = '<h1>' + esc(current.title) + ' — cue sheet</h1><p>' + esc(current.notes)
+      + '</p><p>Video offset: ' + timecode(current.videoOffset) + '. ≈ indicates estimated timing after a hold/repeat. Planned times exclude count-ins.</p>'
+      + '<table><thead><tr><th>Section</th><th>Score bars</th><th>Video time</th><th>Meter / tempo</th><th>Advance</th><th>Notes</th></tr></thead><tbody>'
+      + rows + '</tbody></table>';
+    window.print();
+  }
+
+  let offlineBusy = false;
+  async function offlineTimeout(operation, message) {
+    let timer;
+    try {
+      return await Promise.race([operation, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), 15000);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
+
+  async function prepareOffline() {
+    if (offlineBusy || !sections().length) return;
+    offlineBusy = true;
+    renderStageTools();
+    const status = $('offline-prepare-status');
+    status.textContent = 'Preparing offline show…';
+    const snapshot = JSON.stringify({ prepared: new Date().toISOString(), prefs, track: {
+      title: current.title, notes: current.notes, videoOffset: current.videoOffset, sections: current.sections,
+    } });
+    try {
+      if (!navigator.serviceWorker || !window.caches) throw new Error('Offline storage needs HTTPS and a supported browser.');
+      const response = await offlineTimeout(fetch(CFG.offlinePage, { cache: 'no-store', credentials: 'omit' }),
+        'The offline page did not respond. Check your connection and try again.');
+      if (!response.ok || response.headers.get('X-Clicktrack-Offline-Shell') !== '1') throw new Error('The offline page was not returned by the site.');
+      const registration = await offlineTimeout(navigator.serviceWorker.register(CFG.offlineWorker, { scope: CFG.offlinePage }),
+        'The browser did not register the offline worker. Try again in a normal browser tab.');
+      if (registration.active?.state !== 'activated') {
+        const worker = registration.installing || registration.waiting || registration.active;
+        if (!worker) throw new Error('The browser did not install the offline worker.');
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => finish('Offline worker did not activate. Try again.'), 15000);
+          function finish(error) {
+            clearTimeout(timer);
+            worker.removeEventListener('statechange', check);
+            if (error) reject(new Error(error)); else resolve();
+          }
+          function check() {
+            if (worker.state === 'activated') finish();
+            if (worker.state === 'redundant') finish('Offline worker installation failed.');
+          }
+          worker.addEventListener('statechange', check);
+          check();
+        });
+      }
+      const cache = await caches.open(OFFLINE_CACHE);
+      await cache.put(CFG.offlinePage, response);
+      localStorage.setItem(OFFLINE_KEY, snapshot);
+      $('open-offline').hidden = false;
+      status.textContent = 'Offline show prepared. Open it, bookmark it, then test in airplane mode.';
+    } catch (e) {
+      status.textContent = 'Could not prepare offline show: ' + e.message;
+    } finally {
+      offlineBusy = false;
+      renderStageTools();
+    }
+  }
+
+  let wavBusy = false;
+  async function exportWav() {
+    if (E.playing || wavBusy || !$('wav-run').value) return;
+    const [first, end] = $('wav-run').value.split(':').map(Number);
+    const run = sections().slice(first, end), title = current.title;
+    const status = $('wav-status'), Audio = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const sound = prefs.sound, volume = prefs.volume;
+    wavBusy = true;
+    renderStageTools();
+    status.textContent = 'Rendering click WAV…';
+    try {
+      if (!Audio) throw new Error('This browser does not support offline audio rendering.');
+      if (volume === 0) throw new Error('Raise the app volume before exporting a click WAV.');
+      const rate = 22050, tail = 0.13;
+      const duration = run.reduce((sum, s) => sum + sectionSeconds(s), 0)
+        + run[0].countIn * run[0].num * unitSeconds(run[0], run[0].bpm);
+      if (duration > 1800) throw new Error('This run exceeds the 30-minute WAV limit.');
+      const frames = Math.ceil((duration + tail) * rate);
+      const data = new ArrayBuffer(44 + frames * 2), wav = new DataView(data);
+      for (const [at, text] of [[0, 'RIFF'], [8, 'WAVE'], [12, 'fmt '], [36, 'data']]) {
+        for (let i = 0; i < text.length; i++) wav.setUint8(at + i, text.charCodeAt(i));
+      }
+      for (const [at, value] of [[4, data.byteLength - 8], [16, 16], [24, rate], [28, rate * 2], [40, frames * 2]]) wav.setUint32(at, value, true);
+      for (const [at, value] of [[20, 1], [22, 1], [32, 2], [34, 16]]) wav.setUint16(at, value, true);
+      const voices = new Map();
+      async function voice(level, s) {
+        const pitch = level === 0 ? s.subPitch : level === 1 ? s.unitPitch : 0;
+        const velocity = level === 0 ? s.subVelocity : level === 1 ? s.unitVelocity : 127;
+        const key = [level, pitch, velocity].join('/');
+        if (!voices.has(key)) {
+          const ctx = new Audio(1, Math.ceil(tail * rate), rate), master = ctx.createGain();
+          master.gain.value = volume;
+          master.connect(ctx.destination);
+          const noiseBuf = ctx.createBuffer(1, Math.ceil(0.13 * rate), rate);
+          const noise = noiseBuf.getChannelData(0);
+          for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
+          playClick(0, level, s, { ctx, master, noiseBuf, sound });
+          voices.set(key, (await ctx.startRendering()).getChannelData(0));
+        }
+        return voices.get(key);
+      }
+      let time = 0, barsRendered = 0;
+      for (const [i, s] of run.entries()) {
+        const levels = unitLevels(s), countIn = i === 0 ? s.countIn : 0;
+        for (let bar = -countIn; bar < s.bars; bar++) {
+          const phase = bar < 0 ? 'countin' : 'play', subN = bar < 0 ? 1 : subdivOf(s);
+          for (let tick = 0; tick < s.num; tick++) {
+            for (let sub = 0; sub < subN; sub++) {
+              const level = sub === 0 ? levels[tick] : 0;
+              if (audible(s, level, phase)) {
+                const sample = await voice(level, s), offset = 44 + 2 * Math.round(time * rate);
+                for (let n = 0, at = offset; n < sample.length && at < data.byteLength; n++, at += 2) {
+                  wav.setInt16(at, clamp(wav.getInt16(at, true) + Math.round(sample[n] * 32767), -32768, 32767), true);
+                }
+              }
+              const bpm = bar < 0 ? s.bpm : bpmAt(s, (bar + (tick + sub / subN) / s.num) / s.bars);
+              time += unitSeconds(s, bpm) / subN;
+            }
+          }
+          if (++barsRendered % 32 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+      download(new Blob([data], { type: 'audio/wav' }), slug(title) + '-sections-' + (first + 1) + '-' + end + '.wav');
+      status.textContent = 'WAV ready · ' + timecode(duration) + ' including count-in.';
+    } catch (e) {
+      status.textContent = 'Could not render WAV: ' + e.message;
+    } finally {
+      wavBusy = false;
+      renderStageTools();
+    }
   }
 
   function importFile(file) {
@@ -1020,6 +1349,7 @@
   }
 
   function startTester() {
+    if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
     const s = sections()[tester.idx];
     if (!s || s.type === 'pause') { toast('Choose a click section to test'); return; }
     if (E.playing) stop(false);
@@ -1230,11 +1560,422 @@
   }
 
   // ------------------------------------------------------------ views & UI
+  const builderMarker = (time, previous) => ({
+    time, bar: '', num: previous?.num ?? '4', den: previous?.den ?? '4',
+    unit: previous?.unit ?? 'auto', shape: 'steady', bpm: '', dialogue: '',
+  });
+  const builder = { url: null, markers: [builderMarker(0)], selected: 0, dirty: false, zoomStart: null };
+  const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue'];
+
+  function markerTime(seconds) {
+    const ms = Math.round(seconds * 1000), whole = Math.floor(ms / 1000);
+    return Math.floor(whole / 60) + ':' + String(whole % 60).padStart(2, '0')
+      + '.' + String(ms % 1000).padStart(3, '0');
+  }
+
+  function fitRamp(s, duration, direction) {
+    const steps = s.bars * s.num * subdivOf(s);
+    if (steps < 2) throw new Error('A ramp needs at least two timed notes.');
+    const scale = unitSeconds(s, 1) / subdivOf(s);
+    // Sum the same musical steps that playback schedules, not the arithmetic mean of the endpoints.
+    const at = (end) => {
+      let total = 0;
+      for (let i = 0; i < steps; i++) total += 1 / (s.bpm + (end - s.bpm) * i / steps);
+      return total * scale;
+    };
+    const start = Math.round(s.bpm * 100);
+    const min = direction === 'accel' ? start + 1 : 1000;
+    const max = direction === 'accel' ? 40000 : start - 1;
+    const tolerance = 0.0005;
+    if (min > max || duration > at(min / 100) + tolerance || duration < at(max / 100) - tolerance) {
+      throw new Error('This ' + (direction === 'accel' ? 'accelerando' : 'rallentando')
+        + ' cannot reach the next hit point from ' + s.bpm + ' BPM within 10–400 BPM. Check the starting tempo, markers or tempo shape.');
+    }
+    let lo = min, hi = max;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (at(mid / 100) > duration) lo = mid + 1; else hi = mid;
+    }
+    if (lo > min && Math.abs(at((lo - 1) / 100) - duration) < Math.abs(at(lo / 100) - duration)) lo--;
+    return lo / 100;
+  }
+
+  function planVideoTrack() {
+    const points = builder.markers.filter((m, i) => i !== 0 || m.bar !== '');
+    if (points.length < 2) throw new Error('Add a musical hit point and a closing hit point with the next score bar.');
+    if (points.length > 501) throw new Error('A track can have at most 500 sections.');
+    if (points[0].time > 86400) throw new Error('The first musical hit point must be within the first 24 hours.');
+    const secs = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1], startBar = Number(a.bar), endBar = Number(b.bar);
+      const bars = endBar - startBar, numerator = Number(a.num), duration = b.time - a.time;
+      try {
+        if (!Number.isInteger(startBar) || startBar < 1 || !Number.isInteger(endBar) || endBar > 99999
+          || bars < 1 || bars > 9999) throw new Error('Enter increasing whole score bars for both hit points (1–99999, up to 9999 bars per span).');
+        if (!(duration > 0)) throw new Error('The next hit point must have a later video time.');
+        if (!Number.isInteger(numerator) || numerator < 1 || numerator > 32) throw new Error('Enter a meter numerator from 1 to 32.');
+        const s = defaultSection({
+          name: 'Bar ' + startBar, notes: a.dialogue, startBar, bars, num: numerator,
+          den: Number(a.den), beatUnit: a.unit, calcStart: markerTime(a.time), calcEnd: markerTime(b.time),
+        });
+        const average = bars * numerator * unitSeconds(s, 60) * 60 / duration;
+        if (a.shape === 'steady') {
+          if (average < 10 || average > 400) throw new Error('The marked duration requires ' + average.toFixed(2) + ' BPM, outside the 10–400 BPM range.');
+          s.bpm = Math.round(average * 100) / 100;
+        } else {
+          let start = a.bpm === '' ? null : Number(a.bpm);
+          const previous = secs[i - 1]?.section;
+          if (start == null && previous) {
+            const from = beatUnitFrac(previous), to = beatUnitFrac(s);
+            start = (previous.bpmEnd ?? previous.bpm) * (from.n / from.d) / (to.n / to.d);
+          }
+          if (start == null) throw new Error('Enter a starting BPM for the first ramp.');
+          if (!Number.isFinite(start) || start < 10 || start > 400) throw new Error('Starting BPM must be between 10 and 400.');
+          s.bpm = Math.round(start * 100) / 100;
+          s.bpmEnd = fitRamp(s, duration, a.shape);
+        }
+        secs.push({ section: s, average });
+      } catch (e) {
+        throw new Error('Hit point at ' + markerTime(a.time) + ': ' + e.message);
+      }
+    }
+    return { offset: points[0].time, secs };
+  }
+
+  function renderVideoPlan() {
+    const preview = $('builder-preview'), result = $('builder-result');
+    preview.replaceChildren();
+    $('builder-create').disabled = true;
+    try {
+      const plan = planVideoTrack();
+      for (const { section: s, average } of plan.secs) {
+        const li = document.createElement('li');
+        li.textContent = s.name + ' · ' + s.calcStart + ' → ' + s.calcEnd + ' · ' + s.bars + ' bars of '
+          + s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm
+          + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd + ' (average ' + average.toFixed(2) + ' BPM)')
+          + (s.notes ? ' · ' + s.notes : '');
+        preview.append(li);
+      }
+      result.textContent = plan.secs.length + ' section(s) · video offset ' + markerTime(plan.offset);
+      $('builder-create').disabled = !videoReady();
+    } catch (e) {
+      result.textContent = e.message;
+    }
+  }
+
+  function renderVideoMarkers() {
+    const list = $('builder-markers');
+    list.replaceChildren(...builder.markers.map((m, i) => new Option(markerTime(m.time)
+      + (m.bar ? ' · Bar ' + m.bar : i === 0 ? ' · Video start' : ' · Add bar number')
+      + (i > 0 && i === builder.markers.length - 1 ? ' · Current closing point' : ''), i)));
+    list.value = builder.selected;
+  }
+
+  function selectVideoMarker(index, seek = false, recenter = true) {
+    builder.selected = index;
+    const marker = builder.markers[index], video = $('builder-video');
+    renderVideoMarkers();
+    $('builder-marker-title').textContent = 'Hit point at ' + markerTime(marker.time);
+    $('builder-time').value = markerTime(marker.time);
+    $('builder-time').readOnly = index === 0;
+    $('builder-remove').disabled = index === 0;
+    for (const field of markerFields) $('builder-' + field).value = marker[field];
+    $('builder-bpm-field').hidden = marker.shape === 'steady';
+    if (recenter && builder.zoomStart !== null && videoReady()) zoomAroundMarker();
+    if (seek && videoReady()) seekBuilderVideo(marker.time);
+    renderVideoTimeline();
+  }
+
+  const roundMarkerTime = (time) => Math.round(time * 1000) / 1000;
+
+  function videoReady() {
+    const video = $('builder-video');
+    return video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0 && !video.error;
+  }
+
+  function seekBuilderVideo(time) {
+    const video = $('builder-video');
+    video.pause();
+    video.currentTime = clamp(time, 0, video.duration);
+    updateVideoPlayhead();
+  }
+
+  function zoomAroundMarker() {
+    builder.zoomStart = clamp(builder.markers[builder.selected].time - 5, 0, Math.max(0, $('builder-video').duration - 10));
+  }
+
+  function timelineRange() {
+    const duration = $('builder-video').duration;
+    return builder.zoomStart === null ? [0, duration] : [builder.zoomStart, Math.min(builder.zoomStart + 10, duration)];
+  }
+
+  function updateVideoPlayhead() {
+    if (!videoReady()) return;
+    const [start, end] = timelineRange(), time = $('builder-video').currentTime, playhead = $('builder-playhead');
+    playhead.hidden = time < start || time > end;
+    playhead.style.left = 100 * (time - start) / (end - start) + '%';
+  }
+
+  function markerLimits(index) {
+    return [
+      roundMarkerTime(builder.markers[index - 1].time + 0.001),
+      builder.markers[index + 1] ? roundMarkerTime(builder.markers[index + 1].time - 0.001)
+        : roundMarkerTime($('builder-video').duration),
+    ];
+  }
+
+  function renderVideoTimeline() {
+    const timeline = $('builder-timeline');
+    timeline.hidden = !videoReady();
+    if (timeline.hidden) return;
+    const duration = $('builder-video').duration, [start, end] = timelineRange();
+    const zoom = $('builder-zoom'), zoomed = builder.zoomStart !== null;
+    zoom.hidden = duration <= 10;
+    zoom.setAttribute('aria-pressed', String(zoomed));
+    zoom.textContent = zoomed ? 'Show full timeline' : 'Zoom around hit point';
+    $('builder-timeline-start').textContent = markerTime(start);
+    $('builder-timeline-end').textContent = markerTime(end);
+    const points = $('builder-timeline-points');
+    // Keep the existing buttons so keyboard focus survives a nudge or selection.
+    while (points.children.length > builder.markers.length) points.lastElementChild.remove();
+    builder.markers.forEach((marker, index) => {
+      let button = points.children[index];
+      if (!button) {
+        button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'builder-timeline-point';
+        button.dataset.index = index;
+        points.append(button);
+      }
+      button.hidden = marker.time < roundMarkerTime(start) || marker.time > roundMarkerTime(end);
+      button.style.left = clamp(100 * (marker.time - start) / (end - start), 0, 100) + '%';
+      button.title = (marker.bar ? 'Bar ' + marker.bar : index ? 'Hit point ' + index : 'Video start') + ' at ' + markerTime(marker.time);
+      button.setAttribute('aria-label', button.title);
+      button.setAttribute('aria-pressed', String(index === builder.selected));
+    });
+    const selected = builder.markers[builder.selected], limits = builder.selected ? markerLimits(builder.selected) : null;
+    $('builder-nudge-back').disabled = !limits || selected.time <= limits[0];
+    $('builder-nudge-forward').disabled = !limits || selected.time >= limits[1];
+    updateVideoPlayhead();
+  }
+
+  function moveVideoMarker(index, time, recenter) {
+    const marker = builder.markers[index];
+    if (time !== marker.time) {
+      marker.time = time;
+      builder.markers.sort((a, b) => a.time - b.time);
+      builder.dirty = true;
+    }
+    selectVideoMarker(builder.markers.indexOf(marker), true, recenter);
+    renderVideoPlan();
+  }
+
+  function nudgeVideoMarker(index, delta) {
+    if (!index || !videoReady()) return;
+    const limits = markerLimits(index), time = clamp(roundMarkerTime(builder.markers[index].time + delta), ...limits);
+    const [start, end] = timelineRange();
+    moveVideoMarker(index, time, time < roundMarkerTime(start) || time > roundMarkerTime(end));
+  }
+
+  function wireVideoTimeline() {
+    const rail = $('builder-timeline-rail');
+    let drag = null;
+    $('builder-zoom').addEventListener('click', () => {
+      if (builder.zoomStart === null) zoomAroundMarker();
+      else builder.zoomStart = null;
+      renderVideoTimeline();
+    });
+    $('builder-nudge-back').addEventListener('click', () => nudgeVideoMarker(builder.selected, -0.1));
+    $('builder-nudge-forward').addEventListener('click', () => nudgeVideoMarker(builder.selected, 0.1));
+    const indexOfButton = (target) => Number(target.closest('.builder-timeline-point')?.dataset.index);
+    rail.addEventListener('click', (e) => {
+      if (!videoReady()) return;
+      const index = indexOfButton(e.target);
+      if (Number.isInteger(index)) {
+        if (e.detail === 0 || !index) selectVideoMarker(index, true, false);
+      } else {
+        const [start, end] = timelineRange(), rect = rail.getBoundingClientRect();
+        seekBuilderVideo(start + clamp((e.clientX - rect.left) / rect.width, 0, 1) * (end - start));
+      }
+    });
+    rail.addEventListener('keydown', (e) => {
+      const index = indexOfButton(e.target);
+      if (!index || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+      e.preventDefault();
+      nudgeVideoMarker(index, e.key === 'ArrowLeft' ? -0.1 : 0.1);
+    });
+    rail.addEventListener('pointerdown', (e) => {
+      let index = indexOfButton(e.target);
+      if (drag || !videoReady() || !e.isPrimary || e.button !== 0 || !Number.isInteger(index)) return;
+      const marker = builder.markers[index];
+      e.target.focus({ preventScroll: true });
+      index = builder.markers.indexOf(marker);
+      if (index < 0) return;
+      selectVideoMarker(index, true, false);
+      if (index === 0) return;
+      const button = $('builder-timeline-points').children[index];
+      button.setPointerCapture(e.pointerId);
+      drag = { id: e.pointerId, button, marker, x: e.clientX, time: marker.time };
+    });
+    function previewDrag(e, index) {
+      const [start, end] = timelineRange(), limits = markerLimits(index);
+      const msPerPixel = (end - start) / rail.getBoundingClientRect().width;
+      const time = clamp(roundMarkerTime(drag.time + (e.clientX - drag.x) * msPerPixel),
+        Math.max(roundMarkerTime(start), limits[0]), Math.min(roundMarkerTime(end), limits[1]));
+      drag.button.style.left = clamp(100 * (time - start) / (end - start), 0, 100) + '%';
+      $('builder-time').value = markerTime(time);
+      $('builder-marker-title').textContent = 'Hit point at ' + markerTime(time);
+      seekBuilderVideo(time);
+      return time;
+    }
+    rail.addEventListener('pointermove', (e) => {
+      if (drag?.id !== e.pointerId || !videoReady()) return;
+      const index = builder.markers.indexOf(drag.marker);
+      if (index > 0) previewDrag(e, index);
+    });
+    rail.addEventListener('pointerup', (e) => {
+      if (drag?.id !== e.pointerId) return;
+      const index = builder.markers.indexOf(drag.marker);
+      const time = index > 0 && videoReady() ? previewDrag(e, index) : null;
+      drag = null;
+      if (time !== null) moveVideoMarker(index, time, false);
+    });
+    rail.addEventListener('lostpointercapture', (e) => {
+      if (drag?.id !== e.pointerId) return;
+      const index = builder.markers.indexOf(drag.marker);
+      drag = null;
+      if (index > 0) selectVideoMarker(index, true, false);
+    });
+  }
+
+  function addVideoMarker() {
+    if (!videoReady()) return;
+    const video = $('builder-video'), time = roundMarkerTime(video.currentTime);
+    video.pause();
+    let index = builder.markers.findIndex((marker) => marker.time === time);
+    if (index < 0) {
+      if (builder.markers.length >= 502) { toast('A track can have at most 500 sections.'); return; }
+      index = builder.markers.findIndex((marker) => marker.time > time);
+      if (index < 0) index = builder.markers.length;
+      if (builder.markers.length === 501 && builder.markers[0].bar !== '') { toast('A track can have at most 500 sections.'); return; }
+      builder.markers.splice(index, 0, builderMarker(time, builder.markers[index - 1]));
+      builder.dirty = true;
+    }
+    selectVideoMarker(index);
+    renderVideoPlan();
+    $('builder-bar').focus();
+  }
+
+  function setBuilderMediaControls() {
+    const video = $('builder-video');
+    $('builder-add').disabled = $('builder-play').disabled = !videoReady();
+    $('builder-resume').disabled = !videoReady() || !video.paused || video.ended;
+    $('builder-play').textContent = video.paused ? 'Play video' : 'Pause video';
+  }
+
+  function wireVideoBuilder() {
+    const video = $('builder-video'), fileInput = $('builder-file');
+    wireVideoTimeline();
+    $('builder-den').replaceChildren(...DENOMS.map((n) => new Option(n, n)));
+    $('builder-unit').replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
+    $('btn-video-track').addEventListener('click', () => switchView('video'));
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      fileInput.value = '';
+      if (!file || (builder.dirty && !window.confirm('Replace this video and discard the current marker draft?'))) return;
+      video.pause();
+      if (builder.url) URL.revokeObjectURL(builder.url);
+      builder.url = URL.createObjectURL(file);
+      builder.markers = [builderMarker(0)];
+      builder.zoomStart = null;
+      builder.dirty = false;
+      video.src = builder.url;
+      $('builder-title').value = file.name.replace(/\.[^.]+$/, '').slice(0, 255);
+      $('builder-media-status').textContent = 'Loading ' + file.name + '…';
+      selectVideoMarker(0);
+      setBuilderMediaControls();
+      renderVideoPlan();
+    });
+    video.addEventListener('loadedmetadata', () => {
+      setBuilderMediaControls();
+      renderVideoTimeline();
+      $('builder-media-status').textContent = videoReady() ? 'Video duration: ' + markerTime(video.duration)
+        : 'This video does not have a usable duration.';
+      renderVideoPlan();
+    });
+    video.addEventListener('error', () => {
+      setBuilderMediaControls();
+      renderVideoTimeline();
+      $('builder-media-status').textContent = 'This browser could not play the video. Try an MP4 encoded as H.264.';
+      renderVideoPlan();
+    });
+    for (const event of ['play', 'pause', 'ended']) video.addEventListener(event, setBuilderMediaControls);
+    for (const event of ['timeupdate', 'seeking']) video.addEventListener(event, updateVideoPlayhead);
+    const resumeVideo = async () => {
+      video.focus();
+      try { await video.play(); }
+      catch (e) { $('builder-media-status').textContent = 'Could not play video: ' + e.message; }
+    };
+    $('builder-play').addEventListener('click', () => {
+      if (!video.paused) { video.pause(); return; }
+      resumeVideo();
+    });
+    $('builder-resume').addEventListener('click', resumeVideo);
+    $('builder-title').addEventListener('input', () => { builder.dirty = true; });
+    $('builder-add').addEventListener('click', addVideoMarker);
+    $('builder-markers').addEventListener('change', (e) => selectVideoMarker(Number(e.target.value), true));
+    for (const field of markerFields) {
+      $('builder-' + field).addEventListener('change', (e) => {
+        builder.markers[builder.selected][field] = e.target.value;
+        builder.dirty = true;
+        $('builder-bpm-field').hidden = builder.markers[builder.selected].shape === 'steady';
+        renderVideoMarkers();
+        renderVideoTimeline();
+        renderVideoPlan();
+      });
+    }
+    $('builder-time').addEventListener('change', (e) => {
+      const marker = builder.markers[builder.selected];
+      const parsed = parseTimecode(e.target.value), time = parsed == null ? null : roundMarkerTime(parsed);
+      if (!videoReady() || builder.selected === 0 || time == null || time > roundMarkerTime(video.duration)
+        || builder.markers.some((m) => m !== marker && m.time === time)) {
+        e.target.value = markerTime(marker.time);
+        toast('Enter a unique video time within the clip.');
+        return;
+      }
+      moveVideoMarker(builder.selected, time, true);
+    });
+    $('builder-remove').addEventListener('click', () => {
+      if (builder.selected === 0) return;
+      builder.markers.splice(builder.selected, 1);
+      builder.dirty = true;
+      selectVideoMarker(builder.selected - 1);
+      renderVideoPlan();
+    });
+    $('builder-create').addEventListener('click', () => {
+      if (!videoReady()) return;
+      try {
+        const { offset, secs } = planVideoTrack();
+        const track = makeTrack($('builder-title').value.trim() || 'Click track from video', secs.map((s) => s.section));
+        track.videoOffset = offset;
+        addTrack(track);
+        builder.dirty = false;
+        switchView('edit');
+        toast('Created click track from video hit points');
+      } catch (e) { $('builder-result').textContent = e.message; }
+    });
+    window.addEventListener('beforeunload', (e) => {
+      if (builder.dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+    selectVideoMarker(0);
+    renderVideoPlan();
+  }
+
   let performanceMode = false, nativeFullscreen = false;
   function setPerformanceMode(on) {
     performanceMode = on;
     document.body.classList.toggle('performance-mode', on);
-    $('performance-menu').hidden = !on;
+    $('btn-exit-fullscreen').hidden = !on;
     $('performance-menu').open = false;
     focusPerformancePedal();
   }
@@ -1275,9 +2016,19 @@
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
     $('view-perform').hidden = name !== 'perform';
     $('view-edit').hidden = name !== 'edit';
+    if (!CFG.offline) {
+      $('view-video').hidden = name !== 'video';
+      $('btn-video-track').setAttribute('aria-pressed', String(name === 'video'));
+      if (name !== 'video') $('builder-video').pause();
+    }
     $('btn-pedal-setup').hidden = name !== 'edit';
     $('btn-editor-fullscreen').hidden = name !== 'edit';
-    if (name === 'edit') renderEditor();
+    if (name === 'video') {
+      stop(false);
+      $('performance-menu').open = false;
+      showPedalSetup(false);
+      window.scrollTo(0, 0);
+    } else if (name === 'edit') { $('performance-menu').open = false; renderEditor(); }
     else showPedalSetup(false);
   }
 
@@ -1310,6 +2061,10 @@
     pendingPedals.clear();
   }
   function runPedal(action, key) {
+    if ($('performance-menu').open && $('pre-show').open) {
+      if (action) $('pre-show-pedal').textContent = keyName(key) + ' → ' + PEDAL_ACTIONS[action] + ' (test only).';
+      return;
+    }
     if (action === 'forward') advance();
     else if (action === 'back') back();
     else if (action === 'pause' && (E.playing || key === ' ')) togglePlay();
@@ -1385,14 +2140,14 @@
     let hit = false;
     if (cmd === 0x90 && d2 > 0) hit = true;
     else if (cmd === 0xb0) { const prev = ccState[d1] || 0; ccState[d1] = d2; hit = d2 >= 64 && prev < 64; }
-    if (!hit) return;
+    if (!hit || (!CFG.offline && !$('view-video').hidden)) return;
     if (learning) {
       setLearning(false);
       $('pedal-input').textContent = 'MIDI pedal detected. MIDI note-on / controller presses use Start / Next / resume.';
       toast('MIDI pedal detected ✓');
       return;
     }
-    advance();
+    runPedal('forward', 'MIDI');
   }
   function bindMidi() {
     if (!midiAccess) return;
@@ -1429,6 +2184,16 @@
 
   function onKeyDown(e) {
     const k = pedalKey(e);
+    if (!CFG.offline && !$('view-video').hidden) {
+      const playingFromButton = e.target === $('builder-play') && !$('builder-video').paused;
+      if (k === ' ' && !e.altKey && !e.ctrlKey && !e.metaKey
+        && (playingFromButton || !e.target.closest?.('input, textarea, select, button, a, [contenteditable]'))
+        && videoReady()) {
+        e.preventDefault();
+        if (!e.repeat) addVideoMarker();
+      }
+      return;
+    }
     if (e.target === $('performance-pedal-capture') && !e.repeat) {
       $('performance-pedal-capture').value = k ? keyName(k) : 'Unidentified key';
     }
@@ -1461,7 +2226,7 @@
       return;
     }
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
-    if ((k === 'Enter' || k === ' ') && e.target.closest('button, summary')) return;
+    if ((k === 'Enter' || k === ' ') && e.target.closest?.('button, summary')) return;
     const editing = document.body.classList.contains('editing');
     const single = editing ? null : pedalBinding('single', k);
     const double = editing ? null : pedalBinding('double', k);
@@ -1476,6 +2241,7 @@
     if (e.repeat) return;
     if (k === 'Escape') {
       if (learning) { setLearning(false); $('pedal-input').textContent = 'Learning cancelled.'; return; }
+      if ($('performance-menu').open && $('pre-show').open) { $('pre-show').open = false; focusPerformancePedal(); return; }
       stopTester();
       stop(false);
       if (performanceMode) toggleFullscreen();
@@ -1487,6 +2253,8 @@
   }
 
   function wire() {
+    wireAudioOutputs();
+    if (!CFG.offline) wireVideoBuilder();
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('focus', () => {
       if (document.activeElement === document.body || document.activeElement === $('performance-pedal-capture')) focusPerformancePedal();
@@ -1508,6 +2276,68 @@
     });
     $('btn-fullscreen').addEventListener('click', toggleFullscreen);
     $('btn-exit-fullscreen').addEventListener('click', toggleFullscreen);
+    $('performance-menu').addEventListener('toggle', () => {
+      cancelPendingPedal();
+      if ($('performance-menu').open) renderStageTools();
+      else {
+        $('pre-show').open = false;
+        focusPerformancePedal();
+      }
+    });
+    $('pre-show').addEventListener('toggle', () => {
+      cancelPendingPedal();
+      if ($('pre-show').open) {
+        if (canRouteAudio && mediaDevices?.enumerateDevices) refreshAudioOutputs();
+        $('pre-show-pedal').textContent = 'Press your pedal. No transport action will run during the check.';
+        showWake(wakeLock ? 'Screen wake lock active.' : 'Screen wake lock not active. Tap Check screen awake to test.');
+      } else if (!E.playing) {
+        cancelClicks();
+        releaseWake();
+      }
+    });
+    $('cue-filter').addEventListener('input', renderStageTools);
+    $('btn-recover-cue').addEventListener('click', () => {
+      if (transportBusy) { toast('Wait for playback to finish pausing or resuming, then retry.'); return; }
+      if (!$('cue-target').value) return;
+      const idx = Number($('cue-target').value);
+      stop(false);
+      selectIdx(idx);
+      $('performance-menu').open = false;
+      start(idx);
+      focusPerformancePedal();
+      window.scrollTo(0, 0);
+    });
+    $('btn-test-clicks').addEventListener('click', () => {
+      if (E.playing || outputBusy) return;
+      const status = $('pre-show-audio');
+      try {
+        stopTester();
+        cancelClicks();
+        const audio = ensureAudio();
+        const time = audio.currentTime + 0.1;
+        for (let i = 0; i < 4; i++) playClick(time + i * 0.5, i === 0 ? 3 : 2);
+        status.textContent = prefs.volume === 0 ? 'App volume is muted.' : 'Four clicks scheduled. Confirm that you hear them on your glasses or headphones.';
+      } catch (e) {
+        status.textContent = 'Could not play test clicks: ' + e.message;
+      }
+    });
+    $('btn-test-wake').addEventListener('click', requestWake);
+    $('btn-test-pedal').addEventListener('click', focusPerformancePedal);
+    $('btn-print-cues').addEventListener('click', printCues);
+    $('btn-backup-json').addEventListener('click', exportTrack);
+    $('btn-export-wav').addEventListener('click', exportWav);
+    $('wav-run').addEventListener('change', () => { $('btn-export-wav').disabled = !$('wav-run').value || wavBusy || E.playing; });
+    if (!CFG.offline) {
+      $('btn-prepare-offline').addEventListener('click', prepareOffline);
+      $('open-offline').hidden = !loadJSON(OFFLINE_KEY, null);
+    } else {
+      $('btn-remove-offline').addEventListener('click', () => {
+        try {
+          localStorage.removeItem(OFFLINE_KEY);
+          location.reload();
+        } catch (e) { toast('Could not remove offline copy: ' + e.message); }
+      });
+    }
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement && nativeFullscreen) {
         nativeFullscreen = false;
@@ -1602,7 +2432,7 @@
     $('pref-volume').addEventListener('change', (e) => e.target.blur());
     $('pref-sound').addEventListener('change', (e) => {
       prefs.sound = e.target.value; savePrefs(); e.target.blur();
-      if (E.playing || tester.running) return;
+      if (E.playing || tester.running || outputBusy) return;
       ensureAudio(); playClick(ctx.currentTime + 0.03, 3); playClick(ctx.currentTime + 0.33, 2);
     });
     $('pref-flash').addEventListener('change', (e) => { prefs.flash = e.target.checked; savePrefs(); e.target.blur(); });
@@ -1634,6 +2464,20 @@
     renderPedalKeys();
     renderAll();
     requestAnimationFrame(frame);
+    if (CFG.offline) {
+      if (Array.isArray(offlineShow?.track?.sections) && offlineShow.track.sections.length) {
+        tracks = [normTrack(offlineShow.track)];
+        selectTrack(tracks[0].id);
+        const date = new Date(offlineShow.prepared);
+        $('offline-copy-status').textContent = 'Offline copy · ' + date.toLocaleString();
+        if (prefs.midi) setMidi(true);
+      } else {
+        $('offline-copy-status').textContent = 'No offline show saved. Sign in online and choose Prepare offline show.';
+        $('btn-remove-offline').hidden = true;
+        $('view-perform').hidden = true;
+      }
+      return;
+    }
     await loadTracks();
     selectTrack(loadJSON(LS_LAST, null));
     if (prefs.midi) setMidi(true);

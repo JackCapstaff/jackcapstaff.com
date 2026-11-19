@@ -1,0 +1,70 @@
+<main id="view-video" class="view" aria-labelledby="video-builder-title" hidden>
+  <h1 id="video-builder-title">New click track from video</h1>
+  <p>Choose a local video. Press <kbd>Space</kbd> during playback to pause and mark a hit point, then enter its details and click <strong>Play video</strong> to continue. On touchscreens, use <strong>Add hit point</strong>.</p>
+  <p class="muted small">The video is not uploaded. The marker draft stays in this tab until you create the track or leave the page.</p>
+  <div class="video-builder-meta">
+    <label>Video file <input id="builder-file" type="file" accept="video/*,.mp4,.mov,.webm,.m4v"></label>
+    <label>Track title <input id="builder-title" type="text" maxlength="255" placeholder="New click track"></label>
+  </div>
+  <p id="builder-media-status" role="status"></p>
+  <div class="video-builder-grid">
+    <section aria-label="Video player">
+      <video id="builder-video" controls playsinline preload="metadata" tabindex="0" aria-label="Source video"></video>
+      <div id="builder-timeline" hidden>
+        <div class="stage-tool-row">
+          <strong>Hit point timeline</strong>
+          <button type="button" class="btn small" id="builder-zoom" aria-pressed="false">Zoom around hit point</button>
+        </div>
+        <p class="muted small">Click or tap the rail to seek. Drag a hit point to move it without crossing its neighbours. Use the arrow keys on a hit point or the nudge buttons for 0.1-second adjustments.</p>
+        <div class="builder-timeline-track">
+          <div id="builder-timeline-rail">
+            <span id="builder-playhead" aria-hidden="true"></span>
+            <div id="builder-timeline-points" role="group" aria-label="Timeline hit points"></div>
+          </div>
+        </div>
+        <div class="builder-timeline-labels muted small">
+          <span id="builder-timeline-start"></span><span id="builder-timeline-end"></span>
+        </div>
+        <div class="stage-tool-row" role="group" aria-label="Nudge selected hit point">
+          <button type="button" class="btn small" id="builder-nudge-back" aria-label="Move selected hit point 0.1 seconds earlier">−0.1 s</button>
+          <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later">+0.1 s</button>
+        </div>
+      </div>
+      <div class="stage-tool-row">
+        <button class="btn primary" id="builder-play" disabled>Play video</button>
+        <button class="btn" id="builder-add" title="Pause and mark the video (Space)" disabled>Add hit point</button>
+      </div>
+    </section>
+    <section aria-label="Hit points">
+      <label>Hit points <select id="builder-markers" size="5"></select></label>
+      <fieldset id="builder-marker">
+        <legend id="builder-marker-title">Hit point details</legend>
+        <div class="video-builder-fields">
+          <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
+          <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
+          <label>Meter numerator <input id="builder-num" type="number" min="1" max="32" step="1"></label>
+          <label>Meter denominator <select id="builder-den"></select></label>
+          <label>Beat unit <select id="builder-unit"></select></label>
+          <label>Tempo shape <select id="builder-shape">
+            <option value="steady">Steady</option>
+            <option value="accel">Accelerando</option>
+            <option value="rall">Rallentando</option>
+          </select></label>
+          <label id="builder-bpm-field" hidden>Starting BPM <input id="builder-bpm" type="number" min="10" max="400" step="0.01" placeholder="Use previous tempo"></label>
+          <label class="builder-dialogue">On-screen dialogue / cue <textarea id="builder-dialogue" rows="2" maxlength="500"></textarea></label>
+        </div>
+        <div class="stage-tool-row">
+          <button class="btn small primary" id="builder-resume" disabled>Resume video</button>
+          <button class="btn small danger" id="builder-remove">Remove hit point</button>
+        </div>
+      </fieldset>
+    </section>
+  </div>
+  <section class="video-builder-preview" aria-labelledby="builder-preview-title">
+    <h2 id="builder-preview-title">Click track preview</h2>
+    <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. The final hit point only closes the last span: it needs a time and the next bar number. A ramp can use the previous span’s ending tempo; enter a starting BPM if it’s the first span or you want a different starting tempo.</p>
+    <p id="builder-result" role="status"></p>
+    <ol id="builder-preview"></ol>
+    <button class="btn primary" id="builder-create" disabled>Create click track</button>
+  </section>
+</main>

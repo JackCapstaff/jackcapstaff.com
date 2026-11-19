@@ -10,8 +10,9 @@ Tracks are saved to the signed-in user's account, with a browser-local cache.
 import math
 import re
 from functools import wraps
+from pathlib import Path
 
-from flask import Blueprint, abort, current_app, jsonify, render_template, request
+from flask import Blueprint, abort, current_app, jsonify, make_response, render_template, request, send_from_directory
 from flask_login import current_user, login_required
 
 clicktrack_bp = Blueprint("clicktrack", __name__, url_prefix="/clicktrack")
@@ -153,6 +154,23 @@ def _bad_request(err):
 @login_required
 def clicktrack_index():
     return render_template("clicktrack/index.html")
+
+
+@clicktrack_bp.get("/offline/")
+def offline_performance():
+    assets = Path(current_app.static_folder)
+    response = make_response(render_template(
+        "clicktrack/index.html", offline=True,
+        offline_css=(assets / "css" / "clicktrack.css").read_text(encoding="utf-8"),
+        offline_js=(assets / "js" / "clicktrack.js").read_text(encoding="utf-8"),
+    ))
+    response.headers.update({"Cache-Control": "no-store", "X-Clicktrack-Offline-Shell": "1"})
+    return response
+
+
+@clicktrack_bp.get("/offline/worker.js")
+def offline_worker():
+    return send_from_directory(current_app.static_folder, "js/clicktrack-offline-worker.js", max_age=0)
 
 
 @clicktrack_bp.route("/api/tracks", methods=["GET"])

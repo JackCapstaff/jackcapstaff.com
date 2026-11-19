@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from clicktrack import _clean_section
 
@@ -63,13 +64,16 @@ class ClickTrackStorageTests(unittest.TestCase):
         from clicktrack import clicktrack_bp
         from models import init_models
 
-        cls.app = Flask(__name__)
+        root = Path(__file__).resolve().parents[1]
+        cls.app = Flask(__name__, template_folder=str(root / "templates"), static_folder=str(root / "assets"))
         cls.app.config.update(TESTING=True, SECRET_KEY="local-test", SQLALCHEMY_DATABASE_URI="sqlite:///:memory:")
         cls.db = SQLAlchemy(cls.app)
         cls.models = init_models(cls.db)
         cls.app.db = cls.db
         cls.app.ClickTrack = cls.models["ClickTrack"]
         login = LoginManager(cls.app)
+
+        cls.app.add_url_rule("/", endpoint="index", view_func=lambda: "")
 
         @login.user_loader
         def load_user(user_id):
@@ -128,6 +132,43 @@ class ClickTrackStorageTests(unittest.TestCase):
                                            json={**self.payload, "videoOffset": value})
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(self.client.get("/clicktrack/api/tracks").json["tracks"][0]["videoOffset"], 25)
+
+    def test_offline_shell_is_self_contained_and_never_contains_account_data(self):
+        self.client.post("/clicktrack/api/tracks", json=self.payload)
+        for client in (self.client, self.app.test_client()):
+            with self.subTest(signed_in=client is self.client):
+                response = client.get("/clicktrack/offline/")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["X-Clicktrack-Offline-Shell"], "1")
+                self.assertIn("no-store", response.headers["Cache-Control"])
+                self.assertIn(b"offline: true", response.data)
+                self.assertIn(b"authenticated: false", response.data)
+                self.assertIn(b"<style>", response.data)
+                self.assertNotIn(b"<script src=", response.data)
+                self.assertNotIn(b'id="view-video"', response.data)
+                self.assertIn(b'id="audio-output"', response.data)
+                self.assertNotIn(self.payload["title"].encode(), response.data)
+        guest = self.app.test_client()
+        self.assertEqual(guest.get("/clicktrack/api/tracks").status_code, 401)
+        with guest.get("/clicktrack/offline/worker.js") as worker:
+            self.assertEqual(worker.status_code, 200)
+            self.assertIn("javascript", worker.mimetype)
+
+    def test_video_builder_is_separate_from_existing_editor(self):
+        response = self.client.get("/clicktrack/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="btn-video-track"', response.data)
+        self.assertIn(b'id="view-video"', response.data)
+        self.assertIn(b'id="view-edit"', response.data)
+        self.assertIn(b'id="builder-video"', response.data)
+        self.assertIn(b'id="builder-timeline-rail"', response.data)
+        self.assertIn(b'id="builder-nudge-forward"', response.data)
+
+    def test_audio_output_is_part_of_pre_show_check(self):
+        response = self.client.get("/clicktrack/")
+        pre_show = response.data.split(b'<details id="pre-show">', 1)[1].split(b"</details>", 1)[0]
+        self.assertIn(b'id="audio-output"', pre_show)
+        self.assertIn(b'id="btn-test-clicks"', pre_show)
 
 
 if __name__ == "__main__":
