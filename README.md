@@ -3,7 +3,9 @@ Website
 
 ## Click track video drafts
 
-In the signed-in Click Track page, choose **New click track from video**.
+In the signed-in Click Track page, open **Track actions → New click track from
+video**. The same dropdown has the new track and JSON options, and **Pedal
+setup** when you're in Edit.
 Choose a local MP4, or paste a YouTube video link and select **Load YouTube video**.
 Use **Play video** and press Space or select **Add hit point**. If the embedded
 player has keyboard focus, use the button.
@@ -21,5 +23,9 @@ requires internet access and must allow embedding. Local files are not uploaded
 and their drafts stay in the current tab.
 
 **Create click track** makes a separate track in the normal editor; the finished
-track does not need the video. For tighter timing, use a local file rather than
-relying on YouTube seeking.
+track does not need the video. For YouTube, this also saves and links the draft.
+Open the track's **Edit** tab and choose **Edit with video** to reopen it. For
+older tracks, open the matching saved draft and choose **Link open draft to
+track** once. Editing the draft does not overwrite the finished track. Local
+video remains available to revisit only while it is still open in the tab.
+For tighter timing, use a local file rather than relying on YouTube seeking.

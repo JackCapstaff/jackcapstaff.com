@@ -166,6 +166,28 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertIn(b'id="builder-nudge-forward"', response.data)
         self.assertIn(b'id="builder-review" checked', response.data)
         self.assertIn(b'id="builder-retime"', response.data)
+        self.assertIn(b'id="btn-edit-video"', response.data)
+
+    def test_track_actions_group_creation_json_and_pedal_setup(self):
+        response = self.client.get("/clicktrack/")
+        menu = response.data.split(b'id="track-actions">', 1)[1].split(b"</details>", 1)[0]
+        for action in (b"btn-new-track", b"btn-video-track", b"btn-import-track",
+                       b"btn-export-track", b"btn-pedal-setup"):
+            self.assertIn(b'id="' + action + b'"', menu)
+        self.assertNotIn(b'id="btn-edit-video"', menu)
+
+    def test_track_video_link_persists_without_changing_sections(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"time": 0, "den": "4", "unit": "auto", "shape": "steady"}
+        draft = self.client.post(path, json={"videoId": "abcdefghijk", "markers": [marker]}).json
+        url = "/clicktrack/api/tracks"
+        track = self.client.post(url, json={**self.payload, "videoDraftId": draft["id"]}).json
+        self.assertEqual(track["videoDraftId"], draft["id"])
+        self.assertEqual(self.client.put(f"{url}/{track['id']}", json=self.payload).json["videoDraftId"], draft["id"])
+        self.assertEqual(self.client.delete(f"{path}/{draft['id']}").status_code, 200)
+        reloaded = self.client.get(url).json["tracks"][0]
+        self.assertIsNone(reloaded["videoDraftId"])
+        self.assertEqual(reloaded["sections"], track["sections"])
 
     def test_youtube_draft_round_trip_across_sessions(self):
         path = "/clicktrack/api/video-drafts"
@@ -210,6 +232,7 @@ class ClickTrackStorageTests(unittest.TestCase):
         with other.session_transaction() as session:
             session["_user_id"] = str(user_id)
         self.assertEqual(other.get(path).json, {"drafts": []})
+        self.assertEqual(other.post("/clicktrack/api/tracks", json={**self.payload, "videoDraftId": draft_id}).status_code, 400)
         for method in ("get", "put", "delete"):
             self.assertEqual(getattr(other, method)(f"{path}/{draft_id}", json=valid).status_code, 404)
 

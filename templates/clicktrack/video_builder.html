@@ -1,5 +1,6 @@
 <main id="view-video" class="view" aria-labelledby="video-builder-title" hidden>
   <h1 id="video-builder-title">New click track from video</h1>
+  <button type="button" class="btn small" id="builder-back-to-edit" hidden>Back to track editor</button>
   <p>Choose a local video or load a YouTube link. Use <strong>Play video</strong>, then press <kbd>Space</kbd> to pause and mark a hit point, or tap <strong>Add hit point</strong>. If focus is inside the YouTube player, use the Add hit point button instead.</p>
   <p class="muted small">Local files are not uploaded and their drafts stay in this tab. Choose <strong>Save YouTube draft</strong> to save the link and hit points to your account. YouTube needs an internet connection and a video that allows embedding; seeking is not frame-accurate.</p>
   <div class="video-builder-meta">
@@ -14,6 +15,7 @@
     <label>Saved YouTube drafts <select id="builder-drafts"><option value="">Choose a draft</option></select></label>
     <button type="button" class="btn small" id="builder-open-draft" disabled>Open draft</button>
     <button type="button" class="btn small danger" id="builder-delete-draft" disabled>Delete selected draft</button>
+    <button type="button" class="btn small" id="builder-link-draft" hidden>Link open draft to track</button>
   </div>
   <p id="builder-draft-status" class="muted small" role="status"></p>
   <p id="builder-media-status" role="status"></p>

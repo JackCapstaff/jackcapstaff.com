@@ -130,6 +130,14 @@ def _apply_payload(track, data):
         if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not 0 <= offset <= 86400:
             abort(400, description="Video offset must be between 0 and 86400 seconds.")
         track.video_offset = offset
+    if "videoDraftId" in data:
+        draft_id = data["videoDraftId"]
+        if draft_id is not None and (
+            type(draft_id) is not int or not 1 <= draft_id <= 2147483647
+            or not current_app.ClickTrackVideoDraft.query.filter_by(id=draft_id, user_id=track.user_id).first()
+        ):
+            abort(400, description="Choose a saved video draft from your account.")
+        track.video_draft_id = draft_id
     track.sections = [_clean_section(s) for s in sections]
 
 
@@ -274,6 +282,9 @@ def api_video_drafts():
 def api_video_draft(draft_id):
     draft = current_app.ClickTrackVideoDraft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
     if request.method == "DELETE":
+        current_app.ClickTrack.query.filter_by(user_id=current_user.id, video_draft_id=draft.id).update(
+            {"video_draft_id": None}
+        )
         current_app.db.session.delete(draft)
         current_app.db.session.commit()
         return jsonify({"ok": True})

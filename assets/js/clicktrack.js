@@ -949,12 +949,14 @@
       title: String(t.title || 'Untitled').slice(0, 255),
       notes: String(t.notes || '').slice(0, 2000),
       videoOffset: clamp(Number(t.videoOffset) || 0, 0, 86400),
+      videoDraftId: Number.isInteger(t.videoDraftId) && t.videoDraftId > 0 ? t.videoDraftId : null,
+      _linkDirty: !!t._linkDirty,
       sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
       _dirty: !!t._dirty, _auto: !!t._auto, _ver: 1,
     };
   }
 
-  const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, videoOffset: t.videoOffset, sections: t.sections, _dirty: t._dirty, _auto: t._auto });
+  const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, videoOffset: t.videoOffset, videoDraftId: t.videoDraftId, sections: t.sections, _dirty: t._dirty, _auto: t._auto, _linkDirty: t._linkDirty });
   const cacheLocal = () => saveJSON(LS_TRACKS, tracks.map(serialise));
 
   async function api(method, path, body, base = CFG.apiBase) {
@@ -974,6 +976,7 @@
     if (!CFG.authenticated) { t._dirty = false; cacheLocal(); return; }
     const ver = t._ver;
     const payload = { title: t.title, notes: t.notes, videoOffset: t.videoOffset, sections: t.sections };
+    if (t._linkDirty || (!isServerId(t.id) && t.videoDraftId)) payload.videoDraftId = t.videoDraftId;
     if (isServerId(t.id)) {
       await api('PUT', '/' + t.id, payload);
     } else {
@@ -982,7 +985,7 @@
       if (current === t) saveJSON(LS_LAST, t.id);
       refreshTrackSelect();
     }
-    if (t._ver === ver) t._dirty = false;
+    if (t._ver === ver) t._dirty = t._linkDirty = false;
     cacheLocal();
   }
 
@@ -1568,7 +1571,7 @@
   const builder = {
     url: null, markers: [builderMarker(0)], selected: 0, dirty: false, zoomStart: null,
     youtube: null, draftId: null, draftsBusy: false,
-    reviewTime: null, reviewAnchor: null,
+    reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null,
   };
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue'];
 
@@ -1643,6 +1646,7 @@
       builder.url = null;
     }
     builder.draftId = null;
+    builder.localTrack = null;
     builder.zoomStart = null;
     builder.dirty = false;
     resetVideoReview();
@@ -1725,9 +1729,15 @@
 
   function renderDraftControls() {
     const busy = builder.draftsBusy, selected = $('builder-drafts').value;
+    const track = builder.returnTrack;
     $('builder-open-draft').disabled = $('builder-delete-draft').disabled = busy || !selected;
     $('builder-save-draft').disabled = busy || !builder.youtube;
     $('builder-load-youtube').disabled = $('builder-file').disabled = busy;
+    $('btn-edit-video').disabled = busy;
+    $('builder-create').disabled = busy || !videoReady() || !builder.planValid;
+    $('builder-back-to-edit').hidden = !track;
+    $('builder-link-draft').hidden = !track || !builder.draftId || track.videoDraftId === builder.draftId;
+    $('builder-link-draft').disabled = busy;
   }
 
   const draftRequest = (method, id, body) => api(method, id ? '/' + id : '', body, CFG.videoDrafts);
@@ -1743,6 +1753,15 @@
   const draftPayload = () => ({
     videoId: builder.youtube.id, title: $('builder-title').value.trim(), markers: builder.markers,
   });
+
+  async function saveYoutubeDraft() {
+    const payload = JSON.stringify(draftPayload());
+    const saved = await draftRequest(builder.draftId ? 'PUT' : 'POST', builder.draftId, JSON.parse(payload));
+    builder.draftId = saved.id;
+    const unchanged = payload === JSON.stringify(draftPayload());
+    if (unchanged) builder.dirty = false;
+    return unchanged;
+  }
 
   async function runDraftAction(action) {
     if (builder.draftsBusy) return;
@@ -1836,7 +1855,7 @@
   function renderVideoPlan() {
     const preview = $('builder-preview'), result = $('builder-result');
     preview.replaceChildren();
-    $('builder-create').disabled = true;
+    builder.planValid = false;
     try {
       const plan = planVideoTrack();
       for (const { section: s, average } of plan.secs) {
@@ -1848,10 +1867,11 @@
         preview.append(li);
       }
       result.textContent = plan.secs.length + ' section(s) · video offset ' + markerTime(plan.offset);
-      $('builder-create').disabled = !videoReady();
+      builder.planValid = true;
     } catch (e) {
       result.textContent = e.message;
     }
+    renderDraftControls();
   }
 
   function renderVideoMarkers() {
@@ -2103,10 +2123,48 @@
     $('builder-den').replaceChildren(...DENOMS.map((n) => new Option(n, n)));
     $('builder-unit').replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
     $('btn-video-track').addEventListener('click', () => {
+      builder.returnTrack = null;
       switchView('video');
+      renderDraftControls();
       if (!builder.draftsBusy) runDraftAction(async () => { await refreshDraftList(); return ''; });
     });
     const link = $('builder-youtube-url'), drafts = $('builder-drafts'), draftStatus = $('builder-draft-status');
+    $('btn-edit-video').addEventListener('click', () => {
+      if (!current || builder.draftsBusy) return;
+      const track = current;
+      builder.returnTrack = track;
+      switchView('video');
+      runDraftAction(async () => {
+        await refreshDraftList();
+        if (track.videoDraftId) {
+          if (track.videoDraftId === builder.draftId) return 'Linked video draft is open.';
+          if (!Array.from(drafts.options).some((o) => o.value === String(track.videoDraftId))) {
+            return 'The linked draft is no longer available. Open another saved draft to link it.';
+          }
+          const draft = await draftRequest('GET', track.videoDraftId);
+          if ($('view-video').hidden || builder.returnTrack !== track || !confirmBuilderReplace()) return 'Open cancelled.';
+          drafts.value = draft.id;
+          openYoutube(draft.videoId, draft);
+          return 'Opened linked draft: ' + draft.title;
+        }
+        if (builder.localTrack === track) return 'Local video is still open in this tab.';
+        return 'Open your saved YouTube draft below, then link it to this track for next time.';
+      });
+    });
+    $('builder-back-to-edit').addEventListener('click', () => {
+      if (tracks.includes(builder.returnTrack)) selectTrack(builder.returnTrack.id);
+      switchView('edit');
+    });
+    $('builder-link-draft').addEventListener('click', () => {
+      const track = builder.returnTrack;
+      if (!tracks.includes(track) || !builder.draftId || builder.draftsBusy) return;
+      if (!window.confirm('Link this video draft to “' + track.title + '”? This will not change its click sections.')) return;
+      track.videoDraftId = builder.draftId;
+      track._linkDirty = true;
+      markDirty(track);
+      renderDraftControls();
+      draftStatus.textContent = 'Draft linked. Changes to the draft do not change the finished track.';
+    });
     function loadLink() {
       const id = youtubeId(link.value);
       if (!id) { draftStatus.textContent = 'Enter a YouTube video link, such as a watch or youtu.be URL.'; return; }
@@ -2126,10 +2184,7 @@
       return 'Opened saved draft: ' + draft.title;
     }));
     $('builder-save-draft').addEventListener('click', () => runDraftAction(async () => {
-      const payload = JSON.stringify(draftPayload());
-      const saved = await draftRequest(builder.draftId ? 'PUT' : 'POST', builder.draftId, JSON.parse(payload));
-      builder.draftId = saved.id;
-      if (payload === JSON.stringify(draftPayload())) builder.dirty = false;
+      await saveYoutubeDraft();
       await refreshDraftList();
       return builder.dirty ? 'Draft saved, but there are newer unsaved edits.' : 'Draft saved to your account.';
     }));
@@ -2138,6 +2193,8 @@
       if (!id || !window.confirm('Delete this saved YouTube draft? Finished click tracks will not be deleted.')) return;
       runDraftAction(async () => {
         await draftRequest('DELETE', id);
+        tracks.filter((t) => t.videoDraftId === id).forEach((t) => { t.videoDraftId = null; });
+        cacheLocal();
         if (builder.draftId === id) { builder.draftId = null; builder.dirty = true; }
         await refreshDraftList();
         return 'Saved draft deleted.';
@@ -2239,17 +2296,35 @@
       $('builder-review-status').textContent = 'Hit point removed. Resume video to continue from here.';
       renderVideoPlan();
     });
-    $('builder-create').addEventListener('click', () => {
-      if (!videoReady()) return;
+    $('builder-create').addEventListener('click', async () => {
+      if (!videoReady() || builder.draftsBusy) return;
       try {
         const { offset, secs } = planVideoTrack();
         const track = makeTrack($('builder-title').value.trim() || 'Click track from video', secs.map((s) => s.section));
         track.videoOffset = offset;
+        if (builder.youtube) {
+          builder.draftsBusy = true;
+          renderDraftControls();
+          setStatus('Saving video draft…');
+          if (!(await saveYoutubeDraft())) {
+            toast('The draft changed while saving. Review your edits, then create the track again.');
+            setStatus('Track not created');
+            return;
+          }
+          track.videoDraftId = builder.draftId;
+        } else builder.localTrack = track;
         addTrack(track);
+        builder.returnTrack = track;
         if (!builder.youtube) builder.dirty = false;
-        switchView('edit');
+        if (!$('view-video').hidden) switchView('edit');
         toast('Created click track from video hit points');
-      } catch (e) { $('builder-result').textContent = e.message; }
+      } catch (e) {
+        $('builder-result').textContent = 'Could not create track: ' + e.message;
+        setStatus('Track not created');
+      } finally {
+        builder.draftsBusy = false;
+        renderDraftControls();
+      }
     });
     window.addEventListener('beforeunload', (e) => {
       if (builder.dirty) { e.preventDefault(); e.returnValue = ''; }
@@ -2298,6 +2373,7 @@
   }
 
   function switchView(name) {
+    $('track-actions').open = false;
     cancelPendingPedal();
     if (name !== 'edit') stopTester();
     document.body.classList.toggle('editing', name === 'edit');
@@ -2475,6 +2551,13 @@
 
   function onKeyDown(e) {
     const k = pedalKey(e);
+    const menu = $('track-actions');
+    if (k === 'Escape' && menu.open) {
+      e.preventDefault();
+      menu.open = false;
+      menu.firstElementChild.focus();
+      return;
+    }
     if (!CFG.offline && !$('view-video').hidden) {
       const playingFromButton = e.target === $('builder-play') && !builderMedia().paused;
       if (k === ' ' && !e.altKey && !e.ctrlKey && !e.metaKey
@@ -2554,7 +2637,12 @@
     window.addEventListener('blur', () => { cancelPendingPedal(); renderPedalFocus(); });
     document.addEventListener('focusin', renderPedalFocus);
     document.addEventListener('focusout', renderPedalFocus);
-    $('btn-pedal-setup').addEventListener('click', () => showPedalSetup($('pedal-setup').hidden));
+    $('btn-pedal-setup').addEventListener('click', () => {
+      const opening = $('pedal-setup').hidden;
+      $('track-actions').open = false;
+      showPedalSetup(opening);
+      if (!opening) $('track-actions').firstElementChild.focus();
+    });
     $('btn-editor-fullscreen').addEventListener('click', () => {
       switchView('perform');
       showPedalSetup(false);
@@ -2654,7 +2742,14 @@
     document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
 
     $('track-select').addEventListener('change', (e) => { selectTrack(e.target.value); e.target.blur(); });
-    const closeMenu = () => { document.querySelector('.ct-menu').open = false; };
+    const menu = $('track-actions'), summary = menu.firstElementChild;
+    const closeMenu = (restoreFocus = false) => {
+      menu.open = false;
+      if (restoreFocus) summary.focus();
+    };
+    document.addEventListener('click', (e) => {
+      if (menu.open && !menu.contains(e.target)) closeMenu();
+    });
     // No window.prompt here: some browsers (in-app / embedded) block it, which made New appear to do nothing.
     $('btn-new-track').addEventListener('click', () => {
       addTrack(makeTrack('New click track', [{ countIn: 1 }]));
@@ -2663,16 +2758,17 @@
       t.focus(); t.select();
     });
     $('btn-dup-track').addEventListener('click', () => {
-      closeMenu();
+      closeMenu(true);
       if (current) {
         const t = makeTrack(current.title + ' (copy)', current.sections.map((s) => Object.assign({}, s)), current.notes);
         t.videoOffset = current.videoOffset;
         addTrack(t);
       }
     });
-    $('btn-export-track').addEventListener('click', () => { closeMenu(); exportTrack(); });
-    $('import-file').addEventListener('change', (e) => { closeMenu(); if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ''; });
-    $('btn-delete-track').addEventListener('click', () => { closeMenu(); deleteTrack(); });
+    $('btn-export-track').addEventListener('click', () => { closeMenu(true); exportTrack(); });
+    $('btn-import-track').addEventListener('click', () => { closeMenu(true); $('import-file').click(); });
+    $('import-file').addEventListener('change', (e) => { if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ''; });
+    $('btn-delete-track').addEventListener('click', () => { closeMenu(true); deleteTrack(); });
 
     $('track-title').addEventListener('input', (e) => {
       if (!current) return;

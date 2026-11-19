@@ -52,15 +52,17 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
   background: var(--panel); position: sticky; top: 0; z-index: 20;
 }
 .ct-brand { font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text); text-decoration: none; }
-.ct-trackpick { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 260px; }
-.ct-trackpick select { max-width: 360px; font-weight: 600; }
+.ct-trackpick { display: flex; gap: 8px; align-items: center; flex: 1; min-width: min(100%, 260px); }
+.ct-trackpick select { min-width: 0; max-width: 360px; font-weight: 600; }
 .ct-menu { position: relative; }
-.ct-menu summary { list-style: none; }
+.ct-menu summary { list-style: none; white-space: nowrap; }
 .ct-menu summary::-webkit-details-marker { display: none; }
 .ct-menu-body {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column;
-  gap: 6px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 190px;
+  gap: 4px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  width: min(235px, calc(100vw - 24px)); max-height: 65vh; overflow-y: auto;
 }
+.ct-menu-body .btn { flex: none; justify-content: flex-start; text-align: left; }
 .ct-tabs { display: flex; gap: 4px; background: var(--panel2); border-radius: 999px; padding: 4px; }
 .tab { background: transparent; color: var(--muted); border: 0; border-radius: 999px; padding: 8px 18px; font: inherit; font-weight: 700; cursor: pointer; }
 .tab.active { background: var(--accent); color: #1a1008; }
@@ -139,7 +141,6 @@ body.performance-mode .stage-countin .n { font-size: clamp(34px, 8vh, 100px); }
 .stage-feedback { margin-top: 8px; color: var(--green); font-weight: 800; overflow-wrap: anywhere; }
 .offline-performance .ct-tabs,
 .offline-performance .ct-menu,
-.offline-performance #btn-new-track,
 .offline-performance #btn-tap { display: none; }
 .video-builder-meta, .video-builder-grid, .video-builder-fields { display: grid; gap: 12px; }
 .video-builder-meta, .video-builder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 12px; }

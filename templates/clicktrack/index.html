@@ -16,14 +16,17 @@
     <a class="ct-brand" href="{{ url_for('index') }}" title="Back to jackcapstaff.com">Click Track</a>
     <div class="ct-trackpick">
       <select id="track-select" aria-label="Choose track"></select>
-      <button class="btn small" id="btn-new-track" title="New track">+ New</button>
-      <details class="ct-menu">
-        <summary class="btn small" title="Track options">⋯</summary>
+      <details class="ct-menu" id="track-actions">
+        <summary class="btn small">Track actions <span aria-hidden="true">▾</span></summary>
         <div class="ct-menu-body">
-          <button class="btn small ghost" id="btn-dup-track">Duplicate track</button>
-          <button class="btn small ghost" id="btn-export-track">Export (.json)</button>
-          <label class="btn small ghost" for="import-file">Import (.json)</label>
+          <button class="btn small ghost" id="btn-new-track">New click track</button>
+          {% if not offline %}<button class="btn small ghost" id="btn-video-track">New click track from video</button>{% endif %}
+          <button class="btn small ghost" id="btn-import-track">Load track (.json)</button>
           <input type="file" id="import-file" accept="application/json,.json" hidden>
+          <button class="btn small ghost" id="btn-export-track">Export track (.json)</button>
+          <button class="btn small ghost" id="btn-dup-track">Duplicate track</button>
+          <button class="btn small ghost" id="btn-pedal-setup" aria-controls="pedal-setup" aria-expanded="false" hidden>Pedal setup</button>
+          <button class="btn small ghost" id="btn-editor-fullscreen" hidden>Fullscreen performance</button>
           <button class="btn small danger" id="btn-delete-track">Delete track</button>
         </div>
       </details>
@@ -32,9 +35,6 @@
       <button class="tab active" data-view="perform" role="tab">Perform</button>
       <button class="tab" data-view="edit" role="tab">Edit</button>
     </nav>
-    {% if not offline %}<button class="btn small" id="btn-video-track">New click track from video</button>{% endif %}
-    <button class="btn small" id="btn-pedal-setup" aria-controls="pedal-setup" aria-expanded="false" hidden>Pedal setup</button>
-    <button class="btn small" id="btn-editor-fullscreen" hidden>Fullscreen performance</button>
     <div class="ct-account">
       <span id="save-status" class="muted small"></span>
       {% if offline %}
@@ -202,6 +202,11 @@
 
   <!-- ===================== EDIT ===================== -->
   <main id="view-edit" class="view" hidden>
+    {% if not offline %}
+    <div class="stage-tool-row">
+      <button type="button" class="btn small" id="btn-edit-video">Edit with video</button>
+    </div>
+    {% endif %}
     <section class="track-meta">
       <label>Title <input type="text" id="track-title" maxlength="255"></label>
       <label>Notes <textarea id="track-notes" maxlength="2000" rows="2" placeholder="Optional notes about this track"></textarea></label>
