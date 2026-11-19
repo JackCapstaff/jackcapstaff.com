@@ -89,6 +89,8 @@ def _clean_section(raw):
         "type": section_type,
         "name": _text(raw.get("name"), 120),
         "notes": _text(raw.get("notes"), 500),
+        "calcStart": _text(raw.get("calcStart"), 32),
+        "calcEnd": _text(raw.get("calcEnd"), 32),
         "bpm": _clamp_float(raw.get("bpm"), 120, 10, 400),
         "bpmEnd": bpm_end,
         "beatUnit": beat_unit,
@@ -118,6 +120,11 @@ def _apply_payload(track, data):
         abort(400, description=f"A track can have at most {MAX_SECTIONS} sections.")
     track.title = title
     track.notes = _text(data.get("notes"), 2000)
+    if "videoOffset" in data:
+        offset = data["videoOffset"]
+        if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not 0 <= offset <= 86400:
+            abort(400, description="Video offset must be between 0 and 86400 seconds.")
+        track.video_offset = offset
     track.sections = [_clean_section(s) for s in sections]
 
 

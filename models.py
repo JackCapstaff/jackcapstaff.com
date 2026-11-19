@@ -394,6 +394,7 @@ def init_models(db):
         title = db.Column(db.String(255), nullable=False)
         notes = db.Column(db.Text)
         sections_json = db.Column(db.Text, default='[]')
+        video_offset = db.Column(db.Float, nullable=False, default=0, server_default='0')
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -423,6 +424,7 @@ def init_models(db):
                 'title': self.title,
                 'notes': self.notes or '',
                 'sections': self.sections,
+                'videoOffset': self.video_offset or 0,
                 'updated_at': self.updated_at.isoformat() + 'Z' if self.updated_at else None,
             }
 

@@ -48,6 +48,21 @@
     const m = Math.floor(sec / 60), s = sec % 60;
     return m + ':' + String(s).padStart(2, '0');
   }
+  function timecode(seconds) {
+    const tenths = Math.round(Math.abs(seconds) * 10);
+    const whole = Math.floor(tenths / 10);
+    return (seconds < 0 && tenths ? '-' : '') + Math.floor(whole / 60) + ':'
+      + String(whole % 60).padStart(2, '0') + '.' + tenths % 10;
+  }
+
+  function parseTimecode(value) {
+    const text = String(value).trim();
+    if (!/^\d+(?::\d{1,2}){0,2}(?:\.\d+)?$/.test(text)) return null;
+    const parts = text.split(':').map(Number);
+    if (parts.slice(1).some((part) => part >= 60)) return null;
+    const seconds = parts.reduce((total, part) => total * 60 + part, 0);
+    return Number.isFinite(seconds) ? seconds : null;
+  }
   let toastTimer = null;
   function toast(msg) {
     const t = $('toast');
@@ -64,6 +79,7 @@
       type: 'click', name: '', notes: '', bpm: 120, bpmEnd: null, beatUnit: 'auto',
       num: 4, den: 4, grouping: '', bars: 8, advance: 'auto', click: 'beats', countIn: 0, startBar: null,
       unitPitch: 0, unitVelocity: 53, subPitch: 0, subVelocity: 32,
+      calcStart: '', calcEnd: '',
     }, over || {});
   }
 
@@ -73,6 +89,8 @@
     s.type = raw.type === 'pause' ? 'pause' : 'click';
     s.name = String(raw.name || '').slice(0, 120);
     s.notes = String(raw.notes || '').slice(0, 500);
+    s.calcStart = String(raw.calcStart || '').slice(0, 32);
+    s.calcEnd = String(raw.calcEnd || '').slice(0, 32);
     s.bpm = num(raw.bpm, 120, 10, 400);
     s.bpmEnd = raw.bpmEnd == null || raw.bpmEnd === '' ? null : num(raw.bpmEnd, null, 10, 400);
     s.beatUnit = BEAT_UNITS.some((u) => u[0] === raw.beatUnit) || /^[1-9]\/(1|2|4|8|16|32)$/.test(raw.beatUnit || '') ? raw.beatUnit : 'auto';
@@ -160,13 +178,27 @@
     });
   }
 
+  const durationCache = new WeakMap();
   function sectionSeconds(s) {
     if (s.type === 'pause') return 0;
     const total = s.bars * s.num;
     if (s.bpmEnd == null) return total * unitSeconds(s, s.bpm);
+    if (durationCache.has(s)) return durationCache.get(s);
+    const steps = total * subdivOf(s);
     let t = 0;
-    for (let i = 0; i < total; i++) t += unitSeconds(s, bpmAt(s, i / total));
+    for (let i = 0; i < steps; i++) t += unitSeconds(s, bpmAt(s, i / steps)) / subdivOf(s);
+    durationCache.set(s, t);
     return t;
+  }
+
+  function sectionTimeline() {
+    let time = current ? current.videoOffset : 0, estimated = false;
+    return sections().map((s) => {
+      const start = time, startEstimated = estimated;
+      time += sectionSeconds(s);
+      if (s.type === 'pause' || s.advance === 'manual') estimated = true;
+      return { start, end: time, startEstimated, endEstimated: estimated };
+    });
   }
 
   function sectionTitle(s, i) {
@@ -180,6 +212,15 @@
 
   // ------------------------------------------------------------------ audio
   let ctx = null, master = null, noiseBuf = null;
+  const sources = new Set();
+  function trackSource(source) {
+    sources.add(source);
+    source.addEventListener('ended', () => sources.delete(source), { once: true });
+  }
+  function cancelClicks() {
+    sources.forEach((source) => source.stop());
+    sources.clear();
+  }
 
   function ensureAudio() {
     if (!ctx) {
@@ -192,7 +233,7 @@
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       applyVolume();
     }
-    if (ctx.state !== 'running') ctx.resume();
+    if (ctx.state !== 'running' && !E.suspended) ctx.resume().catch((e) => toast('Audio could not resume: ' + e.message));
     return ctx;
   }
 
@@ -209,6 +250,7 @@
 
   function noise(time, dur, filterType, freq, q, out) {
     const src = ctx.createBufferSource();
+    trackSource(src);
     src.buffer = noiseBuf;
     const f = ctx.createBiquadFilter();
     f.type = filterType; f.frequency.value = freq; f.Q.value = q;
@@ -218,6 +260,7 @@
 
   function tone(time, type, freq, dur, out) {
     const o = ctx.createOscillator();
+    trackSource(o);
     o.type = type; o.frequency.value = freq;
     o.connect(out);
     o.start(time); o.stop(time + dur);
@@ -266,11 +309,13 @@
     try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) { /* ignore */ }
   }
   function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && E.playing) requestWake(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && E.playing && !E.suspended) requestWake(); });
 
   // ----------------------------------------------------------------- engine
   // phase: stopped | countin | play | pause | end. bar/tick/sub describe the *next* step to schedule.
-  const E = { playing: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null };
+  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null };
+  const clock = { start: 0, elapsed: 0, videoStart: 0 };
+  let transportBusy = false;
   const visQ = [];
   let shown = null;          // snapshot currently displayed
   let selectedIdx = 0;       // where Start begins
@@ -297,7 +342,8 @@
   }
 
   function scheduler() {
-    if (!E.playing || !ctx) return;
+    if (tester.running) { scheduleTester(); return; }
+    if (!E.playing || E.suspended || !ctx) return;
     const horizon = ctx.currentTime + LOOKAHEAD;
     let guard = 0;
     while ((E.phase === 'play' || E.phase === 'countin') && E.nextTime < horizon && guard++ < 512) step();
@@ -340,12 +386,18 @@
 
   function start(fromIdx) {
     if (!sections().length) return;
+    stopTester();
     ensureAudio();
     visQ.length = 0;
     E.playing = true;
+    E.suspended = false;
     E.queued = null;
     E.nextTime = ctx.currentTime + 0.1;
     enterSection(clamp(fromIdx, 0, sections().length - 1), false);
+    const s = sections()[E.secIdx];
+    clock.start = E.nextTime + (E.phase === 'countin' ? s.countIn * s.num * unitSeconds(s, s.bpm) : 0);
+    clock.elapsed = 0;
+    clock.videoStart = sectionTimeline()[E.secIdx].start;
     shown = null;
     timerStart();
     requestWake();
@@ -356,21 +408,54 @@
 
   function stop(reachedEnd) {
     if (!E.playing) return;
+    clock.elapsed = Math.max(0, ctx.currentTime - clock.start);
+    cancelClicks();
     if (reachedEnd) selectedIdx = 0;
     else if (shown) selectedIdx = shown.secIdx;
     E.playing = false;
+    E.suspended = false;
     E.phase = 'stopped';
     E.queued = null;
     visQ.length = 0;
     shown = null;
     timerStop();
     releaseWake();
+    if (ctx.state === 'suspended') ctx.resume().catch((e) => toast('Audio could not resume: ' + e.message));
     renderTransport();
     renderIdle();
     renderSetlist();
   }
 
-  const togglePlay = () => (E.playing ? stop(false) : start(selectedIdx));
+  async function togglePlay() {
+    if (transportBusy) return;
+    if (!E.playing) { start(selectedIdx); return; }
+    transportBusy = true;
+    try {
+      if (E.suspended) {
+        await ctx.resume();
+        if (!E.playing) return;
+        E.suspended = false;
+        timerStart();
+        requestWake();
+        scheduler();
+      } else {
+        await ctx.suspend();
+        if (!E.playing) {
+          await ctx.resume();
+          return;
+        }
+        E.suspended = true;
+        timerStop();
+        releaseWake();
+      }
+      renderTransport();
+      renderClock();
+    } catch (e) {
+      toast('Could not pause/resume audio: ' + e.message);
+    } finally {
+      transportBusy = false;
+    }
+  }
 
   // Pedal / Next: start when stopped; leave a pause immediately; otherwise move on at the next barline.
   function advance() {
@@ -379,6 +464,7 @@
     lastAdvanceAt = now;
     if (!current) return;
     if (!E.playing) { start(selectedIdx); return; }
+    if (E.suspended) { togglePlay(); return; }
     if (E.phase === 'pause') {
       ensureAudio();
       E.nextTime = Math.max(ctx.currentTime + 0.06, E.nextTime);
@@ -401,6 +487,7 @@
   }
 
   function jumpTo(idx) {
+    if (E.suspended) stop(false);
     if (!E.playing) { selectIdx(idx); return; }
     if (E.phase === 'pause') {
       E.nextTime = Math.max(ctx.currentTime + 0.06, E.nextTime);
@@ -425,7 +512,7 @@
   // Averages the last few taps; a gap over 2s starts a fresh measurement.
   const tap = { times: [], idx: -1 };
   function tapTempo(idx) {
-    if (idx == null) idx = E.playing ? E.secIdx : selectedIdx;
+    if (idx == null) idx = document.body.classList.contains('editing') ? tester.idx : E.playing ? E.secIdx : selectedIdx;
     const s = sections()[idx];
     if (!s || s.type === 'pause') { toast('Pick a click section to tap a tempo into'); return; }
     const now = performance.now();
@@ -445,6 +532,7 @@
     if (!E.playing) renderIdle();
     const field = document.querySelector('[data-f="bpm"][data-i="' + idx + '"]');
     if (field) field.value = ns.bpm;
+    renderTester();
     toast('Tempo ' + unitLabel(ns) + '=' + ns.bpm + (n < 4 ? ' (keep tapping to refine)' : ''));
   }
 
@@ -631,8 +719,21 @@
   }
 
   function renderTransport() {
-    $('btn-play').textContent = E.playing ? '■ Stop' : '▶ Start';
+    $('btn-play').textContent = !E.playing ? '▶ Start' : E.suspended ? '▶ Resume' : 'Pause';
     $('btn-play').classList.toggle('primary', !E.playing);
+    $('btn-stop').disabled = !E.playing;
+    $('stage').classList.toggle('transport-paused', E.suspended);
+  }
+
+  function renderClock() {
+    const elapsed = E.playing ? Math.max(0, ctx.currentTime - clock.start) : 0;
+    const planned = !E.playing ? sectionTimeline()[selectedIdx] : null;
+    const videoTime = E.playing ? clock.videoStart + elapsed : planned ? planned.start : (current ? current.videoOffset : 0);
+    $('d-elapsed').textContent = timecode(elapsed);
+    $('d-video-time').textContent = timecode(videoTime);
+    $('d-clock-status').textContent = E.suspended ? 'Paused — clock frozen'
+      : E.playing ? (ctx.currentTime < clock.start ? 'Count-in — clock starts with music' : 'Running (cue waits included)')
+        : 'Starts from selected section; video time is not linked to a video player';
   }
 
   let flashTimer = null;
@@ -644,7 +745,7 @@
   }
 
   function frame() {
-    if (E.playing && ctx && visQ.length) {
+    if (E.playing && !E.suspended && ctx && visQ.length) {
       const now = ctx.currentTime;
       let latest = null, flash = false, ended = false;
       while (visQ.length && visQ[0].time <= now) {
@@ -664,6 +765,7 @@
         if (flash && prefs.flash) doFlash();
       }
     }
+    renderClock();
     requestAnimationFrame(frame);
   }
 
@@ -673,7 +775,7 @@
   const isServerId = (id) => typeof id === 'number';
 
   function makeTrack(title, secs, notes) {
-    return { id: newLocalId(), title: title || 'Untitled', notes: notes || '', sections: (secs || []).map(normSection), _dirty: true, _ver: 1 };
+    return { id: newLocalId(), title: title || 'Untitled', notes: notes || '', videoOffset: 0, sections: (secs || []).map(normSection), _dirty: true, _ver: 1 };
   }
 
   function normTrack(t) {
@@ -681,12 +783,13 @@
       id: t.id != null ? t.id : newLocalId(),
       title: String(t.title || 'Untitled').slice(0, 255),
       notes: String(t.notes || '').slice(0, 2000),
+      videoOffset: num(t.videoOffset, 0, 0, 86400),
       sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
       _dirty: !!t._dirty, _auto: !!t._auto, _ver: 1,
     };
   }
 
-  const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, sections: t.sections, _dirty: t._dirty, _auto: t._auto });
+  const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, videoOffset: t.videoOffset, sections: t.sections, _dirty: t._dirty, _auto: t._auto });
   const cacheLocal = () => saveJSON(LS_TRACKS, tracks.map(serialise));
 
   async function api(method, path, body) {
@@ -705,7 +808,7 @@
   async function persist(t) {
     if (!CFG.authenticated) { t._dirty = false; cacheLocal(); return; }
     const ver = t._ver;
-    const payload = { title: t.title, notes: t.notes, sections: t.sections };
+    const payload = { title: t.title, notes: t.notes, videoOffset: t.videoOffset, sections: t.sections };
     if (isServerId(t.id)) {
       await api('PUT', '/' + t.id, payload);
     } else {
@@ -796,9 +899,12 @@
 
   function selectTrack(id) {
     if (E.playing) stop(false);
+    stopTester();
     current = tracks.find((t) => String(t.id) === String(id)) || tracks[0] || null;
     if (current) saveJSON(LS_LAST, current.id);
     selectedIdx = 0;
+    tester.idx = 0;
+    tap.times = [];
     beatsKey = '';
     refreshTrackSelect();
     renderAll();
@@ -814,7 +920,7 @@
 
   function exportTrack() {
     if (!current) return;
-    const data = { format: 'jackcapstaff-clicktrack', version: 1, title: current.title, notes: current.notes, sections: current.sections };
+    const data = { format: 'jackcapstaff-clicktrack', version: 1, title: current.title, notes: current.notes, videoOffset: current.videoOffset, sections: current.sections };
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url; a.download = slug(current.title) + '.clicktrack.json';
@@ -828,7 +934,11 @@
       try {
         const data = JSON.parse(reader.result);
         const list = Array.isArray(data) ? data : Array.isArray(data.tracks) ? data.tracks : [data];
-        const made = list.filter((x) => x && Array.isArray(x.sections)).map((x) => makeTrack(x.title || file.name.replace(/\.json$/i, ''), x.sections, x.notes));
+        const made = list.filter((x) => x && Array.isArray(x.sections)).map((x) => {
+          const t = makeTrack(x.title || file.name.replace(/\.json$/i, ''), x.sections, x.notes);
+          t.videoOffset = num(x.videoOffset, 0, 0, 86400);
+          return t;
+        });
         if (!made.length) throw new Error('no sections found');
         made.forEach((t) => { tracks.push(t); markDirty(t); });
         selectTrack(made[0].id);
@@ -863,6 +973,83 @@
     '<textarea data-i="' + i + '" data-f="notes" rows="3" maxlength="500" placeholder="Cues to read while performing">'
     + esc(s.notes) + '</textarea>', true);
 
+  // The tester shares the audio scheduler, but never advances sections or the performance clock.
+  const tester = { running: false, idx: 0, tick: 0, sub: 0, nextTime: 0 };
+  function renderTester() {
+    const choices = sections().map((s, i) => ({ s, i })).filter(({ s }) => s.type === 'click');
+    if (!choices.some(({ i }) => i === tester.idx)) tester.idx = choices.length ? choices[0].i : -1;
+    $('tester-section').innerHTML = choices.map(({ s, i }) => '<option value="' + i + '">' + esc(sectionTitle(s, i)) + '</option>').join('');
+    $('tester-section').value = String(tester.idx);
+    const s = sections()[tester.idx];
+    $('tester-tempo').textContent = s ? s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm : 'Add a click section to test';
+    $('tester-start').disabled = !s;
+    $('tester-start').textContent = tester.running ? 'Stop tester' : 'Start tester';
+    $('tester-tap').disabled = !s;
+  }
+
+  function stopTester() {
+    if (!tester.running) return;
+    tester.running = false;
+    timerStop();
+    cancelClicks();
+    renderTester();
+  }
+
+  function startTester() {
+    const s = sections()[tester.idx];
+    if (!s || s.type === 'pause') { toast('Choose a click section to test'); return; }
+    if (E.playing) stop(false);
+    ensureAudio();
+    tester.running = true;
+    tester.tick = 0; tester.sub = 0; tester.nextTime = ctx.currentTime + 0.06;
+    timerStart();
+    scheduleTester();
+    renderTester();
+  }
+
+  function scheduleTester() {
+    const s = sections()[tester.idx];
+    if (!s || s.type === 'pause') { stopTester(); return; }
+    let guard = 0;
+    while (tester.nextTime < ctx.currentTime + LOOKAHEAD && guard++ < 512) {
+      if (tester.tick >= s.num) tester.tick = 0;
+      const subN = subdivOf(s);
+      if (tester.sub >= subN) tester.sub = 0;
+      const level = tester.sub === 0 ? unitLevels(s)[tester.tick] : 0;
+      if (audible(s, level, 'play')) playClick(tester.nextTime, level, s);
+      tester.nextTime += unitSeconds(s, s.bpm) / subN;
+      if (++tester.sub >= subN) {
+        tester.sub = 0;
+        tester.tick = (tester.tick + 1) % s.num;
+      }
+    }
+  }
+
+  function calculateTempo(i) {
+    const s = sections()[i];
+    const startTime = parseTimecode(s.calcStart), endTime = parseTimecode(s.calcEnd);
+    const result = $('calc-result-' + i);
+    if (startTime == null || endTime == null || endTime <= startTime) {
+      result.textContent = 'Enter valid video times with end after start (seconds, m:ss or h:mm:ss).';
+      result.classList.add('warn');
+      return;
+    }
+    const bpm = 60 * s.bars * s.num * unitSeconds(s, 60) / (endTime - startTime);
+    if (bpm < 10 || bpm > 400) {
+      result.textContent = 'Calculated tempo ' + bpm.toFixed(2) + ' is outside 10–400 BPM. Check times, bars and beat unit.';
+      result.classList.add('warn');
+      return;
+    }
+    const n = normSection(Object.assign({}, s, { bpm, bpmEnd: null }));
+    current.sections[i] = n;
+    document.querySelector('[data-f="bpm"][data-i="' + i + '"]').value = n.bpm;
+    document.querySelector('[data-f="bpmEnd"][data-i="' + i + '"]').value = '';
+    result.textContent = 'Set steady tempo: ' + unitLabel(n) + '=' + n.bpm + ' for ' + timecode(endTime - startTime)
+      + '. Times are absolute video positions; offset is not added to this interval.';
+    result.classList.remove('warn');
+    markDirty(); updateInfos(); renderSetlist(); renderIdle(); renderTester();
+  }
+
   function sectionRow(s, i, n) {
     const btn = (act, label, title, disabled) => '<button class="btn icon' + (act === 'del' ? ' danger' : '') + '" data-act="' + act + '" data-i="' + i + '" title="' + title + '"' + (disabled ? ' disabled' : '') + '>' + label + '</button>';
     const acts = '<div class="acts">' + btn('up', '↑', 'Move up', i === 0) + btn('down', '↓', 'Move down', i === n - 1)
@@ -886,6 +1073,12 @@
         + fld('Count-in bars', inp(i, 'countIn', s.countIn, 'type="number" min="0" max="8" inputmode="numeric"'))
         + fld('Score bar', inp(i, 'startBar', s.startBar, 'type="number" min="1" max="99999" inputmode="numeric" placeholder="auto"'))
         + performanceNotes(i, s)
+        + '<details class="section-calculator"><summary>Calculate steady tempo from video times</summary>'
+        + '<p class="muted small">Uses this section’s Bars, Meter and Beat unit. Applying replaces Tempo and clears End tempo. Start/end are absolute video positions, not timing anchors.</p><div class="sound-fields">'
+        + fld('Video start (m:ss)', inp(i, 'calcStart', s.calcStart, 'type="text" maxlength="32" placeholder="0:25.0"'))
+        + fld('Video end (m:ss)', inp(i, 'calcEnd', s.calcEnd, 'type="text" maxlength="32" placeholder="0:45.0"'))
+        + '</div><button class="btn small" data-act="calculate" data-i="' + i + '">Set steady tempo</button>'
+        + '<p class="calc-result small" id="calc-result-' + i + '" role="status"></p></details>'
         + '<details class="subdivision-settings"><summary>Subdivision sound</summary><p class="muted small">Choose Every meter unit to hear all six quavers in 6/8. Pitch is a semitone offset; velocity 0 mutes these notes.</p><div class="sound-fields">'
         + fld('Inner notes pitch (semitones)', inp(i, 'unitPitch', s.unitPitch, 'type="number" min="-24" max="24" step="1"'))
         + fld('Inner notes velocity (0–127)', inp(i, 'unitVelocity', s.unitVelocity, 'type="number" min="0" max="127" step="1"'))
@@ -894,7 +1087,7 @@
         + '</div></details>';
     }
     return '<div class="sec ' + s.type + '" data-row="' + i + '"><div class="num">' + (i + 1) + '</div><div class="fields">'
-      + f + '</div>' + acts + '<div class="info" id="info-' + i + '"></div></div>';
+      + f + '</div>' + acts + '<div class="info" id="info-' + i + '"></div><div class="section-timing" id="timing-' + i + '"></div></div>';
   }
 
   function renderSections() {
@@ -903,13 +1096,20 @@
       ? secs.map((s, i) => sectionRow(s, i, secs.length)).join('')
       : '<p class="muted">No sections yet. Add one below.</p>';
     updateInfos();
+    renderTester();
   }
 
   function updateInfos() {
     const secs = sections();
     const sb = startBars(secs);
+    const timeline = sectionTimeline();
     let total = 0, bars = 0, open = false;
     secs.forEach((s, i) => {
+      const timing = timeline[i];
+      $('timing-' + i).textContent = 'Video: ' + (timing.startEstimated ? '≈ ' : '') + timecode(timing.start) + ' → '
+        + (timing.endEstimated ? '≈ ' : '') + timecode(timing.end)
+        + (s.type === 'pause' ? ' + cue wait (unknown)' : s.advance === 'manual' ? ' for one pass, then repeats until cued' : '')
+        + (timing.startEstimated ? ' · estimated after an earlier cue/repeat' : '');
       if (s.type === 'pause') open = true;
       else { total += sectionSeconds(s); bars += s.bars; if (s.advance === 'manual') open = true; }
       const el = $('info-' + i);
@@ -934,10 +1134,11 @@
     if (!current) return;
     $('track-title').value = current.title;
     $('track-notes').value = current.notes;
+    $('track-offset').value = timecode(current.videoOffset);
     renderSections();
   }
 
-  const RAW_FIELDS = ['name', 'notes', 'grouping'];
+  const RAW_FIELDS = ['name', 'notes', 'grouping', 'calcStart', 'calcEnd'];
   function onFieldInput(e) {
     const el = e.target, f = el.dataset.f;
     if (!f || !current) return;
@@ -946,6 +1147,7 @@
     const s = current.sections[i];
     if (!s) return;
     if (f === 'type') {
+      stopTester();
       if (E.playing) stop(false);
       current.sections[i] = normSection(Object.assign({}, s, { type: el.value, name: s.name || (el.value === 'pause' ? 'Pause' : '') }));
       markDirty(); renderSections(); renderSetlist(); renderIdle();
@@ -953,9 +1155,13 @@
     }
     const n = normSection(Object.assign({}, s, { [f]: el.value }));
     current.sections[i] = n;
+    if (['bpm', 'bpmEnd', 'num', 'den', 'bars', 'beatUnit', 'calcStart', 'calcEnd'].includes(f)) {
+      $('calc-result-' + i).textContent = '';
+    }
     if (e.type === 'change' && el.tagName === 'INPUT' && !RAW_FIELDS.includes(f)) el.value = n[f] == null ? '' : n[f];
     markDirty();
     updateInfos();
+    renderTester();
     renderSetlist();
     if (!E.playing) renderIdle();
   }
@@ -965,6 +1171,7 @@
     if (!b || !current) return;
     const i = +b.dataset.i, secs = current.sections, act = b.dataset.act;
     if (act === 'tap') { tapTempo(i); return; }
+    if (act === 'calculate') { calculateTempo(i); return; }
     if (act === 'play') {
       if (E.playing) stop(false);
       switchView('perform');
@@ -973,6 +1180,7 @@
       return;
     }
     if (act === 'del' && !window.confirm('Delete section ' + (i + 1) + (secs[i].name ? ' “' + secs[i].name + '”' : '') + '?')) return;
+    stopTester();
     if (E.playing) stop(false);
     if (act === 'up' && i > 0) [secs[i - 1], secs[i]] = [secs[i], secs[i - 1]];
     else if (act === 'down' && i < secs.length - 1) [secs[i + 1], secs[i]] = [secs[i], secs[i + 1]];
@@ -985,11 +1193,12 @@
   function addSection(pause) {
     if (!current) return;
     if (E.playing) stop(false);
+    stopTester();
     const secs = current.sections;
     const prev = secs.slice().reverse().find((s) => s.type !== 'pause');
     const s = pause
       ? defaultSection({ type: 'pause', name: 'Pause' })
-      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, countIn: 0, bpmEnd: null }) : { countIn: secs.length ? 0 : 1 });
+      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, countIn: 0, bpmEnd: null, calcStart: '', calcEnd: '' }) : { countIn: secs.length ? 0 : 1 });
     secs.push(s);
     markDirty(); renderSections(); renderSetlist(); renderIdle();
     const row = document.querySelector('[data-row="' + (secs.length - 1) + '"]');
@@ -1016,7 +1225,10 @@
       setPerformanceMode(false);
       return;
     }
+    switchView('perform');
+    showPedalSetup(false);
     setPerformanceMode(true);
+    window.scrollTo(0, 0);
     if (!document.documentElement.requestFullscreen) {
       toast('Browser fullscreen is unavailable — using distraction-free view');
       return;
@@ -1030,6 +1242,8 @@
   }
 
   function switchView(name) {
+    if (name !== 'edit') stopTester();
+    document.body.classList.toggle('editing', name === 'edit');
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
     $('view-perform').hidden = name !== 'perform';
     $('view-edit').hidden = name !== 'edit';
@@ -1043,17 +1257,48 @@
     renderTransport();
   }
 
-  const KEY_NAMES = { ArrowRight: '→', ArrowLeft: '←', ArrowUp: '↑', ArrowDown: '↓', ' ': 'Space' };
+  const KEY_NAMES = { ArrowRight: '→', ArrowLeft: '←', ArrowUp: '↑', ArrowDown: '↓', PageUp: 'Page Up', PageDown: 'Page Down', ' ': 'Space' };
   const keyName = (k) => KEY_NAMES[k] || k;
+  function pedalKey(e) {
+    const aliases = { Up: 'ArrowUp', Down: 'ArrowDown', Left: 'ArrowLeft', Right: 'ArrowRight', Spacebar: ' ' };
+    if (e.key && e.key !== 'Unidentified') return aliases[e.key] || e.key;
+    return ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter'].includes(e.code)
+      ? e.code : e.code === 'Space' ? ' ' : '';
+  }
   function renderPedalKeys() {
-    $('pedal-keys').textContent = 'Next/pedal: ' + prefs.keys.map(keyName).join(' ') + ' · Back: ← PgUp · Start/stop: Space · Stop: Esc · Tap tempo: T';
+    const backKeys = BACK_KEYS.filter((k) => !prefs.keys.includes(k));
+    $('pedal-keys').textContent = 'Start / Next / resume: ' + prefs.keys.map(keyName).join(', ')
+      + (backKeys.length ? ' · Back: ' + backKeys.map(keyName).join(', ') : '')
+      + (prefs.keys.includes(' ') ? '' : ' · Start/pause/resume: Space') + ' · Stop: Esc';
   }
 
-  let learning = false;
+  let learning = false, learnTimer = null;
+  function renderPedalFocus() {
+    $('pedal-focus').textContent = document.hasFocus()
+      ? 'Page focused — ready for keyboard input.'
+      : 'Page not focused — click this panel before pressing the pedal.';
+  }
+  function showPedalSetup(on) {
+    $('pedal-setup').hidden = !on;
+    document.querySelectorAll('[data-pedal-setup]').forEach((b) => b.setAttribute('aria-expanded', String(on)));
+    if (!on) setLearning(false);
+    else {
+      renderPedalFocus();
+      $('pedal-setup').scrollIntoView({ block: 'start' });
+    }
+  }
   function setLearning(on) {
+    clearTimeout(learnTimer);
     learning = on;
     $('btn-learn').classList.toggle('learning', on);
-    $('btn-learn').textContent = on ? 'Press your pedal… (Esc to cancel)' : 'Learn pedal key';
+    $('btn-learn').textContent = on ? 'Cancel learning' : 'Learn pedal key';
+    if (on) {
+      $('pedal-input').textContent = 'Listening — press and release the pedal (Esc cancels). Space and arrow keys are supported.';
+      learnTimer = setTimeout(() => {
+        setLearning(false);
+        $('pedal-input').textContent = 'No usable key received. Click this panel, check keyboard mode and Bluetooth pairing, then try Learn again.';
+      }, 12000);
+    }
   }
 
   // MIDI: any note-on, or a controller (e.g. sustain pedal CC64) going down, counts as Next.
@@ -1066,7 +1311,12 @@
     if (cmd === 0x90 && d2 > 0) hit = true;
     else if (cmd === 0xb0) { const prev = ccState[d1] || 0; ccState[d1] = d2; hit = d2 >= 64 && prev < 64; }
     if (!hit) return;
-    if (learning) { setLearning(false); toast('MIDI pedal detected ✓'); return; }
+    if (learning) {
+      setLearning(false);
+      $('pedal-input').textContent = 'MIDI pedal detected. MIDI note-on / controller presses use Start / Next / resume.';
+      toast('MIDI pedal detected ✓');
+      return;
+    }
     advance();
   }
   function bindMidi() {
@@ -1102,17 +1352,26 @@
   }
 
   function onKeyDown(e) {
+    const k = pedalKey(e);
+    if ((learning || (!$('pedal-setup').hidden && !isTyping(e.target))) && !e.repeat) {
+      $('pedal-input').textContent = 'Received: ' + (k ? keyName(k) : 'unidentified key')
+        + (e.code ? ' (code: ' + e.code + ')' : '');
+    }
     if (learning) {
       e.preventDefault();
-      if (e.key === 'Escape') { setLearning(false); return; }
-      if (e.key === ' ' || ['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
-      if (!prefs.keys.includes(e.key)) prefs.keys.push(e.key);
+      if (k === 'Escape') { setLearning(false); $('pedal-input').textContent = 'Learning cancelled.'; return; }
+      if (e.repeat || !k || ['Shift', 'Control', 'Alt', 'Meta', 'AltGraph'].includes(k)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        $('pedal-input').textContent = 'Modified shortcut received. Use an unmodified arrow, Page Up/Down, Space or Enter keyboard mode.';
+        return;
+      }
+      if (!prefs.keys.includes(k)) prefs.keys.push(k);
       savePrefs(); renderPedalKeys(); setLearning(false);
-      toast('Pedal key set: ' + keyName(e.key));
+      $('pedal-input').textContent = 'Learned ' + keyName(k) + ' for Start / Next / resume. Press again to try it.';
+      toast('Pedal key set: ' + keyName(k));
       return;
     }
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key;
     if ((k === 't' || k === 'T') && !prefs.keys.includes(k)) {
       e.preventDefault();
       if (!e.repeat) tapTempo();
@@ -1122,17 +1381,36 @@
     if (!handled) return;
     e.preventDefault();
     if (e.repeat) return;
-    if (k === ' ') togglePlay();
-    else if (k === 'Escape') {
+    if (k === 'Escape') {
+      stopTester();
       stop(false);
       if (performanceMode) toggleFullscreen();
     }
     else if (prefs.keys.includes(k)) advance();
+    else if (k === ' ') {
+      if (document.body.classList.contains('editing')) {
+        if (E.playing) stop(false);
+        tester.running ? stopTester() : startTester();
+      } else togglePlay();
+    }
     else back();
   }
 
   function wire() {
-    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('focus', renderPedalFocus);
+    window.addEventListener('blur', renderPedalFocus);
+    document.querySelectorAll('[data-pedal-setup]').forEach((b) => b.addEventListener('click', () => showPedalSetup($('pedal-setup').hidden)));
+    $('btn-editor-fullscreen').addEventListener('click', () => {
+      switchView('perform');
+      showPedalSetup(false);
+      if (!performanceMode) toggleFullscreen();
+    });
+    $('btn-start-fullscreen').addEventListener('click', () => {
+      showPedalSetup(false);
+      if (!performanceMode) toggleFullscreen();
+      if (!E.playing || E.suspended) togglePlay();
+    });
     $('btn-fullscreen').addEventListener('click', toggleFullscreen);
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement && nativeFullscreen) {
@@ -1144,6 +1422,7 @@
     document.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) b.blur(); });
 
     $('btn-play').addEventListener('click', togglePlay);
+    $('btn-stop').addEventListener('click', () => stop(false));
     $('btn-next').addEventListener('click', () => (E.playing ? advance() : selectIdx(selectedIdx + 1)));
     $('btn-prev').addEventListener('click', () => (E.playing ? back() : selectIdx(selectedIdx - 1)));
     // pointerdown gives tighter timing than click for tapping.
@@ -1164,7 +1443,11 @@
     });
     $('btn-dup-track').addEventListener('click', () => {
       closeMenu();
-      if (current) addTrack(makeTrack(current.title + ' (copy)', current.sections.map((s) => Object.assign({}, s)), current.notes));
+      if (current) {
+        const t = makeTrack(current.title + ' (copy)', current.sections.map((s) => Object.assign({}, s)), current.notes);
+        t.videoOffset = current.videoOffset;
+        addTrack(t);
+      }
     });
     $('btn-export-track').addEventListener('click', () => { closeMenu(); exportTrack(); });
     $('import-file').addEventListener('change', (e) => { closeMenu(); if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ''; });
@@ -1179,6 +1462,32 @@
     });
     $('track-title').addEventListener('change', refreshTrackSelect);
     $('track-notes').addEventListener('input', (e) => { if (current) { current.notes = e.target.value.slice(0, 2000); markDirty(); } });
+    $('track-offset').addEventListener('input', (e) => e.target.setCustomValidity(''));
+    $('track-offset').addEventListener('change', (e) => {
+      const offset = parseTimecode(e.target.value);
+      if (offset == null || offset > 86400) {
+        e.target.setCustomValidity('Enter 0–86400 seconds, m:ss or h:mm:ss.');
+        e.target.reportValidity();
+        return;
+      }
+      if (!current) return;
+      if (E.playing) clock.videoStart += offset - current.videoOffset;
+      current.videoOffset = Math.round(offset * 100) / 100;
+      e.target.value = timecode(current.videoOffset);
+      markDirty(); updateInfos(); renderClock();
+    });
+    $('tester-section').addEventListener('change', (e) => {
+      const running = tester.running;
+      const idx = Number(e.target.value);
+      stopTester();
+      tester.idx = idx;
+      tap.times = [];
+      if (running) startTester();
+      else renderTester();
+      e.target.blur();
+    });
+    $('tester-start').addEventListener('click', () => tester.running ? stopTester() : startTester());
+    $('tester-tap').addEventListener('click', () => tapTempo(tester.idx));
     $('sections').addEventListener('input', onFieldInput);
     $('sections').addEventListener('change', onFieldInput);
     $('sections').addEventListener('click', onSectionAction);
@@ -1193,12 +1502,23 @@
     $('pref-volume').addEventListener('change', (e) => e.target.blur());
     $('pref-sound').addEventListener('change', (e) => {
       prefs.sound = e.target.value; savePrefs(); e.target.blur();
+      if (E.playing || tester.running) return;
       ensureAudio(); playClick(ctx.currentTime + 0.03, 3); playClick(ctx.currentTime + 0.33, 2);
     });
     $('pref-flash').addEventListener('change', (e) => { prefs.flash = e.target.checked; savePrefs(); e.target.blur(); });
     $('pref-midi').addEventListener('change', (e) => { setMidi(e.target.checked); e.target.blur(); });
-    $('btn-learn').addEventListener('click', () => setLearning(!learning));
-    $('btn-reset-keys').addEventListener('click', () => { prefs.keys = DEFAULT_KEYS.slice(); savePrefs(); renderPedalKeys(); toast('Pedal keys reset'); });
+    $('btn-learn').addEventListener('click', () => {
+      const on = !learning;
+      setLearning(on);
+      if (!on) $('pedal-input').textContent = 'Learning cancelled.';
+    });
+    $('btn-reset-keys').addEventListener('click', () => {
+      setLearning(false);
+      prefs.keys = DEFAULT_KEYS.slice();
+      savePrefs(); renderPedalKeys();
+      $('pedal-input').textContent = 'Reset: Right, Down and Page Down start / advance. Left, Up and Page Up go back when stopped.';
+      toast('Pedal keys reset');
+    });
   }
 
   async function init() {

@@ -75,6 +75,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 }
 .stage.paused { border-color: var(--beat-on); }
 .stage.countin { border-color: var(--green); }
+.stage.transport-paused { border-color: var(--beat-on); }
+.performance-clock { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 24px; margin: 12px 0; font-size: clamp(16px, 2vw, 24px); }
+.performance-clock strong { font-variant-numeric: tabular-nums; }
+#d-clock-status { width: 100%; }
 .stage-secnum { color: var(--muted); font-size: 14px; letter-spacing: .1em; text-transform: uppercase; }
 .stage-name { font-size: clamp(28px, 6vw, 64px); font-weight: 800; line-height: 1.1; margin: 4px 0; word-break: break-word; }
 .stage-notes { color: var(--beat-on); font-size: clamp(18px, 2.8vw, 34px); min-height: 1.2em; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -106,7 +110,11 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .next-heading { font-weight: 800; overflow-wrap: anywhere; }
 .next-change { color: var(--accent); font-weight: 700; }
 .next-notes { color: var(--beat-on); white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 6px; }
-.performance-tools { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.performance-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
+.pedal-setup { background: var(--panel); border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+.pedal-setup h2 { margin: 0; font-size: 20px; }
+.pedal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#pedal-input { color: var(--beat-on); overflow-wrap: anywhere; }
 
 /* CSS focus mode also works when a mobile browser cannot enter native fullscreen. */
 body.performance-mode .ct-top,
@@ -163,8 +171,15 @@ body.performance-mode .stage-countin .n { font-size: clamp(70px, 12vh, 130px); }
 .sec .fields .tapwrap { display: flex; align-items: center; gap: 4px; }
 .sec .fields .tapwrap input { min-width: 0; }
 .sec .fields .tapwrap .tap { touch-action: manipulation; }
-.subdivision-settings { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 8px; }
-.subdivision-settings summary { cursor: pointer; font-weight: 600; }
+.subdivision-settings, .section-calculator { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 8px; }
+.subdivision-settings summary, .section-calculator summary { cursor: pointer; font-weight: 600; }
+.section-calculator .btn { margin-top: 8px; }
+.calc-result.warn { color: #ff8a72; }
+.section-timing { grid-column: 2 / -1; color: var(--beat-on); font-variant-numeric: tabular-nums; }
+.edit-tester { position: fixed; bottom: 0; left: 0; right: 0; z-index: 25; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: var(--panel); border-top: 2px solid var(--accent); box-shadow: 0 -4px 20px #0008; }
+.edit-tester label { display: flex; align-items: center; gap: 8px; }
+.edit-tester select { width: clamp(140px, 22vw, 280px); }
+#view-edit { padding-bottom: 200px; }
 .sound-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .sec .acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 120px; padding-top: 18px; }
 .sec .info { grid-column: 2 / -1; font-size: 13px; color: var(--muted); }
@@ -184,5 +199,6 @@ body.performance-mode .stage-countin .n { font-size: clamp(70px, 12vh, 130px); }
   .sec .num { padding-top: 0; text-align: left; }
   .sec .acts { max-width: none; justify-content: flex-start; padding-top: 0; }
   .sec .info { grid-column: 1; }
+  .section-timing { grid-column: 1; }
   .ct-account { width: 100%; justify-content: space-between; }
 }

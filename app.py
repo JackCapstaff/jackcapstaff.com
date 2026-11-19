@@ -875,6 +875,9 @@ def ensure_optional_columns():
         'page_content': {
             'youtube_embed_url': 'VARCHAR(512)',
         },
+        'click_track': {
+            'video_offset': 'FLOAT NOT NULL DEFAULT 0',
+        },
     }
 
     for table_name, columns in required_columns.items():
