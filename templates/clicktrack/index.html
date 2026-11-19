@@ -31,8 +31,8 @@
       <button class="tab active" data-view="perform" role="tab">Perform</button>
       <button class="tab" data-view="edit" role="tab">Edit</button>
     </nav>
-    <button class="btn small" data-pedal-setup aria-controls="pedal-setup" aria-expanded="false">Pedal setup</button>
-    <button class="btn small" id="btn-editor-fullscreen">Fullscreen performance</button>
+    <button class="btn small" id="btn-pedal-setup" aria-controls="pedal-setup" aria-expanded="false" hidden>Pedal setup</button>
+    <button class="btn small" id="btn-editor-fullscreen" hidden>Fullscreen performance</button>
     <div class="ct-account">
       <span id="save-status" class="muted small"></span>
       {% if current_user.is_authenticated %}
@@ -46,13 +46,18 @@
   <section class="pedal-setup view" id="pedal-setup" aria-label="Pedal setup" hidden>
     <h2>Bluetooth / keyboard pedal</h2>
     <p>For a JOYO JSP-01, select an arrow-key or Page Up / Page Down keyboard mode. Pair it in your device's Bluetooth settings, then click here so this page has keyboard focus. A keyboard pedal does not need the MIDI option.</p>
-    <p>Click the <strong>pedal input box</strong> below, or choose <strong>Learn pedal key</strong> to focus it automatically. While learning, press and release the pedal once; repeat to add another key. Outside learning, learned keys start playback when stopped, resume when paused, and advance at the next barline while playing.</p>
+    <p>Choose an action and Single or Double, then select <strong>Learn pedal key</strong> and press the pedal once to identify its key. In Perform, a double press means two separate presses within 350 ms. A key with a double binding waits briefly before its single action; keys with only a single binding respond immediately.</p>
+    <p>Forward starts playback, resumes if paused, or queues the next section. Back selects the previous section when stopped or queues it for the next barline while playing. In a silent cue there is no barline, so Back moves immediately unless playback is paused.</p>
     <label for="pedal-capture">Pedal input — click here before pressing the pedal</label>
     <input id="pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Click here, then press the pedal" aria-describedby="pedal-focus pedal-input">
     <div class="pedal-actions">
+      <label>Action <select id="pedal-action"><option value="forward">Forward</option><option value="pause">Pause / resume</option><option value="back">Back</option></select></label>
+      <label>Press <select id="pedal-gesture"><option value="single">Single</option><option value="double">Double</option></select></label>
       <button class="btn" id="btn-learn">Learn pedal key</button>
+      <button class="btn ghost" id="btn-clear-pedal">Clear selected bindings</button>
       <button class="btn ghost" id="btn-reset-keys">Reset keys</button>
     </div>
+    <label class="pref"><input type="checkbox" id="pref-midi"> MIDI pedal (Forward)</label>
     <p id="pedal-focus" class="muted small"></p>
     <p id="pedal-input" role="status" aria-live="polite">No key received yet. Press Learn to test without starting playback.</p>
     <p class="muted small">If nothing appears, click the pedal input box and try a normal keyboard arrow first. If that works but the pedal does not, check the pedal's mode and Bluetooth pairing. Mouse, volume and other media modes may not send usable keys to a web page. The browser cannot read keys sent to another app or its address bar.</p>
@@ -61,16 +66,6 @@
 
   <!-- ===================== PERFORM ===================== -->
   <main id="view-perform" class="view">
-    <div class="performance-tools">
-      <button class="btn small" data-pedal-setup aria-controls="pedal-setup" aria-expanded="false">Pedal setup</button>
-      <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
-      <button class="btn small" id="btn-fullscreen" aria-pressed="false">Fullscreen performance</button>
-    </div>
-    <div class="performance-pedal">
-      <label for="performance-pedal-capture">Pedal input — tap here if the pedal scrolls</label>
-      <input id="performance-pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Tap here to focus pedal input" aria-describedby="performance-pedal-focus">
-      <span id="performance-pedal-focus" class="muted small" role="status"></span>
-    </div>
     <section class="stage" id="stage">
       <div class="stage-head">
         <div class="stage-secnum" id="d-secnum"></div>
@@ -113,12 +108,26 @@
     </section>
 
     <section class="transport">
-      <button class="btn" id="btn-prev" title="Previous section / cancel queued jump (← / PageUp)">⏮ Prev</button>
-      <button class="btn primary huge" id="btn-play" title="Start / pause / resume (Space)">▶ Start</button>
+      <button class="btn" id="btn-prev" title="Previous section (at the next barline while playing)">⏮ Prev</button>
+      <button class="btn primary huge" id="btn-play" title="Start / pause / resume">▶ Start</button>
       <button class="btn" id="btn-stop" title="Stop and reset position (Esc)" disabled>Stop</button>
-      <button class="btn green huge" id="btn-next" title="Advance (→ / PageDown / pedal)">Next ⏭</button>
+      <button class="btn green huge" id="btn-next" title="Next section">Next ⏭</button>
       <button class="btn" id="btn-tap" title="Tap tempo for the current section (T)">Tap</button>
     </section>
+
+    <div class="performance-tools">
+      <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
+      <button class="btn small" id="btn-fullscreen">Fullscreen performance</button>
+    </div>
+    <div class="performance-pedal">
+      <label for="performance-pedal-capture">Pedal input</label>
+      <input id="performance-pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Tap here to focus pedal input" aria-describedby="performance-pedal-focus">
+      <span id="performance-pedal-focus" class="muted small" role="status"></span>
+    </div>
+    <details class="performance-menu" id="performance-menu" hidden>
+      <summary>Performance options</summary>
+      <button class="btn small" id="btn-exit-fullscreen">Exit fullscreen</button>
+    </details>
 
     <section class="prefs">
       <label class="pref">Volume <input type="range" id="pref-volume" min="0" max="1.5" step="0.05"></label>
@@ -130,8 +139,7 @@
         </select>
       </label>
       <label class="pref"><input type="checkbox" id="pref-flash"> Flash on downbeat</label>
-      <label class="pref"><input type="checkbox" id="pref-midi"> MIDI pedal</label>
-      <span class="muted small">Set up Bluetooth keyboard pedals with Pedal setup above. Performance keeps its own pedal input focused, including in distraction-free mode. Tap that input again after switching apps if the pedal scrolls.</span>
+      <span class="muted small">Change pedal bindings in Edit → Pedal setup. If your pedal scrolls, tap the pedal input above.</span>
     </section>
 
     <section class="setlist">

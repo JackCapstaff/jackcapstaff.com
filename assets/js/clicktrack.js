@@ -12,7 +12,15 @@
   const LOOKAHEAD = 0.12;       // seconds of audio scheduled ahead
   const TIMER_MS = 25;
   const DEFAULT_KEYS = ['ArrowRight', 'PageDown', 'ArrowDown'];
-  const BACK_KEYS = ['ArrowLeft', 'PageUp', 'ArrowUp'];
+  const DOUBLE_PRESS_MS = 350;
+  const PEDAL_ACTIONS = { forward: 'Forward', pause: 'Pause / resume', back: 'Back' };
+  const defaultBindings = () => ({
+    single: Object.assign(Object.create(null), {
+      ArrowLeft: 'back', ArrowUp: 'back', PageUp: 'pause', ' ': 'pause',
+      ...Object.fromEntries(DEFAULT_KEYS.map((key) => [key, 'forward'])),
+    }),
+    double: Object.assign(Object.create(null), { PageUp: 'back' }),
+  });
 
   const BEAT_UNITS = [
     ['auto', 'Auto'], ['1/2', 'Minim'], ['1/4', 'Crotchet ♩'], ['1/8', 'Quaver ♪'],
@@ -206,8 +214,23 @@
   }
 
   // ------------------------------------------------------------------ prefs
-  const prefs = Object.assign({ volume: 1, sound: 'beep', flash: true, midi: false, keys: DEFAULT_KEYS.slice() }, loadJSON(LS_PREFS, {}));
-  if (!Array.isArray(prefs.keys)) prefs.keys = DEFAULT_KEYS.slice();
+  const prefs = Object.assign({ volume: 1, sound: 'beep', flash: true, midi: false }, loadJSON(LS_PREFS, {}));
+  const bindings = defaultBindings();
+  if (prefs.pedalBindings) {
+    for (const gesture of ['single', 'double']) {
+      bindings[gesture] = Object.assign(Object.create(null), Object.fromEntries(
+        Object.entries(prefs.pedalBindings[gesture] || {}).filter(([, action]) => Object.hasOwn(PEDAL_ACTIONS, action))
+      ));
+    }
+  } else if (Array.isArray(prefs.keys)) {
+    for (const key of prefs.keys) {
+      if (typeof key === 'string' && key !== 'Escape' && key !== 'PageUp') {
+        bindings.single[key] = 'forward';
+      }
+    }
+  }
+  prefs.pedalBindings = bindings;
+  delete prefs.keys;
   const savePrefs = () => saveJSON(LS_PREFS, prefs);
 
   // ------------------------------------------------------------------ audio
@@ -371,14 +394,12 @@
 
   function endOfBar(s) {
     E.bar++;
-    if (E.phase === 'countin') {
-      if (E.bar >= s.countIn) { E.phase = 'play'; E.bar = 0; }
-      return;
-    }
     if (E.queued != null) {
       const target = E.queued;
       E.queued = null;
       enterSection(target, true);
+    } else if (E.phase === 'countin') {
+      if (E.bar >= s.countIn) { E.phase = 'play'; E.bar = 0; }
     } else if (E.bar >= s.bars && s.advance === 'auto') {
       enterSection(E.secIdx + 1, true);
     }
@@ -407,6 +428,7 @@
   }
 
   function stop(reachedEnd) {
+    cancelPendingPedal();
     if (!E.playing) return;
     clock.elapsed = Math.max(0, ctx.currentTime - clock.start);
     cancelClicks();
@@ -437,6 +459,7 @@
         E.suspended = false;
         timerStart();
         requestWake();
+        if (E.phase === 'pause' && E.queued != null) leaveCue(E.queued);
         scheduler();
       } else {
         await ctx.suspend();
@@ -466,9 +489,7 @@
     if (!E.playing) { start(selectedIdx); return; }
     if (E.suspended) { togglePlay(); return; }
     if (E.phase === 'pause') {
-      ensureAudio();
-      E.nextTime = Math.max(ctx.currentTime + 0.06, E.nextTime);
-      enterSection(E.secIdx + 1, false);
+      leaveCue(E.secIdx + 1);
       scheduler();
       return;
     }
@@ -479,19 +500,21 @@
   }
 
   function back() {
-    if (E.playing) {
-      if (E.queued != null) { E.queued = null; renderNext(); renderSetlist(); toast('Jump cancelled'); }
-      return;
-    }
-    selectIdx(selectedIdx - 1);
+    if (!E.playing) { selectIdx(selectedIdx - 1); return; }
+    if (E.phase === 'end' || E.secIdx === 0) return;
+    jumpTo(E.secIdx - 1);
+  }
+
+  function leaveCue(idx) {
+    E.queued = null;
+    E.nextTime = Math.max(ctx.currentTime + 0.06, E.nextTime);
+    enterSection(idx, false);
   }
 
   function jumpTo(idx) {
-    if (E.suspended) stop(false);
     if (!E.playing) { selectIdx(idx); return; }
-    if (E.phase === 'pause') {
-      E.nextTime = Math.max(ctx.currentTime + 0.06, E.nextTime);
-      enterSection(idx, false);
+    if (E.phase === 'pause' && !E.suspended) {
+      leaveCue(idx);
       scheduler();
       return;
     }
@@ -898,6 +921,7 @@
   }
 
   function selectTrack(id) {
+    cancelPendingPedal();
     if (E.playing) stop(false);
     stopTester();
     current = tracks.find((t) => String(t.id) === String(id)) || tracks[0] || null;
@@ -1210,8 +1234,8 @@
   function setPerformanceMode(on) {
     performanceMode = on;
     document.body.classList.toggle('performance-mode', on);
-    $('btn-fullscreen').textContent = on ? 'Exit fullscreen performance' : 'Fullscreen performance';
-    $('btn-fullscreen').setAttribute('aria-pressed', String(on));
+    $('performance-menu').hidden = !on;
+    $('performance-menu').open = false;
     focusPerformancePedal();
   }
 
@@ -1245,13 +1269,16 @@
   }
 
   function switchView(name) {
+    cancelPendingPedal();
     if (name !== 'edit') stopTester();
     document.body.classList.toggle('editing', name === 'edit');
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
     $('view-perform').hidden = name !== 'perform';
     $('view-edit').hidden = name !== 'edit';
+    $('btn-pedal-setup').hidden = name !== 'edit';
+    $('btn-editor-fullscreen').hidden = name !== 'edit';
     if (name === 'edit') renderEditor();
-    else focusPerformancePedal();
+    else showPedalSetup(false);
   }
 
   function renderAll() {
@@ -1270,10 +1297,41 @@
       ? e.code : e.code === 'Space' ? ' ' : '';
   }
   function renderPedalKeys() {
-    const backKeys = BACK_KEYS.filter((k) => !prefs.keys.includes(k));
-    $('pedal-keys').textContent = 'Start / Next / resume: ' + prefs.keys.map(keyName).join(', ')
-      + (backKeys.length ? ' · Back: ' + backKeys.map(keyName).join(', ') : '')
-      + (prefs.keys.includes(' ') ? '' : ' · Start/pause/resume: Space') + ' · Stop: Esc';
+    $('pedal-keys').textContent = Object.entries(PEDAL_ACTIONS).map(([action, label]) => {
+      const keys = ['single', 'double'].flatMap((gesture) => Object.entries(prefs.pedalBindings[gesture])
+        .filter(([, value]) => value === action).map(([key]) => (gesture === 'double' ? 'Double ' : '') + keyName(key)));
+      return label + ': ' + (keys.join(', ') || 'Not assigned');
+    }).join(' · ') + ' · Stop: Esc';
+  }
+
+  const pendingPedals = new Map();
+  function cancelPendingPedal() {
+    for (const { timer } of pendingPedals.values()) clearTimeout(timer);
+    pendingPedals.clear();
+  }
+  function runPedal(action, key) {
+    if (action === 'forward') advance();
+    else if (action === 'back') back();
+    else if (action === 'pause' && (E.playing || key === ' ')) togglePlay();
+  }
+  function pedalBinding(gesture, key) {
+    const map = prefs.pedalBindings[gesture];
+    return Object.hasOwn(map, key) ? map[key] : null;
+  }
+  function pressPedal(key, single, double) {
+    const previous = pendingPedals.get(key);
+    if (previous) {
+      clearTimeout(previous.timer);
+      pendingPedals.delete(key);
+      if (performance.now() < previous.until) { runPedal(double, key); return; }
+      runPedal(previous.single, previous.key);
+    }
+    if (!double) { runPedal(single, key); return; }
+    if (!E.playing && (single === 'forward' || double === 'forward' || key === ' ')) ensureAudio();
+    pendingPedals.set(key, { key, single, until: performance.now() + DOUBLE_PRESS_MS, timer: setTimeout(() => {
+      pendingPedals.delete(key);
+      runPedal(single, key);
+    }, DOUBLE_PRESS_MS) });
   }
 
   let learning = false, learnTimer = null;
@@ -1294,7 +1352,7 @@
   }
   function showPedalSetup(on) {
     $('pedal-setup').hidden = !on;
-    document.querySelectorAll('[data-pedal-setup]').forEach((b) => b.setAttribute('aria-expanded', String(on)));
+    $('btn-pedal-setup').setAttribute('aria-expanded', String(on));
     if (!on) { setLearning(false); focusPerformancePedal(); }
     else {
       $('pedal-setup').scrollIntoView({ block: 'start' });
@@ -1303,6 +1361,7 @@
     }
   }
   function setLearning(on) {
+    cancelPendingPedal();
     clearTimeout(learnTimer);
     learning = on;
     $('btn-learn').classList.toggle('learning', on);
@@ -1373,48 +1432,58 @@
     if (e.target === $('performance-pedal-capture') && !e.repeat) {
       $('performance-pedal-capture').value = k ? keyName(k) : 'Unidentified key';
     }
-    if ((learning || (!$('pedal-setup').hidden && !isTyping(e.target))) && !e.repeat) {
+    if (e.target === $('pedal-capture') && !e.repeat) {
       $('pedal-capture').value = k ? keyName(k) : 'Unidentified key';
       $('pedal-input').textContent = 'Received: ' + (k ? keyName(k) : 'unidentified key')
         + (e.code ? ' (code: ' + e.code + ')' : '');
     }
-    if (learning) {
+    if (learning && e.target === $('pedal-capture')) {
+      if (k === 'Escape' || k === 'Tab') {
+        if (k === 'Escape') e.preventDefault();
+        setLearning(false); $('pedal-input').textContent = 'Learning cancelled.';
+        return;
+      }
       e.preventDefault();
-      if (k === 'Escape') { setLearning(false); $('pedal-input').textContent = 'Learning cancelled.'; return; }
       if (e.repeat || !k || ['Shift', 'Control', 'Alt', 'Meta', 'AltGraph'].includes(k)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) {
         $('pedal-input').textContent = 'Modified shortcut received. Use an unmodified arrow, Page Up/Down, Space or Enter keyboard mode.';
         return;
       }
-      if (!prefs.keys.includes(k)) prefs.keys.push(k);
+      const action = $('pedal-action').value, gesture = $('pedal-gesture').value;
+      prefs.pedalBindings[gesture][k] = action;
       savePrefs(); renderPedalKeys(); setLearning(false);
-      $('pedal-input').textContent = 'Learned ' + keyName(k) + ' for Start / Next / resume. Press again to try it.';
-      toast('Pedal key set: ' + keyName(k));
+      $('pedal-input').textContent = 'Learned ' + (gesture === 'double' ? 'double ' : '') + keyName(k)
+        + ' for ' + PEDAL_ACTIONS[action] + '. Try it in Perform.';
+      return;
+    }
+    if (e.target === $('pedal-capture')) {
+      if (k !== 'Tab') e.preventDefault();
       return;
     }
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
-    if ((k === 't' || k === 'T') && !prefs.keys.includes(k)) {
+    if ((k === 'Enter' || k === ' ') && e.target.closest('button, summary')) return;
+    const editing = document.body.classList.contains('editing');
+    const single = editing ? null : pedalBinding('single', k);
+    const double = editing ? null : pedalBinding('double', k);
+    if ((k === 't' || k === 'T') && !single && !double) {
       e.preventDefault();
       if (!e.repeat) tapTempo();
       return;
     }
-    const handled = k === ' ' || k === 'Escape' || prefs.keys.includes(k) || BACK_KEYS.includes(k);
+    const handled = single || double || (editing && k === ' ') || k === 'Escape';
     if (!handled) return;
     e.preventDefault();
     if (e.repeat) return;
     if (k === 'Escape') {
+      if (learning) { setLearning(false); $('pedal-input').textContent = 'Learning cancelled.'; return; }
       stopTester();
       stop(false);
       if (performanceMode) toggleFullscreen();
     }
-    else if (prefs.keys.includes(k)) advance();
-    else if (k === ' ') {
-      if (document.body.classList.contains('editing')) {
-        if (E.playing) stop(false);
-        tester.running ? stopTester() : startTester();
-      } else togglePlay();
-    }
-    else back();
+    else if (editing) {
+      if (E.playing) stop(false);
+      tester.running ? stopTester() : startTester();
+    } else pressPedal(k, single, double);
   }
 
   function wire() {
@@ -1423,10 +1492,10 @@
       if (document.activeElement === document.body || document.activeElement === $('performance-pedal-capture')) focusPerformancePedal();
       renderPedalFocus();
     });
-    window.addEventListener('blur', renderPedalFocus);
+    window.addEventListener('blur', () => { cancelPendingPedal(); renderPedalFocus(); });
     document.addEventListener('focusin', renderPedalFocus);
     document.addEventListener('focusout', renderPedalFocus);
-    document.querySelectorAll('[data-pedal-setup]').forEach((b) => b.addEventListener('click', () => showPedalSetup($('pedal-setup').hidden)));
+    $('btn-pedal-setup').addEventListener('click', () => showPedalSetup($('pedal-setup').hidden));
     $('btn-editor-fullscreen').addEventListener('click', () => {
       switchView('perform');
       showPedalSetup(false);
@@ -1438,6 +1507,7 @@
       if (!E.playing || E.suspended) togglePlay();
     });
     $('btn-fullscreen').addEventListener('click', toggleFullscreen);
+    $('btn-exit-fullscreen').addEventListener('click', toggleFullscreen);
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement && nativeFullscreen) {
         nativeFullscreen = false;
@@ -1448,13 +1518,13 @@
     document.addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (b) b.blur();
-      if (!e.target.closest('input, select, textarea, a, [contenteditable]')) focusPerformancePedal();
+      if (!e.target.closest('input, select, textarea, a, summary, [contenteditable]')) focusPerformancePedal();
     });
 
-    $('btn-play').addEventListener('click', togglePlay);
+    $('btn-play').addEventListener('click', () => { cancelPendingPedal(); togglePlay(); });
     $('btn-stop').addEventListener('click', () => stop(false));
-    $('btn-next').addEventListener('click', () => (E.playing ? advance() : selectIdx(selectedIdx + 1)));
-    $('btn-prev').addEventListener('click', () => (E.playing ? back() : selectIdx(selectedIdx - 1)));
+    $('btn-next').addEventListener('click', () => { cancelPendingPedal(); E.playing ? advance() : selectIdx(selectedIdx + 1); });
+    $('btn-prev').addEventListener('click', () => { cancelPendingPedal(); back(); });
     // pointerdown gives tighter timing than click for tapping.
     $('btn-tap').addEventListener('pointerdown', (e) => { e.preventDefault(); tapTempo(); });
     $('btn-tap').addEventListener('keydown', (e) => { if (e.key === 'Enter') tapTempo(); });
@@ -1544,10 +1614,18 @@
     });
     $('btn-reset-keys').addEventListener('click', () => {
       setLearning(false);
-      prefs.keys = DEFAULT_KEYS.slice();
+      prefs.pedalBindings = defaultBindings();
       savePrefs(); renderPedalKeys();
-      $('pedal-input').textContent = 'Reset: Right, Down and Page Down start / advance. Left, Up and Page Up go back when stopped.';
+      $('pedal-input').textContent = 'Defaults restored: Page Down for Forward, Page Up for Pause / resume, and double Page Up for Back.';
       toast('Pedal keys reset');
+    });
+    $('btn-clear-pedal').addEventListener('click', () => {
+      setLearning(false);
+      const gesture = $('pedal-gesture').value, action = $('pedal-action').value;
+      const map = prefs.pedalBindings[gesture];
+      for (const key of Object.keys(map)) if (map[key] === action) delete map[key];
+      savePrefs(); renderPedalKeys();
+      $('pedal-input').textContent = 'Cleared ' + gesture + ' bindings for ' + PEDAL_ACTIONS[action] + '.';
     });
   }
 

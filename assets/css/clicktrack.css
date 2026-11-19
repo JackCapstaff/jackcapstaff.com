@@ -113,7 +113,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .performance-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
 .pedal-setup { background: var(--panel); border-bottom: 1px solid var(--line); padding-bottom: 14px; }
 .pedal-setup h2 { margin: 0; font-size: 20px; }
-.pedal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pedal-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
 .performance-pedal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; }
 .performance-pedal input { max-width: 320px; }
 #pedal-input { color: var(--beat-on); overflow-wrap: anywhere; }
@@ -121,12 +121,24 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 /* CSS focus mode also works when a mobile browser cannot enter native fullscreen. */
 body.performance-mode .ct-top,
 body.performance-mode .prefs,
-body.performance-mode .setlist { display: none; }
-body.performance-mode #view-perform { max-width: none; min-height: 100vh; min-height: 100dvh; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-body.performance-mode .stage { min-height: 65vh; display: flex; flex-direction: column; justify-content: center; }
+body.performance-mode .setlist,
+body.performance-mode .performance-tools,
+body.performance-mode #btn-tap,
+body.performance-mode #btn-stop:disabled { display: none; }
+body.performance-mode #view-perform { max-width: none; min-height: 100vh; min-height: 100dvh; padding-top: max(8px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+body.performance-mode .stage { padding-block: 12px; }
 body.performance-mode .stage-notes { font-size: clamp(24px, 3.5vw, 44px); }
-body.performance-mode .stage-countin { position: static; background: transparent; margin: 10px 0; }
-body.performance-mode .stage-countin .n { font-size: clamp(70px, 12vh, 130px); }
+body.performance-mode .stage-countin { position: static; background: transparent; margin: 4px 0; }
+body.performance-mode .stage-countin .n { font-size: clamp(34px, 8vh, 100px); }
+.performance-menu summary { color: var(--muted); cursor: pointer; padding: 8px 0; }
+@media (max-width: 700px) {
+  body.performance-mode .stage-main { margin: 10px 0 4px; }
+  body.performance-mode .stage-col .big { font-size: clamp(24px, 8vw, 54px); overflow-wrap: anywhere; }
+  body.performance-mode .beats { margin: 8px 0; min-height: 32px; }
+  body.performance-mode .performance-clock { margin: 8px 0; }
+  body.performance-mode .transport { margin: 8px 0; gap: 6px; }
+  body.performance-mode .transport .btn { min-height: 44px; padding: 6px 10px; }
+}
 
 .transport { display: flex; gap: 12px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
 .transport #btn-prev, .transport #btn-tap { min-height: 76px; }
