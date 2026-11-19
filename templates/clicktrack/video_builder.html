@@ -1,15 +1,26 @@
 <main id="view-video" class="view" aria-labelledby="video-builder-title" hidden>
   <h1 id="video-builder-title">New click track from video</h1>
-  <p>Choose a local video. Press <kbd>Space</kbd> during playback to pause and mark a hit point, then enter its details and click <strong>Play video</strong> to continue. On touchscreens, use <strong>Add hit point</strong>.</p>
-  <p class="muted small">The video is not uploaded. The marker draft stays in this tab until you create the track or leave the page.</p>
+  <p>Choose a local video or load a YouTube link. Use <strong>Play video</strong>, then press <kbd>Space</kbd> to pause and mark a hit point, or tap <strong>Add hit point</strong>. If focus is inside the YouTube player, use the Add hit point button instead.</p>
+  <p class="muted small">Local files are not uploaded and their drafts stay in this tab. Choose <strong>Save YouTube draft</strong> to save the link and hit points to your account. YouTube needs an internet connection and a video that allows embedding; seeking is not frame-accurate.</p>
   <div class="video-builder-meta">
     <label>Video file <input id="builder-file" type="file" accept="video/*,.mp4,.mov,.webm,.m4v"></label>
     <label>Track title <input id="builder-title" type="text" maxlength="255" placeholder="New click track"></label>
   </div>
+  <div class="stage-tool-row">
+    <label>YouTube link <input id="builder-youtube-url" type="url" maxlength="2048" placeholder="https://youtu.be/…"></label>
+    <button type="button" class="btn small" id="builder-load-youtube">Load YouTube video</button>
+  </div>
+  <div class="stage-tool-row">
+    <label>Saved YouTube drafts <select id="builder-drafts"><option value="">Choose a draft</option></select></label>
+    <button type="button" class="btn small" id="builder-open-draft" disabled>Open draft</button>
+    <button type="button" class="btn small danger" id="builder-delete-draft" disabled>Delete selected draft</button>
+  </div>
+  <p id="builder-draft-status" class="muted small" role="status"></p>
   <p id="builder-media-status" role="status"></p>
   <div class="video-builder-grid">
     <section aria-label="Video player">
       <video id="builder-video" controls playsinline preload="metadata" tabindex="0" aria-label="Source video"></video>
+      <div id="builder-youtube" hidden></div>
       <div id="builder-timeline" hidden>
         <div class="stage-tool-row">
           <strong>Hit point timeline</strong>
@@ -34,6 +45,9 @@
         <button class="btn primary" id="builder-play" disabled>Play video</button>
         <button class="btn" id="builder-add" title="Pause and mark the video (Space)" disabled>Add hit point</button>
       </div>
+      <label><input type="checkbox" id="builder-review" checked> Pause at existing hit points</label>
+      <p class="muted small">Select a hit point to jump there, then play to review the next one. Use the timeline to find a new time, then choose <strong>Move hit point to playhead</strong> to replace its time without changing its details.</p>
+      <p id="builder-review-status" class="muted small" role="status"></p>
     </section>
     <section aria-label="Hit points">
       <label>Hit points <select id="builder-markers" size="5"></select></label>
@@ -55,6 +69,7 @@
         </div>
         <div class="stage-tool-row">
           <button class="btn small primary" id="builder-resume" disabled>Resume video</button>
+          <button class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           <button class="btn small danger" id="builder-remove">Remove hit point</button>
         </div>
       </fieldset>
@@ -65,6 +80,7 @@
     <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. The final hit point only closes the last span: it needs a time and the next bar number. A ramp can use the previous span’s ending tempo; enter a starting BPM if it’s the first span or you want a different starting tempo.</p>
     <p id="builder-result" role="status"></p>
     <ol id="builder-preview"></ol>
+    <button type="button" class="btn" id="builder-save-draft" disabled>Save YouTube draft</button>
     <button class="btn primary" id="builder-create" disabled>Create click track</button>
   </section>
 </main>

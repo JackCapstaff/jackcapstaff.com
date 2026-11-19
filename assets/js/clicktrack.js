@@ -909,6 +909,7 @@
   }
 
   function frame() {
+    if (!CFG.offline && !builder.youtube && !$('view-video').hidden && !$('builder-video').paused) reviewVideoPlayback();
     if (E.playing && !E.suspended && ctx && visQ.length) {
       const now = ctx.currentTime;
       let latest = null, flash = false, ended = false;
@@ -956,8 +957,8 @@
   const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, videoOffset: t.videoOffset, sections: t.sections, _dirty: t._dirty, _auto: t._auto });
   const cacheLocal = () => saveJSON(LS_TRACKS, tracks.map(serialise));
 
-  async function api(method, path, body) {
-    const res = await fetch(CFG.apiBase + (path || ''), {
+  async function api(method, path, body, base = CFG.apiBase) {
+    const res = await fetch(base + (path || ''), {
       method,
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -1564,8 +1565,195 @@
     time, bar: '', num: previous?.num ?? '4', den: previous?.den ?? '4',
     unit: previous?.unit ?? 'auto', shape: 'steady', bpm: '', dialogue: '',
   });
-  const builder = { url: null, markers: [builderMarker(0)], selected: 0, dirty: false, zoomStart: null };
+  const builder = {
+    url: null, markers: [builderMarker(0)], selected: 0, dirty: false, zoomStart: null,
+    youtube: null, draftId: null, draftsBusy: false,
+    reviewTime: null, reviewAnchor: null,
+  };
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue'];
+
+  function youtubeId(value) {
+    let url;
+    try { url = new URL(value.trim()); } catch (e) { return null; }
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.port) return null;
+    const path = url.pathname.split('/').filter(Boolean);
+    let id;
+    if (url.hostname === 'youtu.be' && path.length === 1) id = path[0];
+    if (['www.youtube.com', 'youtube.com', 'm.youtube.com', 'www.youtube-nocookie.com'].includes(url.hostname)) {
+      if (url.pathname === '/watch') id = url.searchParams.get('v');
+      else if (path.length === 2 && ['embed', 'shorts', 'live'].includes(path[0])) id = path[1];
+    }
+    return typeof id === 'string' && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  }
+
+  let youtubeApi;
+  function loadYoutubeApi() {
+    if (window.YT?.Player) return Promise.resolve(window.YT);
+    if (!youtubeApi) {
+      youtubeApi = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        const timeout = setTimeout(() => fail(), 12000);
+        const fail = () => {
+          clearTimeout(timeout);
+          script.remove();
+          reject(new Error('YouTube did not load. Check your connection or content blocker and try again.'));
+        };
+        script.addEventListener('error', fail, { once: true });
+        window.onYouTubeIframeAPIReady = () => { clearTimeout(timeout); resolve(window.YT); };
+        document.head.append(script);
+      }).catch((e) => { youtubeApi = null; throw e; });
+    }
+    return youtubeApi;
+  }
+
+  function builderMedia() {
+    const source = builder.youtube;
+    if (!source) return $('builder-video');
+    const player = source.ready ? source.player : null;
+    return {
+      get readyState() { return player ? 1 : 0; },
+      get duration() { return player?.getDuration() || 0; },
+      get currentTime() { return player?.getCurrentTime() || 0; },
+      set currentTime(time) { player?.seekTo(time, true); },
+      get paused() { return ![1, 3].includes(player?.getPlayerState()); },
+      get ended() { return player?.getPlayerState() === 0; },
+      error: source.error,
+      pause: () => player?.pauseVideo(),
+      play: () => player?.playVideo(),
+    };
+  }
+
+  function resetBuilderSource() {
+    const video = $('builder-video'), source = builder.youtube;
+    builder.youtube = null;
+    if (source) {
+      clearInterval(source.timer);
+      clearTimeout(source.timeout);
+      source.player?.destroy();
+    }
+    $('builder-youtube').replaceChildren();
+    $('builder-youtube').hidden = true;
+    video.hidden = false;
+    video.pause();
+    if (builder.url) {
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(builder.url);
+      builder.url = null;
+    }
+    builder.draftId = null;
+    builder.zoomStart = null;
+    builder.dirty = false;
+    resetVideoReview();
+  }
+
+  async function openYoutube(id, draft) {
+    resetBuilderSource();
+    const source = { id, ready: false, error: false };
+    builder.youtube = source;
+    builder.draftId = draft?.id ?? null;
+    builder.markers = draft?.markers ?? [builderMarker(0)];
+    $('builder-title').value = draft?.title ?? 'YouTube video ' + id;
+    $('builder-youtube-url').value = 'https://youtu.be/' + id;
+    $('builder-video').hidden = true;
+    const host = $('builder-youtube'), status = $('builder-media-status');
+    host.hidden = false;
+    status.textContent = 'Loading YouTube…';
+    selectVideoMarker(0);
+    setBuilderMediaControls();
+    renderVideoPlan();
+    renderDraftControls();
+    const fail = (message) => {
+      if (builder.youtube !== source) return;
+      source.error = true;
+      clearInterval(source.timer);
+      clearTimeout(source.timeout);
+      status.textContent = message;
+      setBuilderMediaControls();
+      renderVideoTimeline();
+      renderVideoPlan();
+    };
+    const refresh = () => {
+      if (builder.youtube !== source || source.error || !source.ready) return;
+      const media = builderMedia(), duration = media.duration;
+      const durationChanged = source.duration !== duration;
+      if (source.paused !== media.paused || source.ended !== media.ended || durationChanged) {
+        source.paused = media.paused;
+        source.ended = media.ended;
+        source.duration = duration;
+        setBuilderMediaControls();
+      }
+      if (durationChanged) {
+        status.textContent = videoReady() ? 'Video duration: ' + markerTime(duration) : 'Press Play video to load the YouTube timeline.';
+        renderVideoTimeline();
+        renderVideoPlan();
+      } else updateVideoPlayhead();
+      reviewVideoPlayback();
+    };
+    try {
+      const yt = await loadYoutubeApi();
+      if (builder.youtube !== source) return;
+      const frame = document.createElement('iframe');
+      frame.title = 'YouTube source video';
+      frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
+      frame.referrerPolicy = 'strict-origin-when-cross-origin';
+      const params = new URLSearchParams({ enablejsapi: '1', playsinline: '1', origin: window.location.origin });
+      frame.src = 'https://www.youtube-nocookie.com/embed/' + id + '?' + params;
+      host.replaceChildren(frame);
+      source.timeout = setTimeout(() => fail('The YouTube player did not respond. Reload the video or try a local file.'), 15000);
+      source.player = new yt.Player(frame, {
+        events: {
+          onReady: (event) => {
+            if (builder.youtube !== source || source.error) return;
+            clearTimeout(source.timeout);
+            source.player = event.target;
+            source.ready = true;
+            status.textContent = 'Press Play video to load the YouTube timeline.';
+            refresh();
+            source.timer = setInterval(refresh, 150);
+          },
+          onStateChange: () => {
+            if (builder.youtube === source && $('view-video').hidden && !builderMedia().paused) builderMedia().pause();
+            refresh();
+          },
+          onError: (event) => fail('YouTube cannot play this video here (error ' + event.data + '). Try a link that allows embedding or a local file.'),
+        },
+      });
+    } catch (e) { fail(e.message); }
+  }
+
+  function renderDraftControls() {
+    const busy = builder.draftsBusy, selected = $('builder-drafts').value;
+    $('builder-open-draft').disabled = $('builder-delete-draft').disabled = busy || !selected;
+    $('builder-save-draft').disabled = busy || !builder.youtube;
+    $('builder-load-youtube').disabled = $('builder-file').disabled = busy;
+  }
+
+  const draftRequest = (method, id, body) => api(method, id ? '/' + id : '', body, CFG.videoDrafts);
+  async function refreshDraftList() {
+    const list = $('builder-drafts'), selected = builder.draftId ?? list.value;
+    const { drafts } = await draftRequest('GET');
+    list.replaceChildren(new Option('Choose a draft', ''), ...drafts.map((d) => new Option(d.title, d.id)));
+    if (Array.from(list.options).some((o) => o.value === String(selected))) list.value = selected;
+    renderDraftControls();
+  }
+
+  const confirmBuilderReplace = () => !builder.dirty || window.confirm('Discard unsaved changes to this video draft?');
+  const draftPayload = () => ({
+    videoId: builder.youtube.id, title: $('builder-title').value.trim(), markers: builder.markers,
+  });
+
+  async function runDraftAction(action) {
+    if (builder.draftsBusy) return;
+    builder.draftsBusy = true;
+    renderDraftControls();
+    const status = $('builder-draft-status');
+    status.textContent = 'Working…';
+    try { status.textContent = await action(); }
+    catch (e) { status.textContent = 'Could not complete the draft action: ' + e.message; }
+    finally { builder.draftsBusy = false; renderDraftControls(); }
+  }
 
   function markerTime(seconds) {
     const ms = Math.round(seconds * 1000), whole = Math.floor(ms / 1000);
@@ -1604,6 +1792,9 @@
     const points = builder.markers.filter((m, i) => i !== 0 || m.bar !== '');
     if (points.length < 2) throw new Error('Add a musical hit point and a closing hit point with the next score bar.');
     if (points.length > 501) throw new Error('A track can have at most 500 sections.');
+    if (videoReady() && points[points.length - 1].time > roundMarkerTime(builderMedia().duration)) {
+      throw new Error('A hit point is beyond the end of the video. Move it before creating the track.');
+    }
     if (points[0].time > 86400) throw new Error('The first musical hit point must be within the first 24 hours.');
     const secs = [];
     for (let i = 0; i < points.length - 1; i++) {
@@ -1673,12 +1864,13 @@
 
   function selectVideoMarker(index, seek = false, recenter = true) {
     builder.selected = index;
-    const marker = builder.markers[index], video = $('builder-video');
+    const marker = builder.markers[index];
     renderVideoMarkers();
     $('builder-marker-title').textContent = 'Hit point at ' + markerTime(marker.time);
     $('builder-time').value = markerTime(marker.time);
     $('builder-time').readOnly = index === 0;
     $('builder-remove').disabled = index === 0;
+    $('builder-retime').disabled = index === 0 || !videoReady();
     for (const field of markerFields) $('builder-' + field).value = marker[field];
     $('builder-bpm-field').hidden = marker.shape === 'steady';
     if (recenter && builder.zoomStart !== null && videoReady()) zoomAroundMarker();
@@ -1689,46 +1881,72 @@
   const roundMarkerTime = (time) => Math.round(time * 1000) / 1000;
 
   function videoReady() {
-    const video = $('builder-video');
+    const video = builderMedia();
     return video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0 && !video.error;
   }
 
   function seekBuilderVideo(time) {
-    const video = $('builder-video');
+    const video = builderMedia();
+    const target = clamp(time, 0, video.duration);
+    resetVideoReview(builder.youtube ? target : null);
     video.pause();
-    video.currentTime = clamp(time, 0, video.duration);
+    video.currentTime = target;
     updateVideoPlayhead();
   }
 
+  function resetVideoReview(anchor = null) {
+    builder.reviewTime = null;
+    builder.reviewAnchor = anchor;
+    $('builder-review-status').textContent = '';
+  }
+
+  function reviewVideoPlayback() {
+    if ($('view-video').hidden || !$('builder-review').checked || !videoReady()) return;
+    const media = builderMedia();
+    if (media.seeking || (media.paused && !media.ended)) return;
+    const time = media.currentTime, anchor = builder.reviewAnchor;
+    // YouTube can resume slightly before the requested cue due to keyframe seeking.
+    if (anchor !== null && time < anchor) return;
+    const previous = builder.reviewTime ?? anchor;
+    builder.reviewAnchor = null;
+    builder.reviewTime = time;
+    if (previous === null || time <= previous) return;
+    const index = builder.markers.findIndex((marker) => marker.time > previous && marker.time <= time);
+    if (index < 0) return;
+    const marker = builder.markers[index];
+    selectVideoMarker(index, true);
+    $('builder-review-status').textContent = 'Paused at ' + markerTime(marker.time)
+      + (marker.bar ? ' (bar ' + marker.bar + ')' : '') + '. Edit the hit point or resume.';
+  }
+
   function zoomAroundMarker() {
-    builder.zoomStart = clamp(builder.markers[builder.selected].time - 5, 0, Math.max(0, $('builder-video').duration - 10));
+    builder.zoomStart = clamp(builder.markers[builder.selected].time - 5, 0, Math.max(0, builderMedia().duration - 10));
   }
 
   function timelineRange() {
-    const duration = $('builder-video').duration;
+    const duration = builderMedia().duration;
     return builder.zoomStart === null ? [0, duration] : [builder.zoomStart, Math.min(builder.zoomStart + 10, duration)];
   }
 
   function updateVideoPlayhead() {
     if (!videoReady()) return;
-    const [start, end] = timelineRange(), time = $('builder-video').currentTime, playhead = $('builder-playhead');
+    const [start, end] = timelineRange(), time = builderMedia().currentTime, playhead = $('builder-playhead');
     playhead.hidden = time < start || time > end;
     playhead.style.left = 100 * (time - start) / (end - start) + '%';
   }
 
   function markerLimits(index) {
-    return [
-      roundMarkerTime(builder.markers[index - 1].time + 0.001),
-      builder.markers[index + 1] ? roundMarkerTime(builder.markers[index + 1].time - 0.001)
-        : roundMarkerTime($('builder-video').duration),
-    ];
+    const min = roundMarkerTime(builder.markers[index - 1].time + 0.001);
+    const end = roundMarkerTime(builderMedia().duration);
+    const max = builder.markers[index + 1] ? Math.min(end, roundMarkerTime(builder.markers[index + 1].time - 0.001)) : end;
+    return min <= max ? [min, max] : null;
   }
 
   function renderVideoTimeline() {
     const timeline = $('builder-timeline');
     timeline.hidden = !videoReady();
     if (timeline.hidden) return;
-    const duration = $('builder-video').duration, [start, end] = timelineRange();
+    const duration = builderMedia().duration, [start, end] = timelineRange();
     const zoom = $('builder-zoom'), zoomed = builder.zoomStart !== null;
     zoom.hidden = duration <= 10;
     zoom.setAttribute('aria-pressed', String(zoomed));
@@ -1772,7 +1990,9 @@
 
   function nudgeVideoMarker(index, delta) {
     if (!index || !videoReady()) return;
-    const limits = markerLimits(index), time = clamp(roundMarkerTime(builder.markers[index].time + delta), ...limits);
+    const limits = markerLimits(index);
+    if (!limits) return;
+    const time = clamp(roundMarkerTime(builder.markers[index].time + delta), ...limits);
     const [start, end] = timelineRange();
     moveVideoMarker(index, time, time < roundMarkerTime(start) || time > roundMarkerTime(end));
   }
@@ -1812,13 +2032,14 @@
       index = builder.markers.indexOf(marker);
       if (index < 0) return;
       selectVideoMarker(index, true, false);
-      if (index === 0) return;
+      if (index === 0 || !markerLimits(index)) return;
       const button = $('builder-timeline-points').children[index];
       button.setPointerCapture(e.pointerId);
       drag = { id: e.pointerId, button, marker, x: e.clientX, time: marker.time };
     });
     function previewDrag(e, index) {
       const [start, end] = timelineRange(), limits = markerLimits(index);
+      if (!limits) return null;
       const msPerPixel = (end - start) / rail.getBoundingClientRect().width;
       const time = clamp(roundMarkerTime(drag.time + (e.clientX - drag.x) * msPerPixel),
         Math.max(roundMarkerTime(start), limits[0]), Math.min(roundMarkerTime(end), limits[1]));
@@ -1850,7 +2071,8 @@
 
   function addVideoMarker() {
     if (!videoReady()) return;
-    const video = $('builder-video'), time = roundMarkerTime(video.currentTime);
+    const video = builderMedia(), time = roundMarkerTime(video.currentTime);
+    resetVideoReview(time);
     video.pause();
     let index = builder.markers.findIndex((marker) => marker.time === time);
     if (index < 0) {
@@ -1867,9 +2089,11 @@
   }
 
   function setBuilderMediaControls() {
-    const video = $('builder-video');
-    $('builder-add').disabled = $('builder-play').disabled = !videoReady();
-    $('builder-resume').disabled = !videoReady() || !video.paused || video.ended;
+    const video = builderMedia(), canPlay = builder.youtube ? video.readyState >= 1 && !video.error : videoReady();
+    $('builder-add').disabled = !videoReady();
+    $('builder-retime').disabled = !videoReady() || builder.selected === 0;
+    $('builder-play').disabled = !canPlay;
+    $('builder-resume').disabled = !canPlay || !video.paused || video.ended;
     $('builder-play').textContent = video.paused ? 'Play video' : 'Pause video';
   }
 
@@ -1878,25 +2102,66 @@
     wireVideoTimeline();
     $('builder-den').replaceChildren(...DENOMS.map((n) => new Option(n, n)));
     $('builder-unit').replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
-    $('btn-video-track').addEventListener('click', () => switchView('video'));
+    $('btn-video-track').addEventListener('click', () => {
+      switchView('video');
+      if (!builder.draftsBusy) runDraftAction(async () => { await refreshDraftList(); return ''; });
+    });
+    const link = $('builder-youtube-url'), drafts = $('builder-drafts'), draftStatus = $('builder-draft-status');
+    function loadLink() {
+      const id = youtubeId(link.value);
+      if (!id) { draftStatus.textContent = 'Enter a YouTube video link, such as a watch or youtu.be URL.'; return; }
+      if (builder.draftsBusy || !confirmBuilderReplace()) return;
+      draftStatus.textContent = '';
+      drafts.value = '';
+      openYoutube(id);
+    }
+    $('builder-load-youtube').addEventListener('click', loadLink);
+    link.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadLink(); } });
+    drafts.addEventListener('change', renderDraftControls);
+    $('builder-open-draft').addEventListener('click', () => runDraftAction(async () => {
+      const draft = await draftRequest('GET', drafts.value);
+      if (!confirmBuilderReplace()) return 'Open cancelled.';
+      drafts.value = draft.id;
+      openYoutube(draft.videoId, draft);
+      return 'Opened saved draft: ' + draft.title;
+    }));
+    $('builder-save-draft').addEventListener('click', () => runDraftAction(async () => {
+      const payload = JSON.stringify(draftPayload());
+      const saved = await draftRequest(builder.draftId ? 'PUT' : 'POST', builder.draftId, JSON.parse(payload));
+      builder.draftId = saved.id;
+      if (payload === JSON.stringify(draftPayload())) builder.dirty = false;
+      await refreshDraftList();
+      return builder.dirty ? 'Draft saved, but there are newer unsaved edits.' : 'Draft saved to your account.';
+    }));
+    $('builder-delete-draft').addEventListener('click', () => {
+      const id = Number(drafts.value);
+      if (!id || !window.confirm('Delete this saved YouTube draft? Finished click tracks will not be deleted.')) return;
+      runDraftAction(async () => {
+        await draftRequest('DELETE', id);
+        if (builder.draftId === id) { builder.draftId = null; builder.dirty = true; }
+        await refreshDraftList();
+        return 'Saved draft deleted.';
+      });
+    });
     fileInput.addEventListener('change', () => {
       const file = fileInput.files[0];
       fileInput.value = '';
-      if (!file || (builder.dirty && !window.confirm('Replace this video and discard the current marker draft?'))) return;
-      video.pause();
-      if (builder.url) URL.revokeObjectURL(builder.url);
+      if (!file || builder.draftsBusy || !confirmBuilderReplace()) return;
+      resetBuilderSource();
       builder.url = URL.createObjectURL(file);
       builder.markers = [builderMarker(0)];
-      builder.zoomStart = null;
-      builder.dirty = false;
+      link.value = '';
+      draftStatus.textContent = '';
       video.src = builder.url;
       $('builder-title').value = file.name.replace(/\.[^.]+$/, '').slice(0, 255);
       $('builder-media-status').textContent = 'Loading ' + file.name + '…';
       selectVideoMarker(0);
       setBuilderMediaControls();
       renderVideoPlan();
+      renderDraftControls();
     });
     video.addEventListener('loadedmetadata', () => {
+      if (builder.youtube) return;
       setBuilderMediaControls();
       renderVideoTimeline();
       $('builder-media-status').textContent = videoReady() ? 'Video duration: ' + markerTime(video.duration)
@@ -1904,6 +2169,7 @@
       renderVideoPlan();
     });
     video.addEventListener('error', () => {
+      if (builder.youtube) return;
       setBuilderMediaControls();
       renderVideoTimeline();
       $('builder-media-status').textContent = 'This browser could not play the video. Try an MP4 encoded as H.264.';
@@ -1911,18 +2177,38 @@
     });
     for (const event of ['play', 'pause', 'ended']) video.addEventListener(event, setBuilderMediaControls);
     for (const event of ['timeupdate', 'seeking']) video.addEventListener(event, updateVideoPlayhead);
+    video.addEventListener('seeking', () => { if (!builder.youtube) builder.reviewTime = null; });
+    video.addEventListener('ended', () => { if (!builder.youtube) reviewVideoPlayback(); });
     const resumeVideo = async () => {
-      video.focus();
-      try { await video.play(); }
+      const media = builderMedia(), anchor = builder.reviewAnchor;
+      resetVideoReview(anchor);
+      if (anchor === null && !media.ended) builder.reviewTime = media.currentTime;
+      (builder.youtube ? $('builder-play') : video).focus();
+      try { await media.play(); }
       catch (e) { $('builder-media-status').textContent = 'Could not play video: ' + e.message; }
     };
     $('builder-play').addEventListener('click', () => {
-      if (!video.paused) { video.pause(); return; }
+      const media = builderMedia();
+      if (!media.paused) { media.pause(); return; }
       resumeVideo();
     });
     $('builder-resume').addEventListener('click', resumeVideo);
+    $('builder-review').addEventListener('change', () => resetVideoReview());
     $('builder-title').addEventListener('input', () => { builder.dirty = true; });
     $('builder-add').addEventListener('click', addVideoMarker);
+    $('builder-retime').addEventListener('click', () => {
+      const index = builder.selected;
+      if (!index || !videoReady()) return;
+      const time = roundMarkerTime(builderMedia().currentTime), limits = markerLimits(index);
+      if (!limits || time < limits[0] || time > limits[1]) {
+        $('builder-review-status').textContent = 'Choose a new time between the neighbouring hit points.';
+        return;
+      }
+      const changed = builder.markers[index].time !== time;
+      moveVideoMarker(index, time, true);
+      $('builder-review-status').textContent = changed ? 'Hit point moved to ' + markerTime(time) + '.'
+        : 'Seek to a different time first, or drag the hit point on the timeline.';
+    });
     $('builder-markers').addEventListener('change', (e) => selectVideoMarker(Number(e.target.value), true));
     for (const field of markerFields) {
       $('builder-' + field).addEventListener('change', (e) => {
@@ -1937,7 +2223,7 @@
     $('builder-time').addEventListener('change', (e) => {
       const marker = builder.markers[builder.selected];
       const parsed = parseTimecode(e.target.value), time = parsed == null ? null : roundMarkerTime(parsed);
-      if (!videoReady() || builder.selected === 0 || time == null || time > roundMarkerTime(video.duration)
+      if (!videoReady() || builder.selected === 0 || time == null || time > roundMarkerTime(builderMedia().duration)
         || builder.markers.some((m) => m !== marker && m.time === time)) {
         e.target.value = markerTime(marker.time);
         toast('Enter a unique video time within the clip.');
@@ -1950,6 +2236,7 @@
       builder.markers.splice(builder.selected, 1);
       builder.dirty = true;
       selectVideoMarker(builder.selected - 1);
+      $('builder-review-status').textContent = 'Hit point removed. Resume video to continue from here.';
       renderVideoPlan();
     });
     $('builder-create').addEventListener('click', () => {
@@ -1959,7 +2246,7 @@
         const track = makeTrack($('builder-title').value.trim() || 'Click track from video', secs.map((s) => s.section));
         track.videoOffset = offset;
         addTrack(track);
-        builder.dirty = false;
+        if (!builder.youtube) builder.dirty = false;
         switchView('edit');
         toast('Created click track from video hit points');
       } catch (e) { $('builder-result').textContent = e.message; }
@@ -1969,6 +2256,7 @@
     });
     selectVideoMarker(0);
     renderVideoPlan();
+    renderDraftControls();
   }
 
   let performanceMode = false, nativeFullscreen = false;
@@ -2019,7 +2307,10 @@
     if (!CFG.offline) {
       $('view-video').hidden = name !== 'video';
       $('btn-video-track').setAttribute('aria-pressed', String(name === 'video'));
-      if (name !== 'video') $('builder-video').pause();
+      if (name !== 'video') {
+        resetVideoReview();
+        builderMedia().pause();
+      }
     }
     $('btn-pedal-setup').hidden = name !== 'edit';
     $('btn-editor-fullscreen').hidden = name !== 'edit';
@@ -2185,7 +2476,7 @@
   function onKeyDown(e) {
     const k = pedalKey(e);
     if (!CFG.offline && !$('view-video').hidden) {
-      const playingFromButton = e.target === $('builder-play') && !$('builder-video').paused;
+      const playingFromButton = e.target === $('builder-play') && !builderMedia().paused;
       if (k === ' ' && !e.altKey && !e.ctrlKey && !e.metaKey
         && (playingFromButton || !e.target.closest?.('input, textarea, select, button, a, [contenteditable]'))
         && videoReady()) {

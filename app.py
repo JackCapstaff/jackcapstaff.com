@@ -734,6 +734,7 @@ app.PublishingQuote = PublishingQuote
 app.PublishingOrder = PublishingOrder
 app.Recipe = Recipe
 app.ClickTrack = ClickTrack
+app.ClickTrackVideoDraft = models_dict['ClickTrackVideoDraft']
 app.send_publishing_order_admin_email = _send_publishing_order_admin_email
 
 

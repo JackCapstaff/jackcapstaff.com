@@ -146,10 +146,11 @@ body.performance-mode .stage-countin .n { font-size: clamp(34px, 8vh, 100px); }
 .video-builder-fields { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); margin-bottom: 12px; }
 #view-video label { display: grid; gap: 4px; }
 #builder-video { display: block; width: 100%; max-height: 55vh; background: #000; margin-bottom: 8px; }
+#builder-youtube iframe { display: block; width: 100%; aspect-ratio: 16 / 9; min-height: 200px; border: 0; margin-bottom: 8px; }
 #builder-timeline { margin: 0 0 12px; }
 .builder-timeline-track { padding: 0 16px; }
-#builder-timeline-rail { position: relative; height: 44px; cursor: crosshair; }
-#builder-timeline-rail::before { content: ''; position: absolute; inset: 20px 0; background: var(--beat); border-radius: 4px; }
+#builder-timeline-rail { position: relative; height: 64px; cursor: crosshair; }
+#builder-timeline-rail::before { content: ''; position: absolute; inset: 46px 0 10px; background: var(--beat); border-radius: 4px; }
 #builder-playhead { position: absolute; top: 4px; bottom: 4px; width: 2px; background: var(--text); pointer-events: none; }
 .builder-timeline-labels { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .builder-timeline-point {

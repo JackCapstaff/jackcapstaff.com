@@ -257,6 +257,7 @@
       authenticated: {{ 'true' if not offline and current_user.is_authenticated else 'false' }},
       userKey: {{ (('u' ~ current_user.id) if not offline and current_user.is_authenticated else 'anon') | tojson }},
       apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }},
+      {% if not offline %}videoDrafts: {{ url_for('clicktrack.api_video_drafts') | tojson }},{% endif %}
       offlinePage: {{ url_for('clicktrack.offline_performance') | tojson }},
       offlineWorker: {{ url_for('clicktrack.offline_worker') | tojson }}
     };

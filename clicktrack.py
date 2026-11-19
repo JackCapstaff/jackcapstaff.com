@@ -4,6 +4,8 @@ Click track / programmable metronome.
   /clicktrack/                    performance + editor page (login required)
   /clicktrack/api/tracks          GET list, POST create        (login required)
   /clicktrack/api/tracks/<id>     PUT update, DELETE           (login required)
+  /clicktrack/api/video-drafts  GET list, POST create         (login required)
+  /clicktrack/api/video-drafts/<id> GET, PUT, DELETE           (login required)
 
 Tracks are saved to the signed-in user's account, with a browser-local cache.
 """
@@ -19,6 +21,8 @@ clicktrack_bp = Blueprint("clicktrack", __name__, url_prefix="/clicktrack")
 
 MAX_TRACKS_PER_USER = 200
 MAX_SECTIONS = 500
+MAX_VIDEO_DRAFTS = 50
+YOUTUBE_ID_RE = re.compile(r"[A-Za-z0-9_-]{11}")
 
 SECTION_TYPES = {"click", "pause"}
 ADVANCE_MODES = {"auto", "manual"}
@@ -213,3 +217,67 @@ def api_delete_track(track_id):
     db.session.delete(track)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+def _apply_video_draft(draft, data):
+    video_id = data.get("videoId")
+    if not isinstance(video_id, str) or not YOUTUBE_ID_RE.fullmatch(video_id):
+        abort(400, description="A valid YouTube video ID is required.")
+    markers = data.get("markers")
+    if not isinstance(markers, list) or not 1 <= len(markers) <= MAX_SECTIONS + 2:
+        abort(400, description="A draft must have between 1 and 502 hit points.")
+    cleaned = []
+    for raw in markers:
+        if not isinstance(raw, dict):
+            abort(400, description="Invalid hit point.")
+        time = raw.get("time")
+        previous = cleaned[-1]["time"] if cleaned else -1
+        if (type(time) not in (int, float) or not 0 <= time <= 86400
+                or time != round(time, 3) or time <= previous or (not cleaned and time != 0)):
+            abort(400, description="Hit points must start at zero and have increasing times to millisecond precision.")
+        shape = _text(raw.get("shape"), 8)
+        unit = _text(raw.get("unit"), 8)
+        den = _text(raw.get("den"), 2)
+        if shape not in ("steady", "accel", "rall") or not BEAT_UNIT_RE.fullmatch(unit) or den not in {
+            str(v) for v in VALID_DENOMINATORS
+        }:
+            abort(400, description="Invalid hit point meter, beat unit or tempo shape.")
+        cleaned.append({
+            "time": time, "shape": shape, "unit": unit, "den": den,
+            "bar": _text(raw.get("bar"), 32), "num": _text(raw.get("num"), 32),
+            "bpm": _text(raw.get("bpm"), 32), "dialogue": _text(raw.get("dialogue"), 500),
+        })
+    draft.video_id = video_id
+    draft.title = _text(data.get("title"), 255) or "YouTube video " + video_id
+    draft.markers = cleaned
+
+
+@clicktrack_bp.route("/api/video-drafts", methods=["GET", "POST"])
+@_api_login_required
+def api_video_drafts():
+    model = current_app.ClickTrackVideoDraft
+    own = model.query.filter_by(user_id=current_user.id)
+    if request.method == "GET":
+        rows = own.with_entities(model.id, model.title).order_by(model.updated_at.desc()).all()
+        return jsonify({"drafts": [{"id": row.id, "title": row.title} for row in rows]})
+    if own.count() >= MAX_VIDEO_DRAFTS:
+        abort(400, description="Draft limit reached. Delete an unused draft before creating another.")
+    draft = model(user_id=current_user.id)
+    _apply_video_draft(draft, _json_body())
+    current_app.db.session.add(draft)
+    current_app.db.session.commit()
+    return jsonify(draft.to_dict()), 201
+
+
+@clicktrack_bp.route("/api/video-drafts/<int:draft_id>", methods=["GET", "PUT", "DELETE"])
+@_api_login_required
+def api_video_draft(draft_id):
+    draft = current_app.ClickTrackVideoDraft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    if request.method == "DELETE":
+        current_app.db.session.delete(draft)
+        current_app.db.session.commit()
+        return jsonify({"ok": True})
+    if request.method == "PUT":
+        _apply_video_draft(draft, _json_body())
+        current_app.db.session.commit()
+    return jsonify(draft.to_dict())

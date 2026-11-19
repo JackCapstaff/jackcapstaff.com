@@ -429,6 +429,17 @@ def init_models(db):
             }
 
 
+    class ClickTrackVideoDraft(db.Model):
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+        title = db.Column(db.String(255), nullable=False)
+        video_id = db.Column(db.String(11), nullable=False)
+        markers = db.Column(db.JSON, nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+        def to_dict(self):
+            return {'id': self.id, 'title': self.title, 'videoId': self.video_id, 'markers': self.markers}
+
     return {
         'SiteSetting': SiteSetting,
         'User': User,
@@ -444,4 +455,5 @@ def init_models(db):
         'PublishingOrder': PublishingOrder,
         'Recipe': Recipe,
         'ClickTrack': ClickTrack,
+        'ClickTrackVideoDraft': ClickTrackVideoDraft,
     }

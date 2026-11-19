@@ -71,6 +71,7 @@ class ClickTrackStorageTests(unittest.TestCase):
         cls.models = init_models(cls.db)
         cls.app.db = cls.db
         cls.app.ClickTrack = cls.models["ClickTrack"]
+        cls.app.ClickTrackVideoDraft = cls.models["ClickTrackVideoDraft"]
         login = LoginManager(cls.app)
 
         cls.app.add_url_rule("/", endpoint="index", view_func=lambda: "")
@@ -163,6 +164,54 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertIn(b'id="builder-video"', response.data)
         self.assertIn(b'id="builder-timeline-rail"', response.data)
         self.assertIn(b'id="builder-nudge-forward"', response.data)
+        self.assertIn(b'id="builder-review" checked', response.data)
+        self.assertIn(b'id="builder-retime"', response.data)
+
+    def test_youtube_draft_round_trip_across_sessions(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"time": 0, "bar": "", "num": "4", "den": "4", "unit": "auto",
+                  "shape": "steady", "bpm": "", "dialogue": ""}
+        payload = {"title": "Snowman cues", "videoId": "abcdefghijk",
+                   "markers": [marker, {**marker, "time": 25.123, "bar": "1", "dialogue": "First cue"}]}
+        saved = self.client.post(path, json=payload)
+        self.assertEqual(saved.status_code, 201)
+        draft_id = saved.json["id"]
+        with self.client.session_transaction() as session:
+            owner_id = session["_user_id"]
+        other_device = self.app.test_client()
+        with other_device.session_transaction() as session:
+            session["_user_id"] = owner_id
+        self.assertEqual(other_device.get(path).json, {"drafts": [{"id": draft_id, "title": payload["title"]}]})
+        url = f"{path}/{draft_id}"
+        self.assertEqual(other_device.get(url).json, {**payload, "id": draft_id})
+        self.assertEqual(other_device.put(url, json={**payload, "title": "Revised"}).json["title"], "Revised")
+        self.assertEqual(self.client.delete(url).status_code, 200)
+        self.assertEqual(other_device.get(url).status_code, 404)
+
+    def test_drafts_reject_bad_inputs_and_other_accounts(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"time": 0, "den": "4", "unit": "auto", "shape": "steady"}
+        valid = {"videoId": "abcdefghijk", "markers": [marker]}
+        for invalid in (
+            {**valid, "videoId": "https://example.com/"},
+            {**valid, "markers": [{**marker, "time": 1}]},
+            {**valid, "markers": [marker, marker]},
+            {**valid, "markers": [marker, {**marker, "time": 1.0001}]},
+        ):
+            self.assertEqual(self.client.post(path, json=invalid).status_code, 400)
+        draft_id = self.client.post(path, json=valid).json["id"]
+        other = self.app.test_client()
+        self.assertEqual(other.get(path).status_code, 401)
+        with self.app.app_context():
+            user = self.models["User"](username="other", email="other@example.invalid", password_hash="unused")
+            self.db.session.add(user)
+            self.db.session.commit()
+            user_id = user.id
+        with other.session_transaction() as session:
+            session["_user_id"] = str(user_id)
+        self.assertEqual(other.get(path).json, {"drafts": []})
+        for method in ("get", "put", "delete"):
+            self.assertEqual(getattr(other, method)(f"{path}/{draft_id}", json=valid).status_code, 404)
 
     def test_audio_output_is_part_of_pre_show_check(self):
         response = self.client.get("/clicktrack/")
