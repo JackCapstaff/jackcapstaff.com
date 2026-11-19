@@ -47,9 +47,14 @@ Performance options**, choose **Jump to rehearsal figure**, set the count-in,
 and select **Restart from cue**. The cue search also accepts names such as
 `Figure A`; bare numbers still search score bars.
 
-For rehearsal, open **Perform → Practice with video** on a linked track (or
-with its local video still open in this tab). The film follows click playback,
-holds during count-ins and cue waits, and starts from the selected section.
+For rehearsal, open **Perform → Practice with video** below the click display.
+If no video is linked, use **Edit with video** in that panel to open and link
+a saved YouTube draft, or use a local file still open in the tab.
+The film follows click playback and holds during cue waits. Practice opens
+the YouTube link from the draft linked to the track. For a count-in, the film
+starts that many bars before the selected section’s video position, using the
+section’s starting tempo and meter. If there is not enough footage, the
+count-in still plays in full and the picture waits at 0:00 until it can roll.
 Film audio is muted by default. YouTube sync is approximate; use **Resync to
 clicks** after buffering. The offline and fullscreen stage views stay video-free.
 

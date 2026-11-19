@@ -452,7 +452,7 @@
 
   // ----------------------------------------------------------------- engine
   // phase: stopped | countin | play | pause | end. bar/tick/sub describe the *next* step to schedule.
-  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0 };
+  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0 };
   const clock = { start: 0, elapsed: 0, videoStart: 0 };
   let transportBusy = false;
   const visQ = [];
@@ -504,11 +504,13 @@
   function pushVis(type, extra) {
     visQ.push(Object.assign({
       type, time: E.nextTime, secIdx: E.secIdx, phase: E.phase, bar: E.bar, tick: E.tick, sub: E.sub, queued: E.queued, countIn: E.countIn,
+      phaseStart: E.phaseStart,
     }, extra || {}));
   }
 
   function enterSection(idx, flowing, countInOverride = null) {
     const secs = sections();
+    E.phaseStart = E.nextTime;
     E.bar = 0; E.tick = 0; E.sub = 0; E.countIn = 0;
     if (idx < 0 || idx >= secs.length) { E.phase = 'end'; pushVis('end'); return; }
     E.secIdx = idx;
@@ -518,6 +520,8 @@
     if (!flowing) E.countIn = countInOverride ?? s.countIn;
     E.phase = E.countIn > 0 ? 'countin' : 'play';
   }
+
+  const countInSeconds = (section, bars) => bars * section.num * unitSeconds(section, section.bpm);
 
   function scheduler() {
     if (tester.running) { scheduleTester(); return; }
@@ -558,7 +562,11 @@
       E.queued = null;
       enterSection(target, true);
     } else if (E.phase === 'countin') {
-      if (E.bar >= E.countIn) { E.phase = 'play'; E.bar = 0; }
+      if (E.bar >= E.countIn) {
+        E.phase = 'play';
+        E.phaseStart = E.nextTime;
+        E.bar = 0;
+      }
     } else if (E.bar >= s.bars && s.advance === 'auto') {
       if (s.visualEndCue) pushVis('visual-hit', { punch: true });
       enterSection(E.secIdx + 1, true);
@@ -580,7 +588,7 @@
     E.nextTime = ctx.currentTime + 0.1;
     enterSection(clamp(fromIdx, 0, sections().length - 1), false, countInOverride);
     const s = sections()[E.secIdx];
-    clock.start = E.nextTime + E.countIn * s.num * unitSeconds(s, s.bpm);
+    clock.start = E.nextTime + countInSeconds(s, E.countIn);
     clock.elapsed = 0;
     clock.videoStart = sectionTimeline()[E.secIdx].start;
     shown = null;
@@ -943,12 +951,13 @@
   function renderClock() {
     const elapsed = E.playing ? Math.max(0, ctx.currentTime - clock.start) : 0;
     const planned = !E.playing ? sectionTimeline()[selectedIdx] : null;
-    const videoTime = E.playing ? clock.videoStart + elapsed : planned ? planned.start : (current ? current.videoOffset : 0);
+    const videoTime = practice?.media && practice.videoTime != null ? practice.videoTime
+      : E.playing ? clock.videoStart + elapsed : planned ? planned.start : (current ? current.videoOffset : 0);
     $('d-elapsed').textContent = timecode(elapsed);
     $('d-video-time').textContent = timecode(videoTime);
     $('d-clock-status').textContent = E.suspended ? 'Paused — clock frozen'
       : E.playing ? (ctx.currentTime < clock.start ? 'Count-in — clock starts with music' : 'Running (cue waits included)')
-        : 'Starts from selected section; video time is not linked to a video player';
+        : practice?.media ? 'Practice video follows the selected section' : 'Starts from selected section; video time is not linked to a video player';
   }
 
   let flashTimer = null;
@@ -983,11 +992,11 @@
         if (flash && prefs.flash) doFlash();
       }
     }
-    renderClock();
     if (practice?.media) {
       syncPracticeVideo();
       renderPracticeCues();
     }
+    renderClock();
     requestAnimationFrame(frame);
   }
 
@@ -1850,9 +1859,15 @@
     $('practice-visual-cues').hidden = !enabled;
   }
 
+  function hasPracticeVideo() {
+    return !!(current?.videoDraftId || (builder.localTrack === current && builder.url));
+  }
+
   function renderPracticeAvailability() {
-    $('practice-video').hidden = !(current?.videoDraftId || (builder.localTrack === current && builder.url));
-    if ($('practice-video').hidden) closePracticeVideo();
+    const available = hasPracticeVideo();
+    $('practice-no-video').hidden = available;
+    $('practice-controls').hidden = !available;
+    $('btn-practice-edit-video').disabled = !current || builder.draftsBusy;
   }
 
   function closePracticeVideo() {
@@ -1880,23 +1895,36 @@
     source.holdingEnd = false;
     const idx = E.playing ? (shown?.secIdx ?? selectedIdx) : selectedIdx;
     const phase = E.playing ? (shown?.phase ?? 'waiting') : 'stopped';
-    const playing = phase === 'play' && !E.suspended && ctx.currentTime >= clock.start;
-    const positionKey = idx + ':' + phase;
+    const rolling = phase === 'play' || phase === 'countin';
+    const section = sections()[idx];
+    if (!section) return;
+    const entry = E.playing ? shown?.phaseStart : null;
+    const positionKey = idx + ':' + phase + ':' + entry;
+    const entering = source.positionKey !== positionKey;
+    const previousDownbeat = source.downbeat;
+    if (entering || force) {
+      source.positionKey = positionKey;
+      const start = sectionTimeline()[idx].start;
+      const preRoll = phase === 'countin' ? countInSeconds(section, shown.countIn) : 0;
+      source.cueTime = start - preRoll;
+      source.downbeat = phase === 'countin' ? entry + preRoll : null;
+    }
+    const expected = source.cueTime + (rolling ? Math.max(0, ctx.currentTime - entry) : 0);
+    const playing = rolling && !E.suspended && expected >= -1e-8;
+    source.videoTime = Math.max(0, expected);
     const key = positionKey + ':' + playing;
     if (!force && key === source.syncKey) return;
     source.syncKey = key;
-    const entering = source.positionKey !== positionKey;
-    if (entering) {
-      source.positionKey = positionKey;
-      source.entry = shown?.time ?? clock.start;
-    }
-    const section = sections()[idx];
-    if (!section) return;
-    if (entering || playing || force) {
-      const start = sectionTimeline()[idx].start;
-      const elapsed = phase === 'play' ? Math.max(0, ctx.currentTime - source.entry) : 0;
-      source.media.seek(start + elapsed);
-    }
+    // Keep rolling across the downbeat when the count-in already brought the
+    // film to this section; a fresh seek here would interrupt playback.
+    const continuous = entering && source.phase === 'countin' && phase === 'play'
+      && source.sectionIdx === idx && playing && source.playing
+      && Math.abs(entry - previousDownbeat) < 1e-8;
+    source.phase = phase;
+    source.sectionIdx = idx;
+    source.playing = playing;
+    if (continuous && !force) return;
+    if (entering || playing || force) source.media.seek(source.videoTime);
     if (playing) source.media.play();
     else source.media.pause();
   }
@@ -1971,6 +1999,7 @@
     $('builder-save-draft').disabled = busy || !builder.youtube;
     $('builder-load-youtube').disabled = $('builder-file').disabled = busy;
     $('btn-edit-video').disabled = busy;
+    $('btn-practice-edit-video').disabled = !current || busy;
     $('builder-create').disabled = busy || !videoReady() || !builder.planValid;
     $('builder-target-track').disabled = busy;
     $('builder-overwrite').disabled = $('builder-create').disabled || !builderTargetTrack();
@@ -2401,7 +2430,7 @@
       if (!builder.draftsBusy) runDraftAction(async () => { await refreshDraftList(); return ''; });
     });
     const link = $('builder-youtube-url'), drafts = $('builder-drafts'), draftStatus = $('builder-draft-status');
-    $('btn-edit-video').addEventListener('click', () => {
+    function editWithVideo() {
       if (!current || builder.draftsBusy) return;
       const track = current;
       builder.returnTrack = track;
@@ -2423,7 +2452,9 @@
         if (builder.localTrack === track) return 'Local video is still open in this tab.';
         return 'Open your saved YouTube draft below, then link it to this track for next time.';
       });
-    });
+    }
+    $('btn-edit-video').addEventListener('click', editWithVideo);
+    $('btn-practice-edit-video').addEventListener('click', editWithVideo);
     $('builder-back-to-edit').addEventListener('click', () => {
       if (tracks.includes(builder.returnTrack)) selectTrack(builder.returnTrack.id);
       switchView('edit');
@@ -2933,7 +2964,7 @@
     if (!CFG.offline) wireVideoBuilder();
     if (!CFG.offline) {
       $('practice-video').addEventListener('toggle', (e) => {
-        if (e.target.open && !practice && !e.target.hidden) openPracticeVideo();
+        if (e.target.open && !practice && hasPracticeVideo()) openPracticeVideo();
         else if (!e.target.open && practice) closePracticeVideo();
       });
       $('practice-sound').addEventListener('change', (e) => practice?.media?.mute(!e.target.checked));

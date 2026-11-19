@@ -180,6 +180,9 @@ class ClickTrackStorageTests(unittest.TestCase):
     def test_practice_video_is_separate_from_pre_show_audio_test(self):
         response = self.client.get("/clicktrack/")
         self.assertIn(b'id="practice-video"', response.data)
+        self.assertIn(b'<details id="practice-video" class="practice-video">', response.data)
+        self.assertIn(b'id="btn-practice-edit-video"', response.data)
+        self.assertIn(b'id="practice-controls" hidden', response.data)
         self.assertIn(b'id="practice-resync"', response.data)
         self.assertIn(b'id="practice-show-cues"', response.data)
         self.assertIn(b'id="builder-visual-cue"', response.data)

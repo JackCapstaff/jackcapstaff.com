@@ -114,21 +114,27 @@
     </section>
 
     {% if not offline %}
-    <details id="practice-video" class="practice-video" hidden>
+    <details id="practice-video" class="practice-video">
       <summary>Practice with video</summary>
-      <div id="practice-picture">
-        <div id="practice-visual-cues" aria-hidden="true" hidden>
-          <span id="practice-streamer" hidden></span><span id="practice-punch" hidden></span>
+      <div id="practice-no-video">
+        <p class="muted small">No video is linked to this track. Open a saved YouTube draft and choose <strong>Link open draft to track</strong>. For a local file, open it in the video editor and save over this track; the file stays in this tab.</p>
+        <button type="button" class="btn small" id="btn-practice-edit-video">Edit with video</button>
+      </div>
+      <div id="practice-controls" hidden>
+        <div id="practice-picture">
+          <div id="practice-visual-cues" aria-hidden="true" hidden>
+            <span id="practice-streamer" hidden></span><span id="practice-punch" hidden></span>
+          </div>
+          <div id="practice-player"></div>
         </div>
-        <div id="practice-player"></div>
+        <div class="stage-tool-row">
+          <label><input type="checkbox" id="practice-sound"> Play film audio</label>
+          <label><input type="checkbox" id="practice-show-cues" checked> Show streamers and punches</label>
+          <button type="button" class="btn small" id="practice-resync" disabled>Resync to clicks</button>
+        </div>
+        <p class="muted small">Practice opens the track’s linked YouTube draft or its local video. The film rolls into the selected section during the count-in and stops at cue pauses. YouTube sync is approximate. Film audio uses your system output.</p>
+        <p id="practice-status" class="muted small" role="status"></p>
       </div>
-      <div class="stage-tool-row">
-        <label><input type="checkbox" id="practice-sound"> Play film audio</label>
-        <label><input type="checkbox" id="practice-show-cues" checked> Show streamers and punches</label>
-        <button type="button" class="btn small" id="practice-resync" disabled>Resync to clicks</button>
-      </div>
-      <p class="muted small">The film follows the click transport and waits through count-ins and cue pauses. YouTube sync is approximate. Film audio uses your system output.</p>
-      <p id="practice-status" class="muted small" role="status"></p>
     </details>
     {% endif %}
 
