@@ -116,6 +116,9 @@
     s.subVelocity = num(raw.subVelocity, 32, 0, 127, true);
     s.countIn = num(raw.countIn, 0, 0, 8, true);
     s.startBar = raw.startBar == null || raw.startBar === '' ? null : num(raw.startBar, null, 1, 99999, true);
+    s.figure = String(raw.figure || '').trim().slice(0, 32);
+    s.visualCue = raw.visualCue === true;
+    s.visualEndCue = raw.visualEndCue === true;
     return s;
   }
 
@@ -215,6 +218,8 @@
     return s.name || (s.type === 'pause' ? 'Pause' : 'Section ' + (i + 1));
   }
 
+  const figureLabel = (label) => /^fig(?:ure)?\.?\s/i.test(label) ? label : 'Figure ' + label;
+
   // ------------------------------------------------------------------ prefs
   const offlineShow = CFG.offline ? loadJSON(OFFLINE_KEY, null) : null;
   const prefs = Object.assign({ volume: 1, sound: 'beep', flash: true, midi: false },
@@ -240,16 +245,18 @@
   // ------------------------------------------------------------------ audio
   let ctx = null, master = null, noiseBuf = null;
   const sources = new Set();
+  let audioRevision = 0;
   function trackSource(source) {
     sources.add(source);
     source.addEventListener('ended', () => sources.delete(source), { once: true });
   }
   function cancelClicks() {
+    audioRevision++;
     sources.forEach((source) => source.stop());
     sources.clear();
   }
 
-  function ensureAudio() {
+  function ensureAudio(autoResume = true) {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       ctx = new AC({ latencyHint: 'interactive' });
@@ -260,7 +267,7 @@
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       applyVolume();
     }
-    if (ctx.state !== 'running' && !E.suspended) ctx.resume().catch((e) => toast('Audio could not resume: ' + e.message));
+    if (autoResume && ctx.state !== 'running' && !E.suspended) ctx.resume().catch((e) => toast('Audio could not resume: ' + e.message));
     return ctx;
   }
 
@@ -445,10 +452,40 @@
 
   // ----------------------------------------------------------------- engine
   // phase: stopped | countin | play | pause | end. bar/tick/sub describe the *next* step to schedule.
-  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null };
+  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0 };
   const clock = { start: 0, elapsed: 0, videoStart: 0 };
   let transportBusy = false;
   const visQ = [];
+  const STREAMER_LEAD = 2;
+  let cueOnEntry = false, cueRoute = 0;
+
+  function barSeconds(s, bar) {
+    if (s.bpmEnd == null) return s.num * unitSeconds(s, s.bpm);
+    const steps = s.num * subdivOf(s);
+    let seconds = 0;
+    for (let i = 0; i < steps; i++) {
+      seconds += unitSeconds(s, bpmAt(s, (bar + i / steps) / s.bars)) / subdivOf(s);
+    }
+    return seconds;
+  }
+
+  function streamerLead(secs, index, bar) {
+    const firstBar = barSeconds(secs[index], bar);
+    let seconds = 0;
+    for (let i = index; i < secs.length; i++, bar = 0) {
+      const s = secs[i];
+      if (s.type === 'pause' || s.advance !== 'auto') return null;
+      for (; bar < s.bars; bar++) {
+        seconds += barSeconds(s, bar);
+        // A later barline already provides enough warning.
+        if (seconds - firstBar >= STREAMER_LEAD - 1e-8) return null;
+      }
+      const next = secs[i + 1];
+      if ((s.visualEndCue || next?.visualCue) && seconds >= STREAMER_LEAD - 1e-8) return seconds;
+      if (!next || next.type === 'pause') return null;
+    }
+    return null;
+  }
   let shown = null;          // snapshot currently displayed
   let selectedIdx = 0;       // where Start begins
   let lastAdvanceAt = 0;
@@ -466,18 +503,20 @@
 
   function pushVis(type, extra) {
     visQ.push(Object.assign({
-      type, time: E.nextTime, secIdx: E.secIdx, phase: E.phase, bar: E.bar, tick: E.tick, sub: E.sub, queued: E.queued,
+      type, time: E.nextTime, secIdx: E.secIdx, phase: E.phase, bar: E.bar, tick: E.tick, sub: E.sub, queued: E.queued, countIn: E.countIn,
     }, extra || {}));
   }
 
-  function enterSection(idx, flowing) {
+  function enterSection(idx, flowing, countInOverride = null) {
     const secs = sections();
-    E.bar = 0; E.tick = 0; E.sub = 0;
+    E.bar = 0; E.tick = 0; E.sub = 0; E.countIn = 0;
     if (idx < 0 || idx >= secs.length) { E.phase = 'end'; pushVis('end'); return; }
     E.secIdx = idx;
     const s = secs[idx];
-    if (s.type === 'pause') { E.phase = 'pause'; pushVis('state'); return; }
-    E.phase = !flowing && s.countIn > 0 ? 'countin' : 'play';
+    cueOnEntry = s.visualCue;
+    if (s.type === 'pause') { E.phase = 'pause'; pushVis('state', { punch: cueOnEntry }); return; }
+    if (!flowing) E.countIn = countInOverride ?? s.countIn;
+    E.phase = E.countIn > 0 ? 'countin' : 'play';
   }
 
   function scheduler() {
@@ -498,7 +537,11 @@
     const level = E.sub === 0 ? levels[E.tick] : 0;
     const bpm = counting ? s.bpm : bpmAt(s, (E.bar + (E.tick + E.sub / subN) / s.num) / s.bars);
     if (audible(s, level, E.phase)) playClick(E.nextTime, level, s);
-    pushVis('tick', { level, bpm });
+    const downbeat = !counting && E.tick === 0 && E.sub === 0;
+    const punch = downbeat && cueOnEntry;
+    if (downbeat) cueOnEntry = false;
+    const lead = downbeat && practice?.media && E.queued == null ? streamerLead(sections(), E.secIdx, E.bar) : null;
+    pushVis('tick', { level, bpm, punch, streamerEnd: lead === null ? null : E.nextTime + lead, cueRoute });
     E.nextTime += unitSeconds(s, bpm) / subN;
 
     if (++E.sub < subN) return;
@@ -515,27 +558,29 @@
       E.queued = null;
       enterSection(target, true);
     } else if (E.phase === 'countin') {
-      if (E.bar >= s.countIn) { E.phase = 'play'; E.bar = 0; }
+      if (E.bar >= E.countIn) { E.phase = 'play'; E.bar = 0; }
     } else if (E.bar >= s.bars && s.advance === 'auto') {
+      if (s.visualEndCue) pushVis('visual-hit', { punch: true });
       enterSection(E.secIdx + 1, true);
     }
   }
 
-  function start(fromIdx) {
+  function start(fromIdx, countInOverride = null) {
     if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
     if (!sections().length) return;
     stopTester();
     $('pre-show').open = false;
     cancelClicks();
+    clearPracticeCues();
     ensureAudio();
     visQ.length = 0;
     E.playing = true;
     E.suspended = false;
     E.queued = null;
     E.nextTime = ctx.currentTime + 0.1;
-    enterSection(clamp(fromIdx, 0, sections().length - 1), false);
+    enterSection(clamp(fromIdx, 0, sections().length - 1), false, countInOverride);
     const s = sections()[E.secIdx];
-    clock.start = E.nextTime + (E.phase === 'countin' ? s.countIn * s.num * unitSeconds(s, s.bpm) : 0);
+    clock.start = E.nextTime + E.countIn * s.num * unitSeconds(s, s.bpm);
     clock.elapsed = 0;
     clock.videoStart = sectionTimeline()[E.secIdx].start;
     shown = null;
@@ -550,6 +595,7 @@
     cancelPendingPedal();
     actionFeedback = '';
     if (!E.playing) return;
+    if (!reachedEnd) clearPracticeCues();
     clock.elapsed = Math.max(0, ctx.currentTime - clock.start);
     cancelClicks();
     if (reachedEnd) selectedIdx = 0;
@@ -620,7 +666,10 @@
       return;
     }
     if (E.phase === 'end') return;
-    if (E.queued == null) E.queued = E.secIdx + 1;
+    if (E.queued == null) {
+      E.queued = E.secIdx + 1;
+      clearPracticeCues();
+    }
     renderNext();
     renderSetlist();
   }
@@ -647,6 +696,7 @@
       return;
     }
     E.queued = idx;
+    clearPracticeCues();
     renderNext();
     renderSetlist();
   }
@@ -741,7 +791,8 @@
       return;
     }
     const sb = startBars(secs);
-    $('d-secnum').textContent = 'Section ' + (st.secIdx + 1) + ' of ' + secs.length;
+    $('d-secnum').textContent = 'Section ' + (st.secIdx + 1) + ' of ' + secs.length
+      + (s.figure ? ' · ' + figureLabel(s.figure) : '');
     $('d-name').textContent = sectionTitle(s, st.secIdx);
     $('d-notes').textContent = s.notes || '';
 
@@ -787,7 +838,7 @@
     if (st.phase === 'countin') {
       ci.hidden = false;
       ci.innerHTML = '<div class="n">' + (groupIndexOf(s, st.tick) + 1) + '</div><div class="t">Count-in'
-        + (s.countIn > 1 ? ' · bar ' + (st.bar + 1) + ' of ' + s.countIn : '') + '</div>';
+        + (st.countIn > 1 ? ' · bar ' + (st.bar + 1) + ' of ' + st.countIn : '') + '</div>';
     } else {
       ci.hidden = true;
     }
@@ -837,7 +888,7 @@
     else if (!E.playing) text = 'Press Start, Next or the pedal to begin';
     else if (st.phase === 'pause') { text = 'Waiting — press Next / pedal for ' + title; cls = 'waiting'; }
     else if (st.phase === 'countin') {
-      const left = s.countIn - st.bar;
+      const left = st.countIn - st.bar;
       text = 'Count-in: ' + left + ' bar' + (left === 1 ? '' : 's') + ' left before ' + sectionTitle(s, st.secIdx)
         + ' · score bar ' + sb[st.secIdx] + (queued != null ? ' · next jump queued' : '');
     }
@@ -876,7 +927,7 @@
         : s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm + (s.bpmEnd != null ? '→' + s.bpmEnd : '')
           + ' · ' + s.bars + ' bar' + (s.bars === 1 ? '' : 's') + (s.advance === 'manual' ? ' · wait' : '') + ' · b.' + sb[i];
       return '<li class="' + cls + '" data-i="' + i + '"><span class="idx">' + (i + 1) + '</span><span class="nm">'
-        + esc(sectionTitle(s, i)) + '</span><span class="meta">' + esc(meta) + '</span></li>';
+        + esc(sectionTitle(s, i)) + '</span><span class="meta">' + esc((s.figure ? figureLabel(s.figure) + ' · ' : '') + meta) + '</span></li>';
     }).join('');
   }
 
@@ -915,6 +966,8 @@
       let latest = null, flash = false, ended = false;
       while (visQ.length && visQ[0].time <= now) {
         const ev = visQ.shift();
+        if (practice?.media) consumePracticeCue(ev, now);
+        if (ev.type === 'visual-hit') continue;
         if (ev.type === 'end') { ended = true; break; }
         latest = ev;
         if (ev.type === 'tick' && ev.level === 3) flash = true;
@@ -931,6 +984,10 @@
       }
     }
     renderClock();
+    if (practice?.media) {
+      syncPracticeVideo();
+      renderPracticeCues();
+    }
     requestAnimationFrame(frame);
   }
 
@@ -1064,13 +1121,16 @@
     const sorted = tracks.slice().sort((a, b) => a.title.localeCompare(b.title));
     sel.innerHTML = sorted.map((t) => '<option value="' + esc(t.id) + '">' + esc(t.title) + '</option>').join('');
     if (current) sel.value = String(current.id);
+    if (!CFG.offline) refreshBuilderTargets();
   }
 
   function selectTrack(id) {
     cancelPendingPedal();
     if (E.playing) stop(false);
     stopTester();
-    current = tracks.find((t) => String(t.id) === String(id)) || tracks[0] || null;
+    const track = tracks.find((t) => String(t.id) === String(id)) || tracks[0] || null;
+    if (!CFG.offline && track !== current) closePracticeVideo();
+    current = track;
     if (current) saveJSON(LS_LAST, current.id);
     selectedIdx = 0;
     tester.idx = 0;
@@ -1079,6 +1139,7 @@
     refreshTrackSelect();
     renderAll();
     renderStageTools();
+    if (!CFG.offline) renderPracticeAvailability();
   }
 
   function addTrack(t) {
@@ -1104,24 +1165,39 @@
   }
 
   // --------------------------------------------------------------- stage tools
-  function renderStageTools() {
+  function renderCueCountIn() {
+    const cue = $('cue-target'), countIn = $('cue-count-in'), figures = $('cue-figure');
+    const section = cue.value === '' ? null : sections()[Number(cue.value)];
+    figures.value = section?.figure ? cue.value : '';
+    countIn.disabled = !section || section.type === 'pause';
+    if (countIn.disabled) countIn.value = '';
+    countIn.options[0].textContent = countIn.disabled ? 'Use section setting'
+      : 'Use section setting (' + section.countIn + ')';
+  }
+
+  function renderStageTools(preferredCue) {
     const filter = $('cue-filter').value.trim().toLowerCase().replace(/^b(?:ar)?\.?\s+(?=\d)/, '');
     const bar = /^\d+$/.test(filter) ? Number(filter) : null;
-    const bars = startBars(sections());
-    const cue = $('cue-target'), previous = cue.value;
+    const secs = sections(), bars = startBars(secs);
+    const cue = $('cue-target'), figures = $('cue-figure');
+    const previous = typeof preferredCue === 'string' ? preferredCue : cue.value;
     cue.replaceChildren();
-    sections().forEach((section, i) => {
-      const label = (bars[i] == null ? 'Cue' : 'b. ' + bars[i]) + ' · ' + sectionTitle(section, i);
+    figures.replaceChildren(new Option('Choose a figure', ''));
+    secs.forEach((section, i) => {
+      const location = (bars[i] == null ? 'Cue' : 'b. ' + bars[i]) + ' · ' + sectionTitle(section, i);
+      const label = section.figure ? figureLabel(section.figure) + ' · ' + location : location;
+      if (section.figure) figures.add(new Option(label, i));
       if (!filter || (bar == null ? label.toLowerCase().includes(filter)
         : bars[i] != null && bar >= bars[i] && bar < bars[i] + section.bars)) {
         cue.add(new Option(label, i));
       }
     });
+    $('cue-figure-field').hidden = figures.options.length < 2;
     if (Array.from(cue.options).some((o) => o.value === previous)) cue.value = previous;
     $('btn-recover-cue').disabled = !cue.options.length;
+    renderCueCountIn();
     const select = $('wav-run'), run = select.value;
     select.replaceChildren();
-    const secs = sections();
     for (let i = 0; i < secs.length;) {
       if (secs[i].type === 'pause' || secs[i].advance !== 'auto') { i++; continue; }
       const first = i++;
@@ -1143,7 +1219,7 @@
       const t = timeline[i];
       const timing = (t.startEstimated ? '≈ ' : '') + timecode(t.start) + ' → '
         + (s.type === 'pause' ? 'cue (unknown)' : (t.endEstimated ? '≈ ' : '') + timecode(t.end));
-      const cells = [sectionTitle(s, i), bars[i] == null ? '—' : bars[i] + (s.bars > 1 ? '–' + (bars[i] + s.bars - 1) : ''),
+      const cells = [(s.figure ? figureLabel(s.figure) + ' · ' : '') + sectionTitle(s, i), bars[i] == null ? '—' : bars[i] + (s.bars > 1 ? '–' + (bars[i] + s.bars - 1) : ''),
         timing, s.type === 'pause' ? '—' : s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd),
         s.type === 'pause' ? 'Wait for cue' : (s.advance === 'manual' ? 'Repeat until pedal' : 'Automatic') + (s.countIn ? ' · ' + s.countIn + ' count-in bars on entry from start/cue' : ''),
         s.notes];
@@ -1157,11 +1233,11 @@
   }
 
   let offlineBusy = false;
-  async function offlineTimeout(operation, message) {
+  async function withTimeout(operation, message, ms = 15000) {
     let timer;
     try {
       return await Promise.race([operation, new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), 15000);
+        timer = setTimeout(() => reject(new Error(message)), ms);
       })]);
     } finally { clearTimeout(timer); }
   }
@@ -1177,10 +1253,10 @@
     } });
     try {
       if (!navigator.serviceWorker || !window.caches) throw new Error('Offline storage needs HTTPS and a supported browser.');
-      const response = await offlineTimeout(fetch(CFG.offlinePage, { cache: 'no-store', credentials: 'omit' }),
+      const response = await withTimeout(fetch(CFG.offlinePage, { cache: 'no-store', credentials: 'omit' }),
         'The offline page did not respond. Check your connection and try again.');
       if (!response.ok || response.headers.get('X-Clicktrack-Offline-Shell') !== '1') throw new Error('The offline page was not returned by the site.');
-      const registration = await offlineTimeout(navigator.serviceWorker.register(CFG.offlineWorker, { scope: CFG.offlinePage }),
+      const registration = await withTimeout(navigator.serviceWorker.register(CFG.offlineWorker, { scope: CFG.offlinePage }),
         'The browser did not register the offline worker. Try again in a normal browser tab.');
       if (registration.active?.state !== 'activated') {
         const worker = registration.installing || registration.waiting || registration.active;
@@ -1412,7 +1488,9 @@
     const btn = (act, label, title, disabled) => '<button class="btn icon' + (act === 'del' ? ' danger' : '') + '" data-act="' + act + '" data-i="' + i + '" title="' + title + '"' + (disabled ? ' disabled' : '') + '>' + label + '</button>';
     const acts = '<div class="acts">' + btn('up', '↑', 'Move up', i === 0) + btn('down', '↓', 'Move down', i === n - 1)
       + btn('dup', '⧉', 'Duplicate') + btn('play', '▶', 'Perform from here') + btn('del', '✕', 'Delete') + '</div>';
-    let f = fld('Type', sel(i, 'type', [['click', 'Click'], ['pause', 'Pause / cue']], s.type));
+    let f = fld('Type', sel(i, 'type', [['click', 'Click'], ['pause', 'Pause / cue']], s.type))
+      + fld('Rehearsal figure', inp(i, 'figure', s.figure, 'type="text" maxlength="32" placeholder="e.g. 6 or A"'))
+      + fld('Streamer and punch at start', '<input type="checkbox" data-f="visualCue" data-i="' + i + '"' + (s.visualCue ? ' checked' : '') + '>');
     if (s.type === 'pause') {
       f += fld('Name', inp(i, 'name', s.name, 'type="text" maxlength="120" placeholder="e.g. Narration"'), true)
         + performanceNotes(i, s);
@@ -1430,6 +1508,7 @@
         + fld('Advance', sel(i, 'advance', [['auto', 'Auto'], ['manual', 'Wait for pedal']], s.advance))
         + fld('Count-in bars', inp(i, 'countIn', s.countIn, 'type="number" min="0" max="8" inputmode="numeric"'))
         + fld('Score bar', inp(i, 'startBar', s.startBar, 'type="number" min="1" max="99999" inputmode="numeric" placeholder="auto"'))
+        + fld('Streamer and punch at automatic end', '<input type="checkbox" data-f="visualEndCue" data-i="' + i + '"' + (s.visualEndCue ? ' checked' : '') + '>')
         + performanceNotes(i, s)
         + '<details class="section-calculator"><summary>Calculate steady tempo from video times</summary>'
         + '<p class="muted small">Uses this section’s Bars, Meter and Beat unit. Applying replaces Tempo and clears End tempo. Start/end are absolute video positions, not timing anchors.</p><div class="sound-fields">'
@@ -1448,7 +1527,16 @@
       + f + '</div>' + acts + '<div class="info" id="info-' + i + '"></div><div class="section-timing" id="timing-' + i + '"></div></div>';
   }
 
+  const firstClickSection = (track) => track?.sections.find((s) => s.type === 'click');
+
+  function renderStartingCountIn() {
+    const section = firstClickSection(current), input = $('track-count-in');
+    input.disabled = !section;
+    input.value = section?.countIn ?? '';
+  }
+
   function renderSections() {
+    renderStartingCountIn();
     const secs = sections();
     $('sections').innerHTML = secs.length
       ? secs.map((s, i) => sectionRow(s, i, secs.length)).join('')
@@ -1496,7 +1584,7 @@
     renderSections();
   }
 
-  const RAW_FIELDS = ['name', 'notes', 'grouping', 'calcStart', 'calcEnd'];
+  const RAW_FIELDS = ['name', 'notes', 'grouping', 'calcStart', 'calcEnd', 'figure'];
   function onFieldInput(e) {
     const el = e.target, f = el.dataset.f;
     if (!f || !current) return;
@@ -1511,12 +1599,13 @@
       markDirty(); renderSections(); renderSetlist(); renderIdle();
       return;
     }
-    const n = normSection(Object.assign({}, s, { [f]: el.value }));
+    const n = normSection(Object.assign({}, s, { [f]: el.type === 'checkbox' ? el.checked : el.value }));
     current.sections[i] = n;
+    if (f === 'countIn' && n === firstClickSection(current)) renderStartingCountIn();
     if (['bpm', 'bpmEnd', 'num', 'den', 'bars', 'beatUnit', 'calcStart', 'calcEnd'].includes(f)) {
       $('calc-result-' + i).textContent = '';
     }
-    if (e.type === 'change' && el.tagName === 'INPUT' && !RAW_FIELDS.includes(f)) el.value = n[f] == null ? '' : n[f];
+    if (e.type === 'change' && el.tagName === 'INPUT' && el.type !== 'checkbox' && !RAW_FIELDS.includes(f)) el.value = n[f] == null ? '' : n[f];
     markDirty();
     updateInfos();
     renderTester();
@@ -1542,7 +1631,7 @@
     if (E.playing) stop(false);
     if (act === 'up' && i > 0) [secs[i - 1], secs[i]] = [secs[i], secs[i - 1]];
     else if (act === 'down' && i < secs.length - 1) [secs[i + 1], secs[i]] = [secs[i], secs[i + 1]];
-    else if (act === 'dup') secs.splice(i + 1, 0, normSection(Object.assign({}, secs[i], { startBar: null })));
+    else if (act === 'dup') secs.splice(i + 1, 0, normSection(Object.assign({}, secs[i], { startBar: null, figure: '', visualCue: false, visualEndCue: false })));
     else if (act === 'del') secs.splice(i, 1);
     selectedIdx = clamp(selectedIdx, 0, Math.max(0, secs.length - 1));
     markDirty(); renderSections(); renderSetlist(); renderIdle();
@@ -1556,7 +1645,7 @@
     const prev = secs.slice().reverse().find((s) => s.type !== 'pause');
     const s = pause
       ? defaultSection({ type: 'pause', name: 'Pause' })
-      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, countIn: 0, bpmEnd: null, calcStart: '', calcEnd: '' }) : { countIn: secs.length ? 0 : 1 });
+      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, figure: '', countIn: 0, bpmEnd: null, calcStart: '', calcEnd: '', visualCue: false, visualEndCue: false }) : { countIn: secs.length ? 0 : 1 });
     secs.push(s);
     markDirty(); renderSections(); renderSetlist(); renderIdle();
     const row = document.querySelector('[data-row="' + (secs.length - 1) + '"]');
@@ -1566,14 +1655,14 @@
   // ------------------------------------------------------------ views & UI
   const builderMarker = (time, previous) => ({
     time, bar: '', num: previous?.num ?? '4', den: previous?.den ?? '4',
-    unit: previous?.unit ?? 'auto', shape: 'steady', bpm: '', dialogue: '',
+    unit: previous?.unit ?? 'auto', shape: 'steady', bpm: '', dialogue: '', figure: '', visualCue: false,
   });
   const builder = {
     url: null, markers: [builderMarker(0)], selected: 0, dirty: false, zoomStart: null,
     youtube: null, draftId: null, draftsBusy: false,
     reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null,
   };
-  const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue'];
+  const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
 
   function youtubeId(value) {
     let url;
@@ -1590,6 +1679,17 @@
   }
 
   let youtubeApi;
+  function youtubeFrame(host, id, title) {
+    const frame = document.createElement('iframe');
+    frame.title = title;
+    frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
+    frame.referrerPolicy = 'strict-origin-when-cross-origin';
+    const params = new URLSearchParams({ enablejsapi: '1', playsinline: '1', origin: window.location.origin });
+    frame.src = 'https://www.youtube-nocookie.com/embed/' + id + '?' + params;
+    host.replaceChildren(frame);
+    return frame;
+  }
+
   function loadYoutubeApi() {
     if (window.YT?.Player) return Promise.resolve(window.YT);
     if (!youtubeApi) {
@@ -1649,6 +1749,7 @@
     builder.localTrack = null;
     builder.zoomStart = null;
     builder.dirty = false;
+    $('builder-count-in').value = '';
     resetVideoReview();
   }
 
@@ -1698,13 +1799,7 @@
     try {
       const yt = await loadYoutubeApi();
       if (builder.youtube !== source) return;
-      const frame = document.createElement('iframe');
-      frame.title = 'YouTube source video';
-      frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
-      frame.referrerPolicy = 'strict-origin-when-cross-origin';
-      const params = new URLSearchParams({ enablejsapi: '1', playsinline: '1', origin: window.location.origin });
-      frame.src = 'https://www.youtube-nocookie.com/embed/' + id + '?' + params;
-      host.replaceChildren(frame);
+      const frame = youtubeFrame(host, id, 'YouTube source video');
       source.timeout = setTimeout(() => fail('The YouTube player did not respond. Reload the video or try a local file.'), 15000);
       source.player = new yt.Player(frame, {
         events: {
@@ -1727,6 +1822,148 @@
     } catch (e) { fail(e.message); }
   }
 
+  let practice = null;
+
+  function clearPracticeCues() {
+    cueRoute++;
+    if (!practice) return;
+    practice.streamer = null;
+    practice.punchUntil = 0;
+  }
+
+  function consumePracticeCue(event, now) {
+    if (event.punch && now - event.time < 0.125) {
+      practice.punchUntil = performance.now() + 125;
+    }
+    if (event.streamerEnd != null && event.cueRoute === cueRoute && now < event.streamerEnd) {
+      practice.streamer = { start: event.time, end: event.streamerEnd };
+    }
+  }
+
+  function renderPracticeCues() {
+    const enabled = $('practice-show-cues').checked;
+    const sweep = practice.streamer, now = ctx?.currentTime ?? 0;
+    const bar = $('practice-streamer');
+    bar.hidden = !enabled || !E.playing || !sweep || now >= sweep.end - 1e-8;
+    if (!bar.hidden) bar.style.left = (100 * clamp((now - sweep.start) / (sweep.end - sweep.start), 0, 1)) + '%';
+    $('practice-punch').hidden = !enabled || !(performance.now() < practice.punchUntil);
+    $('practice-visual-cues').hidden = !enabled;
+  }
+
+  function renderPracticeAvailability() {
+    $('practice-video').hidden = !(current?.videoDraftId || (builder.localTrack === current && builder.url));
+    if ($('practice-video').hidden) closePracticeVideo();
+  }
+
+  function closePracticeVideo() {
+    const source = practice;
+    practice = null;
+    if (source) {
+      clearTimeout(source.timeout);
+      source.media?.pause();
+      source.player?.destroy();
+      $('practice-player').replaceChildren();
+    }
+    $('practice-video').open = false;
+    $('practice-visual-cues').hidden = true;
+    $('practice-resync').disabled = true;
+  }
+
+  function syncPracticeVideo(force = false) {
+    const source = practice;
+    if (!source?.media) return;
+    if (!force && !E.playing && performance.now() < source.punchUntil) {
+      if (!source.holdingEnd) source.media.pause();
+      source.holdingEnd = true;
+      return;
+    }
+    source.holdingEnd = false;
+    const idx = E.playing ? (shown?.secIdx ?? selectedIdx) : selectedIdx;
+    const phase = E.playing ? (shown?.phase ?? 'waiting') : 'stopped';
+    const playing = phase === 'play' && !E.suspended && ctx.currentTime >= clock.start;
+    const positionKey = idx + ':' + phase;
+    const key = positionKey + ':' + playing;
+    if (!force && key === source.syncKey) return;
+    source.syncKey = key;
+    const entering = source.positionKey !== positionKey;
+    if (entering) {
+      source.positionKey = positionKey;
+      source.entry = shown?.time ?? clock.start;
+    }
+    const section = sections()[idx];
+    if (!section) return;
+    if (entering || playing || force) {
+      const start = sectionTimeline()[idx].start;
+      const elapsed = phase === 'play' ? Math.max(0, ctx.currentTime - source.entry) : 0;
+      source.media.seek(start + elapsed);
+    }
+    if (playing) source.media.play();
+    else source.media.pause();
+  }
+
+  async function openPracticeVideo() {
+    const track = current, host = $('practice-player'), status = $('practice-status');
+    const source = { syncKey: null };
+    practice = source;
+    $('practice-sound').checked = false;
+    status.textContent = 'Loading practice video…';
+    const fail = (message) => {
+      if (practice !== source) return;
+      clearTimeout(source.timeout);
+      status.textContent = message;
+    };
+    const ready = (media) => {
+      if (practice !== source) return;
+      clearTimeout(source.timeout);
+      source.media = media;
+      media.mute(!$('practice-sound').checked);
+      $('practice-resync').disabled = false;
+      status.textContent = 'Ready. Use the click track’s Start / Pause controls.';
+      syncPracticeVideo(true);
+      renderPracticeCues();
+    };
+    const blocked = () => fail('Video playback was blocked. Tap Resync to clicks or use the player to allow playback.');
+    try {
+      const local = !track.videoDraftId && builder.localTrack === track && builder.url;
+      $('practice-picture').classList.toggle('local-video', !!local);
+      if (local) {
+        const video = document.createElement('video');
+        video.playsInline = true;
+        video.preload = 'metadata';
+        video.setAttribute('aria-label', 'Practice video');
+        video.addEventListener('loadedmetadata', () => ready({
+          seek: (time) => { video.currentTime = Math.min(time, video.duration); },
+          play: () => { video.play().catch((e) => { if (e.name !== 'AbortError') fail(e.message); }); },
+          pause: () => video.pause(),
+          mute: (muted) => { video.muted = muted; },
+        }), { once: true });
+        video.addEventListener('error', () => fail('Could not play the local practice video.'), { once: true });
+        video.src = builder.url;
+        host.replaceChildren(video);
+        return;
+      }
+      if (!track.videoDraftId) throw new Error('No video is linked to this track.');
+      const draft = await draftRequest('GET', track.videoDraftId);
+      if (practice !== source) return;
+      const yt = await loadYoutubeApi();
+      if (practice !== source) return;
+      const frame = youtubeFrame(host, draft.videoId, 'YouTube practice video');
+      source.timeout = setTimeout(() => fail('The YouTube player did not respond. Close and reopen Practice with video to retry.'), 15000);
+      source.player = new yt.Player(frame, {
+        events: {
+          onReady: ({ target }) => ready({
+            seek: (time) => target.seekTo(time, true),
+            play: () => target.playVideo(),
+            pause: () => target.pauseVideo(),
+            mute: (muted) => muted ? target.mute() : target.unMute(),
+          }),
+          onAutoplayBlocked: blocked,
+          onError: ({ data }) => fail('YouTube could not play this video here (error ' + data + ').'),
+        },
+      });
+    } catch (e) { fail('Could not load the practice video: ' + e.message); }
+  }
+
   function renderDraftControls() {
     const busy = builder.draftsBusy, selected = $('builder-drafts').value;
     const track = builder.returnTrack;
@@ -1735,9 +1972,25 @@
     $('builder-load-youtube').disabled = $('builder-file').disabled = busy;
     $('btn-edit-video').disabled = busy;
     $('builder-create').disabled = busy || !videoReady() || !builder.planValid;
+    $('builder-target-track').disabled = busy;
+    $('builder-overwrite').disabled = $('builder-create').disabled || !builderTargetTrack();
     $('builder-back-to-edit').hidden = !track;
     $('builder-link-draft').hidden = !track || !builder.draftId || track.videoDraftId === builder.draftId;
     $('builder-link-draft').disabled = busy;
+  }
+
+  function builderTargetTrack() {
+    const id = $('builder-target-track').value;
+    return tracks.find((t) => !t._auto && String(t.id) === id);
+  }
+
+  function refreshBuilderTargets(preferred) {
+    const list = $('builder-target-track');
+    const selected = preferred === undefined ? list.value : String(preferred ?? '');
+    const eligible = tracks.filter((t) => !t._auto).sort((a, b) => a.title.localeCompare(b.title));
+    list.replaceChildren(new Option('Choose a track', ''), ...eligible.map((t) => new Option(t.title, t.id)));
+    if (eligible.some((t) => String(t.id) === selected)) list.value = selected;
+    renderDraftControls();
   }
 
   const draftRequest = (method, id, body) => api(method, id ? '/' + id : '', body, CFG.videoDrafts);
@@ -1825,7 +2078,8 @@
         if (!(duration > 0)) throw new Error('The next hit point must have a later video time.');
         if (!Number.isInteger(numerator) || numerator < 1 || numerator > 32) throw new Error('Enter a meter numerator from 1 to 32.');
         const s = defaultSection({
-          name: 'Bar ' + startBar, notes: a.dialogue, startBar, bars, num: numerator,
+          name: 'Bar ' + startBar, notes: a.dialogue, figure: (a.figure || '').trim(), startBar, bars, num: numerator,
+          visualCue: a.visualCue === true, visualEndCue: i === points.length - 2 && b.visualCue === true,
           den: Number(a.den), beatUnit: a.unit, calcStart: markerTime(a.time), calcEnd: markerTime(b.time),
         });
         const average = bars * numerator * unitSeconds(s, 60) * 60 / duration;
@@ -1860,9 +2114,10 @@
       const plan = planVideoTrack();
       for (const { section: s, average } of plan.secs) {
         const li = document.createElement('li');
-        li.textContent = s.name + ' · ' + s.calcStart + ' → ' + s.calcEnd + ' · ' + s.bars + ' bars of '
+        li.textContent = (s.figure ? figureLabel(s.figure) + ' · ' : '') + s.name + ' · ' + s.calcStart + ' → ' + s.calcEnd + ' · ' + s.bars + ' bars of '
           + s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm
           + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd + ' (average ' + average.toFixed(2) + ' BPM)')
+          + (s.visualCue ? ' · Visual cue at start' : '') + (s.visualEndCue ? ' · Visual cue at end' : '')
           + (s.notes ? ' · ' + s.notes : '');
         preview.append(li);
       }
@@ -1876,22 +2131,27 @@
 
   function renderVideoMarkers() {
     const list = $('builder-markers');
-    list.replaceChildren(...builder.markers.map((m, i) => new Option(markerTime(m.time)
+    list.replaceChildren(...builder.markers.map((m, i) => new Option(i + ' · ' + markerTime(m.time)
+      + (m.figure?.trim() ? ' · ' + figureLabel(m.figure.trim()) : '')
+      + (m.visualCue ? ' · Visual cue' : '')
       + (m.bar ? ' · Bar ' + m.bar : i === 0 ? ' · Video start' : ' · Add bar number')
       + (i > 0 && i === builder.markers.length - 1 ? ' · Current closing point' : ''), i)));
     list.value = builder.selected;
   }
 
+  const markerHeading = (index, time) => 'Hit point ' + index + ' at ' + markerTime(time);
+
   function selectVideoMarker(index, seek = false, recenter = true) {
     builder.selected = index;
     const marker = builder.markers[index];
     renderVideoMarkers();
-    $('builder-marker-title').textContent = 'Hit point at ' + markerTime(marker.time);
+    $('builder-marker-title').textContent = markerHeading(index, marker.time);
     $('builder-time').value = markerTime(marker.time);
     $('builder-time').readOnly = index === 0;
     $('builder-remove').disabled = index === 0;
     $('builder-retime').disabled = index === 0 || !videoReady();
-    for (const field of markerFields) $('builder-' + field).value = marker[field];
+    for (const field of markerFields) $('builder-' + field).value = marker[field] ?? '';
+    $('builder-visual-cue').checked = marker.visualCue === true;
     $('builder-bpm-field').hidden = marker.shape === 'steady';
     if (recenter && builder.zoomStart !== null && videoReady()) zoomAroundMarker();
     if (seek && videoReady()) seekBuilderVideo(marker.time);
@@ -1987,7 +2247,7 @@
       }
       button.hidden = marker.time < roundMarkerTime(start) || marker.time > roundMarkerTime(end);
       button.style.left = clamp(100 * (marker.time - start) / (end - start), 0, 100) + '%';
-      button.title = (marker.bar ? 'Bar ' + marker.bar : index ? 'Hit point ' + index : 'Video start') + ' at ' + markerTime(marker.time);
+      button.title = markerHeading(index, marker.time) + (marker.bar ? ' · Bar ' + marker.bar : index ? '' : ' · Video start');
       button.setAttribute('aria-label', button.title);
       button.setAttribute('aria-pressed', String(index === builder.selected));
     });
@@ -2065,7 +2325,7 @@
         Math.max(roundMarkerTime(start), limits[0]), Math.min(roundMarkerTime(end), limits[1]));
       drag.button.style.left = clamp(100 * (time - start) / (end - start), 0, 100) + '%';
       $('builder-time').value = markerTime(time);
-      $('builder-marker-title').textContent = 'Hit point at ' + markerTime(time);
+      $('builder-marker-title').textContent = markerHeading(index, time);
       seekBuilderVideo(time);
       return time;
     }
@@ -2113,8 +2373,20 @@
     $('builder-add').disabled = !videoReady();
     $('builder-retime').disabled = !videoReady() || builder.selected === 0;
     $('builder-play').disabled = !canPlay;
-    $('builder-resume').disabled = !canPlay || !video.paused || video.ended;
     $('builder-play').textContent = video.paused ? 'Play video' : 'Pause video';
+  }
+
+  async function toggleBuilderVideo(resumeOnly = false) {
+    const play = $('builder-play'), media = builderMedia();
+    if (play.disabled) return;
+    if (!media.paused && !resumeOnly) { media.pause(); return; }
+    play.focus();
+    if (!media.paused) return;
+    const anchor = builder.reviewAnchor;
+    resetVideoReview(anchor);
+    if (anchor === null && !media.ended) builder.reviewTime = media.currentTime;
+    try { await media.play(); }
+    catch (e) { $('builder-media-status').textContent = 'Could not play video: ' + e.message; }
   }
 
   function wireVideoBuilder() {
@@ -2125,7 +2397,7 @@
     $('btn-video-track').addEventListener('click', () => {
       builder.returnTrack = null;
       switchView('video');
-      renderDraftControls();
+      refreshBuilderTargets(null);
       if (!builder.draftsBusy) runDraftAction(async () => { await refreshDraftList(); return ''; });
     });
     const link = $('builder-youtube-url'), drafts = $('builder-drafts'), draftStatus = $('builder-draft-status');
@@ -2134,6 +2406,7 @@
       const track = current;
       builder.returnTrack = track;
       switchView('video');
+      refreshBuilderTargets(track.id);
       runDraftAction(async () => {
         await refreshDraftList();
         if (track.videoDraftId) {
@@ -2236,20 +2509,7 @@
     for (const event of ['timeupdate', 'seeking']) video.addEventListener(event, updateVideoPlayhead);
     video.addEventListener('seeking', () => { if (!builder.youtube) builder.reviewTime = null; });
     video.addEventListener('ended', () => { if (!builder.youtube) reviewVideoPlayback(); });
-    const resumeVideo = async () => {
-      const media = builderMedia(), anchor = builder.reviewAnchor;
-      resetVideoReview(anchor);
-      if (anchor === null && !media.ended) builder.reviewTime = media.currentTime;
-      (builder.youtube ? $('builder-play') : video).focus();
-      try { await media.play(); }
-      catch (e) { $('builder-media-status').textContent = 'Could not play video: ' + e.message; }
-    };
-    $('builder-play').addEventListener('click', () => {
-      const media = builderMedia();
-      if (!media.paused) { media.pause(); return; }
-      resumeVideo();
-    });
-    $('builder-resume').addEventListener('click', resumeVideo);
+    $('builder-play').addEventListener('click', () => toggleBuilderVideo());
     $('builder-review').addEventListener('change', () => resetVideoReview());
     $('builder-title').addEventListener('input', () => { builder.dirty = true; });
     $('builder-add').addEventListener('click', addVideoMarker);
@@ -2277,6 +2537,12 @@
         renderVideoPlan();
       });
     }
+    $('builder-visual-cue').addEventListener('change', (e) => {
+      builder.markers[builder.selected].visualCue = e.target.checked;
+      builder.dirty = true;
+      renderVideoMarkers();
+      renderVideoPlan();
+    });
     $('builder-time').addEventListener('change', (e) => {
       const marker = builder.markers[builder.selected];
       const parsed = parseTimecode(e.target.value), time = parsed == null ? null : roundMarkerTime(parsed);
@@ -2296,35 +2562,60 @@
       $('builder-review-status').textContent = 'Hit point removed. Resume video to continue from here.';
       renderVideoPlan();
     });
-    $('builder-create').addEventListener('click', async () => {
+    async function saveVideoTrack(existing = null) {
       if (!videoReady() || builder.draftsBusy) return;
+      const action = existing ? 'save over “' + existing.title + '”' : 'create track';
+      const countIn = $('builder-count-in');
+      if (!countIn.reportValidity()) return;
       try {
         const { offset, secs } = planVideoTrack();
-        const track = makeTrack($('builder-title').value.trim() || 'Click track from video', secs.map((s) => s.section));
-        track.videoOffset = offset;
+        const startingCountIn = countIn.value === '' ? firstClickSection(existing)?.countIn ?? 0 : countIn.valueAsNumber;
+        if (existing && !window.confirm('Replace all sections and the video offset in “' + existing.title
+          + '”? Manual section edits will be replaced; the track title and notes will stay.'
+          + (!builder.youtube && existing.videoDraftId ? ' This also removes the old YouTube draft link.' : ''))) return;
+        let draftId = null;
         if (builder.youtube) {
           builder.draftsBusy = true;
           renderDraftControls();
           setStatus('Saving video draft…');
           if (!(await saveYoutubeDraft())) {
-            toast('The draft changed while saving. Review your edits, then create the track again.');
-            setStatus('Track not created');
+            toast('The draft changed while saving. Review your edits, then try saving the track again.');
+            setStatus('Track not updated');
             return;
           }
-          track.videoDraftId = builder.draftId;
-        } else builder.localTrack = track;
-        addTrack(track);
+          draftId = builder.draftId;
+        }
+        if (existing && !tracks.includes(existing)) throw new Error('The selected track was removed.');
+        const sections = secs.map(({ section }) => section);
+        sections[0].countIn = startingCountIn;
+        const track = existing || makeTrack($('builder-title').value.trim() || 'Click track from video', sections);
+        track.videoOffset = offset;
+        if (existing) track.sections = sections.map(normSection);
+        if (!builder.youtube) builder.localTrack = track;
+        if (existing && (track.videoDraftId ?? null) !== draftId) track._linkDirty = true;
+        track.videoDraftId = draftId;
+        if (existing) {
+          markDirty(track);
+          selectTrack(track.id);
+        } else addTrack(track);
         builder.returnTrack = track;
+        refreshBuilderTargets(track.id);
         if (!builder.youtube) builder.dirty = false;
         if (!$('view-video').hidden) switchView('edit');
-        toast('Created click track from video hit points');
+        toast(existing ? 'Updated “' + track.title + '” from video hit points' : 'Created click track from video hit points');
       } catch (e) {
-        $('builder-result').textContent = 'Could not create track: ' + e.message;
-        setStatus('Track not created');
+        $('builder-result').textContent = 'Could not ' + action + ': ' + e.message;
+        setStatus('Track not updated');
       } finally {
         builder.draftsBusy = false;
         renderDraftControls();
       }
+    }
+    $('builder-create').addEventListener('click', () => saveVideoTrack());
+    $('builder-target-track').addEventListener('change', renderDraftControls);
+    $('builder-overwrite').addEventListener('click', () => {
+      const track = builderTargetTrack();
+      if (track) saveVideoTrack(track);
     });
     window.addEventListener('beforeunload', (e) => {
       if (builder.dirty) { e.preventDefault(); e.returnValue = ''; }
@@ -2336,6 +2627,7 @@
 
   let performanceMode = false, nativeFullscreen = false;
   function setPerformanceMode(on) {
+    if (on && !CFG.offline) closePracticeVideo();
     performanceMode = on;
     document.body.classList.toggle('performance-mode', on);
     $('btn-exit-fullscreen').hidden = !on;
@@ -2387,6 +2679,8 @@
         resetVideoReview();
         builderMedia().pause();
       }
+      if (name !== 'perform') closePracticeVideo();
+      else renderPracticeAvailability();
     }
     $('btn-pedal-setup').hidden = name !== 'edit';
     $('btn-editor-fullscreen').hidden = name !== 'edit';
@@ -2559,12 +2853,20 @@
       return;
     }
     if (!CFG.offline && !$('view-video').hidden) {
-      const playingFromButton = e.target === $('builder-play') && !builderMedia().paused;
-      if (k === ' ' && !e.altKey && !e.ctrlKey && !e.metaKey
-        && (playingFromButton || !e.target.closest?.('input, textarea, select, button, a, [contenteditable]'))
-        && videoReady()) {
+      if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const onBar = e.target === $('builder-bar');
+      const inTransport = $('builder-transport').contains(e.target);
+      const canUseShortcut = inTransport || !e.target.closest?.(
+        'input, textarea, select, button, a, summary, [contenteditable]'
+      );
+      if (k === 'Enter' && (onBar || canUseShortcut)) {
+        e.preventDefault();
+        if (!e.repeat && (!onBar || e.target.reportValidity())) toggleBuilderVideo(onBar);
+      } else if (k === ' ' && canUseShortcut && videoReady()) {
         e.preventDefault();
         if (!e.repeat) addVideoMarker();
+      } else if (k === ' ' && inTransport) {
+        e.preventDefault();
       }
       return;
     }
@@ -2629,6 +2931,14 @@
   function wire() {
     wireAudioOutputs();
     if (!CFG.offline) wireVideoBuilder();
+    if (!CFG.offline) {
+      $('practice-video').addEventListener('toggle', (e) => {
+        if (e.target.open && !practice && !e.target.hidden) openPracticeVideo();
+        else if (!e.target.open && practice) closePracticeVideo();
+      });
+      $('practice-sound').addEventListener('change', (e) => practice?.media?.mute(!e.target.checked));
+      $('practice-resync').addEventListener('click', () => syncPracticeVideo(true));
+    }
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('focus', () => {
       if (document.activeElement === document.body || document.activeElement === $('performance-pedal-capture')) focusPerformancePedal();
@@ -2671,31 +2981,60 @@
         showWake(wakeLock ? 'Screen wake lock active.' : 'Screen wake lock not active. Tap Check screen awake to test.');
       } else if (!E.playing) {
         cancelClicks();
+        $('pre-show-audio').textContent = '';
         releaseWake();
       }
     });
     $('cue-filter').addEventListener('input', renderStageTools);
+    $('cue-figure').addEventListener('change', (e) => {
+      if (!e.target.value) return;
+      $('cue-filter').value = '';
+      renderStageTools(e.target.value);
+    });
+    $('cue-target').addEventListener('change', renderCueCountIn);
     $('btn-recover-cue').addEventListener('click', () => {
       if (transportBusy) { toast('Wait for playback to finish pausing or resuming, then retry.'); return; }
+      if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
       if (!$('cue-target').value) return;
       const idx = Number($('cue-target').value);
+      const countIn = $('cue-count-in');
+      const override = countIn.disabled || countIn.value === '' ? null : Number(countIn.value);
       stop(false);
       selectIdx(idx);
       $('performance-menu').open = false;
-      start(idx);
+      start(idx, override);
+      countIn.value = '';
       focusPerformancePedal();
       window.scrollTo(0, 0);
     });
-    $('btn-test-clicks').addEventListener('click', () => {
+    $('btn-test-clicks').addEventListener('click', async () => {
       if (E.playing || outputBusy) return;
       const status = $('pre-show-audio');
       try {
         stopTester();
         cancelClicks();
-        const audio = ensureAudio();
-        const time = audio.currentTime + 0.1;
+        const revision = audioRevision;
+        if (prefs.volume === 0) {
+          status.textContent = 'App volume is muted. Turn up Volume, then run the test again.';
+          return;
+        }
+        const audio = ensureAudio(false);
+        status.textContent = 'Starting audio…';
+        try {
+          if (audio.state !== 'running') await withTimeout(audio.resume(), 'Audio did not start. Check your audio output and tap to retry.', 4000);
+        } catch (e) {
+          if (revision !== audioRevision) return;
+          throw e;
+        }
+        if (revision !== audioRevision || E.playing || outputBusy) return;
+        if (audio.state !== 'running') throw new Error('Audio is ' + audio.state + '. Check your audio output and retry.');
+        if (prefs.volume === 0) {
+          status.textContent = 'App volume is muted. Turn up Volume, then run the test again.';
+          return;
+        }
+        const time = audio.currentTime + 0.15;
         for (let i = 0; i < 4; i++) playClick(time + i * 0.5, i === 0 ? 3 : 2);
-        status.textContent = prefs.volume === 0 ? 'App volume is muted.' : 'Four clicks scheduled. Confirm that you hear them on your glasses or headphones.';
+        status.textContent = 'Playing four clicks. If you hear nothing, check your device volume and try System default or reconnect your Bluetooth output.';
       } catch (e) {
         status.textContent = 'Could not play test clicks: ' + e.message;
       }
@@ -2779,6 +3118,14 @@
     });
     $('track-title').addEventListener('change', refreshTrackSelect);
     $('track-notes').addEventListener('input', (e) => { if (current) { current.notes = e.target.value.slice(0, 2000); markDirty(); } });
+    $('track-count-in').addEventListener('change', (e) => {
+      const section = firstClickSection(current);
+      if (!section || !e.target.reportValidity()) return;
+      section.countIn = e.target.value === '' ? 0 : e.target.valueAsNumber;
+      renderSections();
+      markDirty();
+      if (!E.playing) renderIdle();
+    });
     $('track-offset').addEventListener('input', (e) => e.target.setCustomValidity(''));
     $('track-offset').addEventListener('change', (e) => {
       const offset = parseTimecode(e.target.value);

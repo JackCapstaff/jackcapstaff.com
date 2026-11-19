@@ -113,6 +113,25 @@
       </div>
     </section>
 
+    {% if not offline %}
+    <details id="practice-video" class="practice-video" hidden>
+      <summary>Practice with video</summary>
+      <div id="practice-picture">
+        <div id="practice-visual-cues" aria-hidden="true" hidden>
+          <span id="practice-streamer" hidden></span><span id="practice-punch" hidden></span>
+        </div>
+        <div id="practice-player"></div>
+      </div>
+      <div class="stage-tool-row">
+        <label><input type="checkbox" id="practice-sound"> Play film audio</label>
+        <label><input type="checkbox" id="practice-show-cues" checked> Show streamers and punches</label>
+        <button type="button" class="btn small" id="practice-resync" disabled>Resync to clicks</button>
+      </div>
+      <p class="muted small">The film follows the click transport and waits through count-ins and cue pauses. YouTube sync is approximate. Film audio uses your system output.</p>
+      <p id="practice-status" class="muted small" role="status"></p>
+    </details>
+    {% endif %}
+
     <section class="transport">
       <button class="btn" id="btn-prev" title="Previous section (at the next barline while playing)">⏮ Prev</button>
       <button class="btn primary huge" id="btn-play" title="Start / pause / resume">▶ Start</button>
@@ -133,14 +152,26 @@
     <details class="performance-menu" id="performance-menu">
       <summary>Performance options</summary>
       <div class="stage-tool-row">
-        <label>Jump to cue or score bar
-          <input type="search" id="cue-filter" placeholder="Filter by name or bar">
+        <label id="cue-figure-field" hidden>Jump to rehearsal figure
+          <select id="cue-figure"><option value="">Choose a figure</option></select>
+        </label>
+        <label>Find cue, figure or score bar
+          <input type="search" id="cue-filter" placeholder="e.g. Cue 8, Figure A or 42">
         </label>
         <label>Section <select id="cue-target"></select></label>
+        <label>Rehearsal count-in
+          <select id="cue-count-in" aria-describedby="cue-count-in-help">
+            <option value="">Use section setting</option>
+            <option value="0">No count-in</option>
+            {% for bars in range(1, 9) %}
+            <option value="{{ bars }}">{{ bars }} {{ 'bar' if bars == 1 else 'bars' }}</option>
+            {% endfor %}
+          </select>
+        </label>
         <button class="btn small" id="btn-recover-cue">Restart from cue</button>
         <button class="btn small" id="btn-exit-fullscreen" hidden>Exit fullscreen</button>
       </div>
-      <p class="muted small">Restart jumps to the start of the chosen section and plays its count-in, if set.</p>
+      <p id="cue-count-in-help" class="muted small">Restart jumps to the start of the chosen section. The rehearsal count-in applies only to this restart and does not change the saved track. Silent cues still wait for the pedal.</p>
       <details id="pre-show">
         <summary>Pre-show check</summary>
         <p class="muted small">Connect your glasses or headphones over Bluetooth first. Select an output, then listen for four clicks on that device. Pedal presses are reported here without changing the track while this check is open.</p>
@@ -213,6 +244,10 @@
       <label>Video offset (seconds or m:ss)
         <input type="text" id="track-offset" maxlength="32" value="0:00.0" placeholder="0:25">
         <span class="muted small">Adds this time to the entire planned timeline. No waiting or video control is added.</span>
+      </label>
+      <label>Starting count-in (bars)
+        <input type="number" id="track-count-in" min="0" max="8" step="1" inputmode="numeric">
+        <span class="muted small">Uses the first click section’s tempo and meter. 0 turns it off.</span>
       </label>
       <div class="muted small" id="track-summary"></div>
     </section>

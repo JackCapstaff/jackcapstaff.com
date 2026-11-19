@@ -147,6 +147,7 @@ class ClickTrackStorageTests(unittest.TestCase):
                 self.assertIn(b"<style>", response.data)
                 self.assertNotIn(b"<script src=", response.data)
                 self.assertNotIn(b'id="view-video"', response.data)
+                self.assertNotIn(b'id="practice-video"', response.data)
                 self.assertIn(b'id="audio-output"', response.data)
                 self.assertNotIn(self.payload["title"].encode(), response.data)
         guest = self.app.test_client()
@@ -162,11 +163,38 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertIn(b'id="view-video"', response.data)
         self.assertIn(b'id="view-edit"', response.data)
         self.assertIn(b'id="builder-video"', response.data)
+        transport = response.data.split(b'id="builder-transport"', 1)[1].split(b"</fieldset>", 1)[0]
+        self.assertIn(b'id="builder-play" aria-keyshortcuts="Enter"', transport)
+        self.assertIn(b'id="builder-add" aria-keyshortcuts="Space"', transport)
+        self.assertNotIn(b'id="builder-resume"', response.data)
         self.assertIn(b'id="builder-timeline-rail"', response.data)
         self.assertIn(b'id="builder-nudge-forward"', response.data)
         self.assertIn(b'id="builder-review" checked', response.data)
         self.assertIn(b'id="builder-retime"', response.data)
         self.assertIn(b'id="btn-edit-video"', response.data)
+        self.assertIn(b'id="builder-target-track"', response.data)
+        self.assertIn(b'id="builder-overwrite"', response.data)
+        self.assertIn(b'id="track-count-in"', response.data)
+        self.assertIn(b'id="builder-count-in"', response.data)
+
+    def test_practice_video_is_separate_from_pre_show_audio_test(self):
+        response = self.client.get("/clicktrack/")
+        self.assertIn(b'id="practice-video"', response.data)
+        self.assertIn(b'id="practice-resync"', response.data)
+        self.assertIn(b'id="practice-show-cues"', response.data)
+        self.assertIn(b'id="builder-visual-cue"', response.data)
+        self.assertIn(b'id="btn-test-clicks"', response.data)
+
+    def test_rehearsal_count_in_available_online_and_offline(self):
+        for path in ("/clicktrack/", "/clicktrack/offline/"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                options = response.data.split(b'id="cue-count-in"', 1)[1].split(b"</select>", 1)[0]
+                self.assertIn(b'<option value="">Use section setting</option>', options)
+                self.assertIn(b'<option value="0">No count-in</option>', options)
+                self.assertIn(b'<option value="1">1 bar</option>', options)
+                self.assertIn(b'<option value="8">8 bars</option>', options)
 
     def test_track_actions_group_creation_json_and_pedal_setup(self):
         response = self.client.get("/clicktrack/")
@@ -192,9 +220,10 @@ class ClickTrackStorageTests(unittest.TestCase):
     def test_youtube_draft_round_trip_across_sessions(self):
         path = "/clicktrack/api/video-drafts"
         marker = {"time": 0, "bar": "", "num": "4", "den": "4", "unit": "auto",
-                  "shape": "steady", "bpm": "", "dialogue": ""}
+                  "shape": "steady", "bpm": "", "dialogue": "", "figure": "", "visualCue": False}
         payload = {"title": "Snowman cues", "videoId": "abcdefghijk",
-                   "markers": [marker, {**marker, "time": 25.123, "bar": "1", "dialogue": "First cue"}]}
+                   "markers": [marker, {**marker, "time": 25.123, "bar": "1", "dialogue": "First cue",
+                                         "figure": "A", "visualCue": True}]}
         saved = self.client.post(path, json=payload)
         self.assertEqual(saved.status_code, 201)
         draft_id = saved.json["id"]
@@ -209,6 +238,29 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertEqual(other_device.put(url, json={**payload, "title": "Revised"}).json["title"], "Revised")
         self.assertEqual(self.client.delete(url).status_code, 200)
         self.assertEqual(other_device.get(url).status_code, 404)
+
+    def test_section_visual_cue_flags_round_trip_and_default_off(self):
+        response = self.client.post("/clicktrack/api/tracks", json={
+            **self.payload,
+            "sections": [{**self.payload["sections"][0], "visualCue": True, "visualEndCue": True},
+                         {"name": "Unmarked"}, {"visualCue": "false", "visualEndCue": 1}],
+        })
+        self.assertEqual(response.status_code, 201)
+        saved = self.client.get("/clicktrack/api/tracks").json["tracks"][0]["sections"]
+        self.assertEqual([(s["visualCue"], s["visualEndCue"]) for s in saved],
+                         [(True, True), (False, False), (False, False)])
+
+    def test_rehearsal_figures_round_trip_without_changing_score_bars(self):
+        path = "/clicktrack/api/tracks"
+        sections = [{**self.payload["sections"][0], "figure": "  6A  ", "startBar": 42},
+                    {"type": "pause", "figure": "B"}, {"name": "Unmarked"}]
+        response = self.client.post(path, json={**self.payload, "sections": sections})
+        self.assertEqual(response.status_code, 201)
+        saved = self.client.get(path).json["tracks"][0]["sections"]
+        self.assertEqual([section["figure"] for section in saved], ["6A", "B", ""])
+        self.assertEqual(saved[0]["startBar"], 42)
+        for page in ("/clicktrack/", "/clicktrack/offline/"):
+            self.assertIn(b'id="cue-figure"', self.client.get(page).data)
 
     def test_drafts_reject_bad_inputs_and_other_accounts(self):
         path = "/clicktrack/api/video-drafts"

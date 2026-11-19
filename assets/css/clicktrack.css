@@ -125,6 +125,7 @@ body.performance-mode .ct-top,
 body.performance-mode .prefs,
 body.performance-mode .setlist,
 body.performance-mode .performance-tools,
+body.performance-mode .practice-video,
 body.performance-mode #btn-tap,
 body.performance-mode #btn-stop:disabled { display: none; }
 body.performance-mode #view-perform { max-width: none; min-height: 100vh; min-height: 100dvh; padding-top: max(8px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
@@ -148,6 +149,17 @@ body.performance-mode .stage-countin .n { font-size: clamp(34px, 8vh, 100px); }
 #view-video label { display: grid; gap: 4px; }
 #builder-video { display: block; width: 100%; max-height: 55vh; background: #000; margin-bottom: 8px; }
 #builder-youtube iframe { display: block; width: 100%; aspect-ratio: 16 / 9; min-height: 200px; border: 0; margin-bottom: 8px; }
+.practice-video { margin: 10px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.practice-video summary { cursor: pointer; }
+#practice-picture { width: min(100%, 560px); margin: 8px auto; position: relative; }
+#practice-player iframe, #practice-player video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; }
+#practice-player iframe { min-height: 200px; }
+#practice-visual-cues { position: relative; height: 28px; background: #141414; overflow: hidden; pointer-events: none; }
+#practice-picture.local-video #practice-visual-cues { position: absolute; inset: 0; height: auto; background: transparent; z-index: 1; }
+#practice-streamer { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #ffd166; box-shadow: 0 0 0 1px #171717; }
+#practice-punch { position: absolute; width: 18px; height: 18px; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: #fff; border: 2px solid #171717; }
+#builder-transport { min-width: 0; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 12px; }
+#builder-shortcuts { margin: 8px 0 0; }
 #builder-timeline { margin: 0 0 12px; }
 .builder-timeline-track { padding: 0 16px; }
 #builder-timeline-rail { position: relative; height: 64px; cursor: crosshair; }

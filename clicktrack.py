@@ -111,6 +111,9 @@ def _clean_section(raw):
         "subVelocity": _clamp_int(raw.get("subVelocity"), 32, 0, 127),
         "countIn": _clamp_int(raw.get("countIn"), 0, 0, 8),
         "startBar": _clamp_int(raw.get("startBar"), None, 1, 99999) if raw.get("startBar") not in (None, "") else None,
+        "figure": _text(raw.get("figure"), 32),
+        "visualCue": raw.get("visualCue") is True,
+        "visualEndCue": raw.get("visualEndCue") is True,
     }
 
 
@@ -254,6 +257,8 @@ def _apply_video_draft(draft, data):
             "time": time, "shape": shape, "unit": unit, "den": den,
             "bar": _text(raw.get("bar"), 32), "num": _text(raw.get("num"), 32),
             "bpm": _text(raw.get("bpm"), 32), "dialogue": _text(raw.get("dialogue"), 500),
+            "figure": _text(raw.get("figure"), 32),
+            "visualCue": raw.get("visualCue") is True,
         })
     draft.video_id = video_id
     draft.title = _text(data.get("title"), 255) or "YouTube video " + video_id

@@ -7,8 +7,10 @@ In the signed-in Click Track page, open **Track actions → New click track from
 video**. The same dropdown has the new track and JSON options, and **Pedal
 setup** when you're in Edit.
 Choose a local MP4, or paste a YouTube video link and select **Load YouTube video**.
-Use **Play video** and press Space or select **Add hit point**. If the embedded
-player has keyboard focus, use the button.
+Use **Play video** or **Enter** to play or pause without changing hit points.
+Press **Space** or select **Add hit point** to mark the current time and pause.
+Type the **Score bar** and press **Enter** to keep it and resume playback.
+If the embedded player has keyboard focus, use the controls below it.
 
 To revise a draft, select a hit point and play from there. **Pause at existing
 hit points** stops playback at the next marker so you can edit, move or remove
@@ -26,6 +28,35 @@ and their drafts stay in the current tab.
 track does not need the video. For YouTube, this also saves and links the draft.
 Open the track's **Edit** tab and choose **Edit with video** to reopen it. For
 older tracks, open the matching saved draft and choose **Link open draft to
-track** once. Editing the draft does not overwrite the finished track. Local
+track** once. Editing or saving the draft does not overwrite the finished
+track. To apply revised hit points, pick an **Existing click track** and
+choose **Save over existing track**. This replaces its sections and video
+offset, keeping its title and track-level notes. Local
 video remains available to revisit only while it is still open in the tab.
 For tighter timing, use a local file rather than relying on YouTube seeking.
+
+Set **Starting count-in (bars)** in Edit, or when creating a track from video.
+When saving over a track, leaving the field blank keeps its current count-in.
+For a one-off rehearsal start, open **Perform → Performance options**, choose
+a section and a **Rehearsal count-in**, then select **Restart from cue**.
+Choose **No count-in** to skip a saved lead-in for that restart.
+
+Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
+Edit, or on the opening video hit point for that section. In **Perform →
+Performance options**, choose **Jump to rehearsal figure**, set the count-in,
+and select **Restart from cue**. The cue search also accepts names such as
+`Figure A`; bare numbers still search score bars.
+
+For rehearsal, open **Perform → Practice with video** on a linked track (or
+with its local video still open in this tab). The film follows click playback,
+holds during count-ins and cue waits, and starts from the selected section.
+Film audio is muted by default. YouTube sync is approximate; use **Resync to
+clicks** after buffering. The offline and fullscreen stage views stay video-free.
+
+Tick **Streamer and punch** on the video hit points that need a visual cue,
+then create or update the click track. You can also mark section boundaries in
+Edit. In **Practice with video**, the streamer starts on the nearest preceding
+barline that gives at least two seconds of warning, using the scheduled tempo,
+meter and ramps. The punch lands on the click cue. If there is not enough
+continuous playback before a cue, only the punch appears. Cues overlay a local
+video and appear in a strip above YouTube, whose sync remains approximate.

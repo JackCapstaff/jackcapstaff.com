@@ -1,7 +1,7 @@
 <main id="view-video" class="view" aria-labelledby="video-builder-title" hidden>
   <h1 id="video-builder-title">New click track from video</h1>
   <button type="button" class="btn small" id="builder-back-to-edit" hidden>Back to track editor</button>
-  <p>Choose a local video or load a YouTube link. Use <strong>Play video</strong>, then press <kbd>Space</kbd> to pause and mark a hit point, or tap <strong>Add hit point</strong>. If focus is inside the YouTube player, use the Add hit point button instead.</p>
+  <p>Choose a local video or load a YouTube link. Use the controls below the video to play, pause, or add a hit point. If focus is inside the YouTube player, use the buttons outside it instead.</p>
   <p class="muted small">Local files are not uploaded and their drafts stay in this tab. Choose <strong>Save YouTube draft</strong> to save the link and hit points to your account. YouTube needs an internet connection and a video that allows embedding; seeking is not frame-accurate.</p>
   <div class="video-builder-meta">
     <label>Video file <input id="builder-file" type="file" accept="video/*,.mp4,.mov,.webm,.m4v"></label>
@@ -23,6 +23,14 @@
     <section aria-label="Video player">
       <video id="builder-video" controls playsinline preload="metadata" tabindex="0" aria-label="Source video"></video>
       <div id="builder-youtube" hidden></div>
+      <fieldset id="builder-transport" aria-describedby="builder-shortcuts">
+        <legend>Video controls</legend>
+        <div class="stage-tool-row">
+          <button type="button" class="btn primary" id="builder-play" aria-keyshortcuts="Enter" disabled>Play video</button>
+          <button type="button" class="btn" id="builder-add" aria-keyshortcuts="Space" disabled>Add hit point</button>
+        </div>
+        <p id="builder-shortcuts" class="muted small"><kbd>Space</kbd> adds a hit point and pauses. <kbd>Enter</kbd> plays or pauses without changing any hit points. In <strong>Score bar</strong>, <kbd>Enter</kbd> keeps the bar number and resumes playback.</p>
+      </fieldset>
       <div id="builder-timeline" hidden>
         <div class="stage-tool-row">
           <strong>Hit point timeline</strong>
@@ -43,10 +51,6 @@
           <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later">+0.1 s</button>
         </div>
       </div>
-      <div class="stage-tool-row">
-        <button class="btn primary" id="builder-play" disabled>Play video</button>
-        <button class="btn" id="builder-add" title="Pause and mark the video (Space)" disabled>Add hit point</button>
-      </div>
       <label><input type="checkbox" id="builder-review" checked> Pause at existing hit points</label>
       <p class="muted small">Select a hit point to jump there, then play to review the next one. Use the timeline to find a new time, then choose <strong>Move hit point to playhead</strong> to replace its time without changing its details.</p>
       <p id="builder-review-status" class="muted small" role="status"></p>
@@ -58,6 +62,8 @@
         <div class="video-builder-fields">
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
           <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
+          <label>Rehearsal figure <input id="builder-figure" type="text" maxlength="32" placeholder="e.g. 6 or A"></label>
+          <label><span><input id="builder-visual-cue" type="checkbox"> Streamer and punch</span></label>
           <label>Meter numerator <input id="builder-num" type="number" min="1" max="32" step="1"></label>
           <label>Meter denominator <select id="builder-den"></select></label>
           <label>Beat unit <select id="builder-unit"></select></label>
@@ -70,7 +76,6 @@
           <label class="builder-dialogue">On-screen dialogue / cue <textarea id="builder-dialogue" rows="2" maxlength="500"></textarea></label>
         </div>
         <div class="stage-tool-row">
-          <button class="btn small primary" id="builder-resume" disabled>Resume video</button>
           <button class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           <button class="btn small danger" id="builder-remove">Remove hit point</button>
         </div>
@@ -82,7 +87,17 @@
     <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. The final hit point only closes the last span: it needs a time and the next bar number. A ramp can use the previous span’s ending tempo; enter a starting BPM if it’s the first span or you want a different starting tempo.</p>
     <p id="builder-result" role="status"></p>
     <ol id="builder-preview"></ol>
+    <label>Starting count-in (bars)
+      <input type="number" id="builder-count-in" min="0" max="8" step="1" inputmode="numeric">
+      <span class="muted small">Leave blank to keep an existing track’s count-in, or start without one on a new track.</span>
+    </label>
     <button type="button" class="btn" id="builder-save-draft" disabled>Save YouTube draft</button>
     <button class="btn primary" id="builder-create" disabled>Create click track</button>
+    <div class="stage-tool-row">
+      <label>Existing click track <select id="builder-target-track">
+        <option value="">Choose a track</option>
+      </select></label>
+      <button type="button" class="btn danger" id="builder-overwrite" disabled>Save over existing track</button>
+    </div>
   </section>
 </main>
