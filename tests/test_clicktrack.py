@@ -256,6 +256,24 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertEqual([(s["visualCue"], s["visualEndCue"]) for s in saved],
                          [(True, True), (False, False), (False, False)])
 
+    def test_video_draft_hit_point_numbers_are_independent_of_time_and_bar(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"den": "4", "unit": "auto", "shape": "steady"}
+        points = [{**marker, "time": t, "bar": bar, "label": label} for t, bar, label in (
+            (0, "", "0"), (30, "42", "16"), (32.125, "43", " 16a "), (34, "44", "17")
+        )]
+        payload = {"videoId": "abcdefghijk", "markers": points}
+        saved = self.client.post(path, json=payload)
+        self.assertEqual(saved.status_code, 201)
+        url = f"{path}/{saved.json['id']}"
+        self.assertEqual([(m["label"], m["time"], m["bar"]) for m in self.client.get(url).json["markers"]],
+                         [("0", 0, ""), ("16", 30, "42"), ("16A", 32.125, "43"), ("17", 34, "44")])
+        for invalid in ("16.", "16", 16):
+            with self.subTest(label=invalid):
+                points[2]["label"] = invalid
+                self.assertEqual(self.client.put(url, json=payload).status_code, 400)
+        self.assertEqual(self.client.get(url).json["markers"][2]["label"], "16A")
+
     def test_rehearsal_figures_round_trip_without_changing_score_bars(self):
         path = "/clicktrack/api/tracks"
         sections = [{**self.payload["sections"][0], "figure": "  6A  ", "startBar": 42},

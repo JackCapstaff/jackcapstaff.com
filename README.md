@@ -14,7 +14,14 @@ If the embedded player has keyboard focus, use the controls below it.
 
 To revise a draft, select a hit point and play from there. **Pause at existing
 hit points** stops playback at the next marker so you can edit, move or remove
-it. Add new hit points between stops as usual. To replace a marker's time
+it. Add new hit points between stops as usual. Inserting a point between
+16 and 17 suggests **16A** without renumbering either neighbour. To shift the
+labels of later points, tick **Renumber following hit points** before editing
+**Hit point number**. Changing **13** to **12A** then shifts **14** to **13**,
+**15** to **14**, and so on, keeping any letter suffixes on the later points.
+With the option off, only the selected point changes. Neither mode changes
+score bars or timestamps. Labels are kept when you save a YouTube draft.
+To replace a marker's time
 without changing its details, select it, seek to the new time on the timeline
 and choose **Move hit point to playhead**.
 

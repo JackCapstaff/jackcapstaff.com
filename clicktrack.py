@@ -238,6 +238,7 @@ def _apply_video_draft(draft, data):
     if not isinstance(markers, list) or not 1 <= len(markers) <= MAX_SECTIONS + 2:
         abort(400, description="A draft must have between 1 and 502 hit points.")
     cleaned = []
+    labels = set()
     for raw in markers:
         if not isinstance(raw, dict):
             abort(400, description="Invalid hit point.")
@@ -260,6 +261,15 @@ def _apply_video_draft(draft, data):
             "figure": _text(raw.get("figure"), 32),
             "visualCue": raw.get("visualCue") is True,
         })
+        if "label" in raw:
+            label = raw["label"]
+            if not isinstance(label, str) or not re.fullmatch(r"[0-9]{1,9}[A-Za-z]{0,8}", label.strip()):
+                abort(400, description="Enter a hit point number, optionally followed by letters (e.g. 16A).")
+            label = label.strip().upper()
+            if label in labels:
+                abort(400, description="Hit point numbers must be unique.")
+            labels.add(label)
+            cleaned[-1]["label"] = label
     draft.video_id = video_id
     draft.title = _text(data.get("title"), 255) or "YouTube video " + video_id
     draft.markers = cleaned

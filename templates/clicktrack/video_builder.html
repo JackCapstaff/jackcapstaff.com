@@ -59,7 +59,10 @@
       <label>Hit points <select id="builder-markers" size="5"></select></label>
       <fieldset id="builder-marker">
         <legend id="builder-marker-title">Hit point details</legend>
+        <label><span><input id="builder-renumber-following" type="checkbox" aria-describedby="builder-renumber-help"> Renumber following hit points</span></label>
+        <p id="builder-renumber-help" class="muted small">Tick before editing the number. For example, changing 13 to 12A shifts 14 to 13, 15 to 14, and so on.</p>
         <div class="video-builder-fields">
+          <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
           <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
           <label>Rehearsal figure <input id="builder-figure" type="text" maxlength="32" placeholder="e.g. 6 or A"></label>

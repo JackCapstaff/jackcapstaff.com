@@ -1716,7 +1716,7 @@
 
   // ------------------------------------------------------------ views & UI
   const builderMarker = (time, previous) => ({
-    time, bar: '', num: previous?.num ?? '4', den: previous?.den ?? '4',
+    time, label: time === 0 ? '0' : '', bar: '', num: previous?.num ?? '4', den: previous?.den ?? '4',
     unit: previous?.unit ?? 'auto', shape: 'steady', bpm: '', dialogue: '', figure: '', visualCue: false,
   });
   const builder = {
@@ -1725,6 +1725,58 @@
     reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null,
   };
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
+
+  function nextMarkerNumber(used, start) {
+    let number = start;
+    while (number > 999999999 || used.has(String(number))) {
+      number = number >= 999999999 ? 1 : number + 1;
+    }
+    return String(number);
+  }
+
+  function numberDraftMarkers(markers) {
+    const used = new Set(markers.map((m) => m.label).filter(Boolean));
+    return markers.map((m, i) => {
+      const label = m.label || nextMarkerNumber(used, i);
+      used.add(label);
+      return { ...m, label };
+    });
+  }
+
+  function newMarkerLabel(index) {
+    const used = new Set(builder.markers.map((m) => m.label));
+    const base = builder.markers[index - 1].label.match(/^\d+/)[0];
+    if (index === builder.markers.length) {
+      return nextMarkerNumber(used, Number(base) + 1);
+    }
+    // At most 502 markers, so two suffix letters suffice.
+    for (let i = 0; ; i++) {
+      const letter = (n) => String.fromCharCode(65 + n);
+      const label = base + (i < 26 ? '' : letter(Math.floor(i / 26) - 1)) + letter(i % 26);
+      if (!used.has(label)) return label;
+    }
+  }
+
+  function planMarkerRenumber(markers, selected, label, ripple) {
+    const numberOf = (value) => Number(value.match(/^\d+/)[0]);
+    const shift = numberOf(label) - numberOf(markers[selected].label);
+    const labels = markers.map((marker, index) => {
+      if (index === selected) return label;
+      if (!ripple || !shift || index < selected) return marker.label;
+      const [, digits, suffix] = marker.label.match(/^(\d+)([A-Z]*)$/);
+      const number = Number(digits) + shift;
+      if (number < 1 || number > 999999999) {
+        throw new Error('Renumbering would put a following hit point outside the range 1 to 999999999.');
+      }
+      return String(number).padStart(digits.startsWith('0') ? digits.length : 0, '0') + suffix;
+    });
+    const used = new Set();
+    for (const value of labels) {
+      if (used.has(value)) throw new Error('Hit point number ' + value + ' would be used twice. No numbers were changed.');
+      used.add(value);
+    }
+    return labels;
+  }
 
   function youtubeId(value) {
     let url;
@@ -1820,7 +1872,7 @@
     const source = { id, ready: false, error: false };
     builder.youtube = source;
     builder.draftId = draft?.id ?? null;
-    builder.markers = draft?.markers ?? [builderMarker(0)];
+    builder.markers = draft ? numberDraftMarkers(draft.markers) : [builderMarker(0)];
     $('builder-title').value = draft?.title ?? 'YouTube video ' + id;
     $('builder-youtube-url').value = 'https://youtu.be/' + id;
     $('builder-video').hidden = true;
@@ -2219,7 +2271,7 @@
 
   function renderVideoMarkers() {
     const list = $('builder-markers');
-    list.replaceChildren(...builder.markers.map((m, i) => new Option(i + ' · ' + markerTime(m.time)
+    list.replaceChildren(...builder.markers.map((m, i) => new Option(m.label + ' · ' + markerTime(m.time)
       + (m.figure?.trim() ? ' · ' + figureLabel(m.figure.trim()) : '')
       + (m.visualCue ? ' · Visual cue' : '')
       + (m.bar ? ' · Bar ' + m.bar : i === 0 ? ' · Video start' : ' · Add bar number')
@@ -2227,13 +2279,19 @@
     list.value = builder.selected;
   }
 
-  const markerHeading = (index, time) => 'Hit point ' + index + ' at ' + markerTime(time);
+  const markerHeading = (marker, time = marker.time) => 'Hit point ' + marker.label + ' at ' + markerTime(time);
+
+  function renderSelectedMarkerHeading() {
+    const marker = builder.markers[builder.selected];
+    $('builder-marker-title').textContent = markerHeading(marker);
+    $('builder-marker-label').value = marker.label;
+  }
 
   function selectVideoMarker(index, seek = false, recenter = true) {
     builder.selected = index;
     const marker = builder.markers[index];
     renderVideoMarkers();
-    $('builder-marker-title').textContent = markerHeading(index, marker.time);
+    renderSelectedMarkerHeading();
     $('builder-time').value = markerTime(marker.time);
     $('builder-time').readOnly = index === 0;
     $('builder-remove').disabled = index === 0;
@@ -2283,7 +2341,7 @@
     if (index < 0) return;
     const marker = builder.markers[index];
     selectVideoMarker(index, true);
-    $('builder-review-status').textContent = 'Paused at ' + markerTime(marker.time)
+    $('builder-review-status').textContent = 'Paused at hit point ' + marker.label + ' at ' + markerTime(marker.time)
       + (marker.bar ? ' (bar ' + marker.bar + ')' : '') + '. Edit the hit point or resume.';
   }
 
@@ -2335,7 +2393,7 @@
       }
       button.hidden = marker.time < roundMarkerTime(start) || marker.time > roundMarkerTime(end);
       button.style.left = clamp(100 * (marker.time - start) / (end - start), 0, 100) + '%';
-      button.title = markerHeading(index, marker.time) + (marker.bar ? ' · Bar ' + marker.bar : index ? '' : ' · Video start');
+      button.title = markerHeading(marker) + (marker.bar ? ' · Bar ' + marker.bar : index ? '' : ' · Video start');
       button.setAttribute('aria-label', button.title);
       button.setAttribute('aria-pressed', String(index === builder.selected));
     });
@@ -2413,7 +2471,7 @@
         Math.max(roundMarkerTime(start), limits[0]), Math.min(roundMarkerTime(end), limits[1]));
       drag.button.style.left = clamp(100 * (time - start) / (end - start), 0, 100) + '%';
       $('builder-time').value = markerTime(time);
-      $('builder-marker-title').textContent = markerHeading(index, time);
+      $('builder-marker-title').textContent = markerHeading(drag.marker, time);
       seekBuilderVideo(time);
       return time;
     }
@@ -2448,7 +2506,9 @@
       index = builder.markers.findIndex((marker) => marker.time > time);
       if (index < 0) index = builder.markers.length;
       if (builder.markers.length === 501 && builder.markers[0].bar !== '') { toast('A track can have at most 500 sections.'); return; }
-      builder.markers.splice(index, 0, builderMarker(time, builder.markers[index - 1]));
+      const marker = builderMarker(time, builder.markers[index - 1]);
+      marker.label = newMarkerLabel(index);
+      builder.markers.splice(index, 0, marker);
       builder.dirty = true;
     }
     selectVideoMarker(index);
@@ -2617,6 +2677,35 @@
         : 'Seek to a different time first, or drag the hit point on the timeline.';
     });
     $('builder-markers').addEventListener('change', (e) => selectVideoMarker(Number(e.target.value), true));
+    $('builder-marker-label').addEventListener('change', (e) => {
+      const selected = builder.selected;
+      const marker = builder.markers[selected];
+      const label = e.target.value.trim().toUpperCase();
+      if (!/^[0-9]{1,9}[A-Z]{0,8}$/.test(label)) {
+        e.target.value = marker.label;
+        toast('Enter a hit point number, optionally followed by letters (e.g. 16A).');
+        return;
+      }
+      let labels;
+      try {
+        labels = planMarkerRenumber(builder.markers, selected, label, $('builder-renumber-following').checked);
+      } catch (error) {
+        e.target.value = marker.label;
+        toast(error.message);
+        return;
+      }
+      let following = 0;
+      builder.markers.forEach((point, index) => {
+        if (point.label === labels[index]) return;
+        point.label = labels[index];
+        builder.dirty = true;
+        if (index > selected) following++;
+      });
+      renderSelectedMarkerHeading();
+      renderVideoMarkers();
+      renderVideoTimeline();
+      if (following) toast('Renumbered ' + following + ' following hit point' + (following === 1 ? '.' : 's.'));
+    });
     for (const field of markerFields) {
       $('builder-' + field).addEventListener('change', (e) => {
         builder.markers[builder.selected][field] = e.target.value;
