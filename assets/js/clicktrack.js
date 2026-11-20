@@ -452,7 +452,7 @@
 
   // ----------------------------------------------------------------- engine
   // phase: stopped | countin | play | pause | end. bar/tick/sub describe the *next* step to schedule.
-  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0 };
+  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0, filmCountIn: false };
   const clock = { start: 0, elapsed: 0, videoStart: 0 };
   let transportBusy = false;
   const visQ = [];
@@ -505,6 +505,7 @@
     visQ.push(Object.assign({
       type, time: E.nextTime, secIdx: E.secIdx, phase: E.phase, bar: E.bar, tick: E.tick, sub: E.sub, queued: E.queued, countIn: E.countIn,
       phaseStart: E.phaseStart,
+      filmCountIn: E.filmCountIn,
     }, extra || {}));
   }
 
@@ -512,6 +513,7 @@
     const secs = sections();
     E.phaseStart = E.nextTime;
     E.bar = 0; E.tick = 0; E.sub = 0; E.countIn = 0;
+    E.filmCountIn = false;
     if (idx < 0 || idx >= secs.length) { E.phase = 'end'; pushVis('end'); return; }
     E.secIdx = idx;
     const s = secs[idx];
@@ -522,6 +524,25 @@
   }
 
   const countInSeconds = (section, bars) => bars * section.num * unitSeconds(section, section.bpm);
+
+  function filmCountIn(s, cueTime) {
+    const unit = unitSeconds(s, s.bpm);
+    const bar = s.num * unit;
+    const fullBars = Math.floor((cueTime + 1e-8) / bar);
+    const remainder = cueTime - fullBars * bar;
+    // Work back from the downbeat, including any beat boundaries in a partial bar.
+    let tick = s.num;
+    const levels = unitLevels(s);
+    for (let i = s.num - 1; i >= 0; i--) {
+      if ((s.num - i) * unit > remainder + 1e-8) break;
+      if (levels[i] >= 2) tick = i;
+    }
+    return {
+      bars: fullBars + (tick < s.num ? 1 : 0),
+      tick: tick % s.num,
+      lead: fullBars * bar + (s.num - tick) * unit,
+    };
+  }
 
   function scheduler() {
     if (tester.running) { scheduleTester(); return; }
@@ -545,7 +566,9 @@
     const punch = downbeat && cueOnEntry;
     if (downbeat) cueOnEntry = false;
     const lead = downbeat && practice?.media && E.queued == null ? streamerLead(sections(), E.secIdx, E.bar) : null;
-    pushVis('tick', { level, bpm, punch, streamerEnd: lead === null ? null : E.nextTime + lead, cueRoute });
+    const beatsLeft = counting && E.filmCountIn
+      ? (E.countIn - E.bar) * groupsOf(s).length - groupIndexOf(s, E.tick) : null;
+    pushVis('tick', { level, bpm, punch, beatsLeft, streamerEnd: lead === null ? null : E.nextTime + lead, cueRoute });
     E.nextTime += unitSeconds(s, bpm) / subN;
 
     if (++E.sub < subN) return;
@@ -566,6 +589,7 @@
         E.phase = 'play';
         E.phaseStart = E.nextTime;
         E.bar = 0;
+        E.filmCountIn = false;
       }
     } else if (E.bar >= s.bars && s.advance === 'auto') {
       if (s.visualEndCue) pushVis('visual-hit', { punch: true });
@@ -573,7 +597,7 @@
     }
   }
 
-  function start(fromIdx, countInOverride = null) {
+  function start(fromIdx, countInOverride = null, fromVideoBeginning = false) {
     if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
     if (!sections().length) return;
     stopTester();
@@ -585,18 +609,41 @@
     E.playing = true;
     E.suspended = false;
     E.queued = null;
-    E.nextTime = ctx.currentTime + 0.1;
-    enterSection(clamp(fromIdx, 0, sections().length - 1), false, countInOverride);
-    const s = sections()[E.secIdx];
-    clock.start = E.nextTime + countInSeconds(s, E.countIn);
+    const idx = clamp(fromIdx, 0, sections().length - 1);
+    const s = sections()[idx];
+    const videoStart = ctx.currentTime + 0.1;
+    const cueTime = sectionTimeline()[idx].start;
+    const film = fromVideoBeginning && s.type !== 'pause' ? filmCountIn(s, cueTime) : null;
+    const countIn = film?.bars ?? (s.type === 'pause' ? 0 : countInOverride ?? s.countIn);
+    const lead = film?.lead ?? countInSeconds(s, countIn);
+    const intro = fromVideoBeginning ? Math.max(0, cueTime - lead) : 0;
+    if (intro > 0) {
+      E.nextTime = videoStart;
+      pushVis('state', {
+        secIdx: idx, phase: 'intro', phaseStart: videoStart, introEnd: videoStart + intro, bar: 0, tick: -1, sub: 0,
+      });
+    }
+    E.nextTime = videoStart + intro;
+    enterSection(idx, false, film?.bars ?? countInOverride);
+    if (film?.bars) {
+      E.filmCountIn = true;
+      E.tick = film.tick;
+    }
+    clock.start = E.nextTime + lead;
     clock.elapsed = 0;
-    clock.videoStart = sectionTimeline()[E.secIdx].start;
+    clock.videoStart = cueTime;
+    if (fromVideoBeginning && practice?.media && s.visualCue && cueTime >= STREAMER_LEAD) {
+      const bar = countInSeconds(s, 1);
+      const bars = Math.ceil((STREAMER_LEAD - 1e-8) / bar);
+      const warning = bars <= countIn && bars * bar <= cueTime ? bars * bar : STREAMER_LEAD;
+      practice.openingStreamer = { start: clock.start - warning, end: clock.start };
+    }
     shown = null;
     timerStart();
     requestWake();
     scheduler();
     renderTransport();
-    if (E.phase === 'pause') renderStage({ secIdx: E.secIdx, phase: 'pause', bar: 0, tick: 0, sub: 0, queued: null });
+    if (E.phase === 'pause' && !intro) renderStage({ secIdx: E.secIdx, phase: 'pause', bar: 0, tick: 0, sub: 0, queued: null });
   }
 
   function stop(reachedEnd) {
@@ -691,6 +738,7 @@
   }
 
   function leaveCue(idx) {
+    if (ctx.currentTime < E.phaseStart) return;
     E.queued = null;
     E.nextTime = Math.max(ctx.currentTime + 0.06, E.nextTime);
     enterSection(idx, false);
@@ -845,8 +893,9 @@
     const ci = $('d-countin');
     if (st.phase === 'countin') {
       ci.hidden = false;
-      ci.innerHTML = '<div class="n">' + (groupIndexOf(s, st.tick) + 1) + '</div><div class="t">Count-in'
-        + (st.countIn > 1 ? ' · bar ' + (st.bar + 1) + ' of ' + st.countIn : '') + '</div>';
+      ci.innerHTML = '<div class="n">' + (st.filmCountIn ? '−' + st.beatsLeft : groupIndexOf(s, st.tick) + 1)
+        + '</div><div class="t">' + (st.filmCountIn ? 'Beats to bar ' + sb[st.secIdx]
+          : 'Count-in' + (st.countIn > 1 ? ' · bar ' + (st.bar + 1) + ' of ' + st.countIn : '')) + '</div>';
     } else {
       ci.hidden = true;
     }
@@ -894,10 +943,13 @@
     let text = '', cls = '';
     if (!s) text = '';
     else if (!E.playing) text = 'Press Start, Next or the pedal to begin';
+    else if (st.phase === 'intro') { text = 'Film intro — waiting for the clicks'; cls = 'waiting'; }
     else if (st.phase === 'pause') { text = 'Waiting — press Next / pedal for ' + title; cls = 'waiting'; }
     else if (st.phase === 'countin') {
       const left = st.countIn - st.bar;
-      text = 'Count-in: ' + left + ' bar' + (left === 1 ? '' : 's') + ' left before ' + sectionTitle(s, st.secIdx)
+      const units = st.filmCountIn ? st.beatsLeft + (st.beatsLeft === 1 ? ' beat' : ' beats')
+        : left + ' bar' + (left === 1 ? '' : 's');
+      text = 'Count-in: ' + units + ' left before ' + sectionTitle(s, st.secIdx)
         + ' · score bar ' + sb[st.secIdx] + (queued != null ? ' · next jump queued' : '');
     }
     else if (s.advance === 'manual' && queued == null) { text = 'Repeating — press Next / pedal for ' + title; cls = 'waiting'; }
@@ -956,7 +1008,8 @@
     $('d-elapsed').textContent = timecode(elapsed);
     $('d-video-time').textContent = timecode(videoTime);
     $('d-clock-status').textContent = E.suspended ? 'Paused — clock frozen'
-      : E.playing ? (ctx.currentTime < clock.start ? 'Count-in — clock starts with music' : 'Running (cue waits included)')
+      : E.playing ? (shown?.phase === 'intro' ? 'Film intro — clicks have not started'
+        : ctx.currentTime < clock.start ? 'Count-in — clock starts with music' : 'Running (cue waits included)')
         : practice?.media ? 'Practice video follows the selected section' : 'Starts from selected section; video time is not linked to a video player';
   }
 
@@ -1837,6 +1890,7 @@
     cueRoute++;
     if (!practice) return;
     practice.streamer = null;
+    practice.openingStreamer = null;
     practice.punchUntil = 0;
   }
 
@@ -1851,7 +1905,9 @@
 
   function renderPracticeCues() {
     const enabled = $('practice-show-cues').checked;
-    const sweep = practice.streamer, now = ctx?.currentTime ?? 0;
+    const now = ctx?.currentTime ?? 0;
+    const opening = practice.openingStreamer;
+    const sweep = opening && now >= opening.start && now < opening.end ? opening : practice.streamer;
     const bar = $('practice-streamer');
     bar.hidden = !enabled || !E.playing || !sweep || now >= sweep.end - 1e-8;
     if (!bar.hidden) bar.style.left = (100 * clamp((now - sweep.start) / (sweep.end - sweep.start), 0, 1)) + '%';
@@ -1879,9 +1935,12 @@
       source.player?.destroy();
       $('practice-player').replaceChildren();
     }
-    $('practice-video').open = false;
+    $('practice-enable').checked = false;
+    $('practice-video').hidden = true;
+    $('perform-layout').classList.remove('with-video');
     $('practice-visual-cues').hidden = true;
     $('practice-resync').disabled = true;
+    $('practice-from-start').disabled = true;
   }
 
   function syncPracticeVideo(force = false) {
@@ -1895,19 +1954,21 @@
     source.holdingEnd = false;
     const idx = E.playing ? (shown?.secIdx ?? selectedIdx) : selectedIdx;
     const phase = E.playing ? (shown?.phase ?? 'waiting') : 'stopped';
-    const rolling = phase === 'play' || phase === 'countin';
+    const rolling = phase === 'play' || phase === 'countin' || phase === 'intro';
     const section = sections()[idx];
     if (!section) return;
     const entry = E.playing ? shown?.phaseStart : null;
     const positionKey = idx + ':' + phase + ':' + entry;
     const entering = source.positionKey !== positionKey;
-    const previousDownbeat = source.downbeat;
+    const previousBoundary = source.rollUntil;
     if (entering || force) {
       source.positionKey = positionKey;
       const start = sectionTimeline()[idx].start;
-      const preRoll = phase === 'countin' ? countInSeconds(section, shown.countIn) : 0;
-      source.cueTime = start - preRoll;
-      source.downbeat = phase === 'countin' ? entry + preRoll : null;
+      const preRoll = phase === 'countin'
+        ? shown.filmCountIn ? clock.start - entry : countInSeconds(section, shown.countIn) : 0;
+      source.cueTime = phase === 'intro' ? 0 : start - preRoll;
+      source.rollUntil = phase === 'intro' ? shown.introEnd
+        : phase === 'countin' ? entry + preRoll : null;
     }
     const expected = source.cueTime + (rolling ? Math.max(0, ctx.currentTime - entry) : 0);
     const playing = rolling && !E.suspended && expected >= -1e-8;
@@ -1915,16 +1976,13 @@
     const key = positionKey + ':' + playing;
     if (!force && key === source.syncKey) return;
     source.syncKey = key;
-    // Keep rolling across the downbeat when the count-in already brought the
-    // film to this section; a fresh seek here would interrupt playback.
-    const continuous = entering && source.phase === 'countin' && phase === 'play'
-      && source.sectionIdx === idx && playing && source.playing
-      && Math.abs(entry - previousDownbeat) < 1e-8;
-    source.phase = phase;
+    // Avoid a seek at a scheduled intro/count-in handoff.
+    const continuous = entering && previousBoundary != null && source.sectionIdx === idx
+      && playing && source.playing && Math.abs(entry - previousBoundary) < 1e-8;
     source.sectionIdx = idx;
     source.playing = playing;
     if (continuous && !force) return;
-    if (entering || playing || force) source.media.seek(source.videoTime);
+    if (phase !== 'waiting' && (entering || playing || force)) source.media.seek(source.videoTime);
     if (playing) source.media.play();
     else source.media.pause();
   }
@@ -1946,6 +2004,7 @@
       source.media = media;
       media.mute(!$('practice-sound').checked);
       $('practice-resync').disabled = false;
+      $('practice-from-start').disabled = !sections().length;
       status.textContent = 'Ready. Use the click track’s Start / Pause controls.';
       syncPracticeVideo(true);
       renderPracticeCues();
@@ -2933,7 +2992,7 @@
       return;
     }
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
-    if ((k === 'Enter' || k === ' ') && e.target.closest?.('button, summary')) return;
+    if ((k === 'Enter' || k === ' ') && e.target.closest?.('button, summary, #practice-enable')) return;
     const editing = document.body.classList.contains('editing');
     const single = editing ? null : pedalBinding('single', k);
     const double = editing ? null : pedalBinding('double', k);
@@ -2963,12 +3022,23 @@
     wireAudioOutputs();
     if (!CFG.offline) wireVideoBuilder();
     if (!CFG.offline) {
-      $('practice-video').addEventListener('toggle', (e) => {
-        if (e.target.open && !practice && hasPracticeVideo()) openPracticeVideo();
-        else if (!e.target.open && practice) closePracticeVideo();
+      $('practice-enable').addEventListener('change', (e) => {
+        if (!e.target.checked) { closePracticeVideo(); return; }
+        const available = hasPracticeVideo();
+        renderPracticeAvailability();
+        $('practice-video').hidden = false;
+        $('perform-layout').classList.toggle('with-video', available);
+        if (available) openPracticeVideo();
       });
       $('practice-sound').addEventListener('change', (e) => practice?.media?.mute(!e.target.checked));
       $('practice-resync').addEventListener('click', () => syncPracticeVideo(true));
+      $('practice-from-start').addEventListener('click', () => {
+        if (!practice?.media) return;
+        if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
+        stop(false);
+        practice.positionKey = practice.syncKey = null;
+        start(Math.max(0, sections().findIndex((s) => s.type === 'click')), null, true);
+      });
     }
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('focus', () => {

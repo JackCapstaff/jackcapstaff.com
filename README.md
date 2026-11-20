@@ -47,7 +47,10 @@ Performance options**, choose **Jump to rehearsal figure**, set the count-in,
 and select **Restart from cue**. The cue search also accepts names such as
 `Figure A`; bare numbers still search score bars.
 
-For rehearsal, open **Perform → Practice with video** below the click display.
+For rehearsal, tick **Enable video** in **Perform**. The film and metronome
+sit side by side on wider screens. On narrow screens the beat display,
+bar, meter and tempo overlay the bottom of the picture, with a cue strip
+at the top. Untick the box to close the player without stopping the clicks.
 If no video is linked, use **Edit with video** in that panel to open and link
 a saved YouTube draft, or use a local file still open in the tab.
 The film follows click playback and holds during cue waits. Practice opens
@@ -55,13 +58,21 @@ the YouTube link from the draft linked to the track. For a count-in, the film
 starts that many bars before the selected section’s video position, using the
 section’s starting tempo and meter. If there is not enough footage, the
 count-in still plays in full and the picture waits at 0:00 until it can roll.
+Choose **Start video from beginning** to rehearse from 0:00 instead of
+jumping to the saved count-in. This mode counts every beat that fits
+before the first musical cue, using the opening tempo and meter and
+counting back from the downbeat. For example, 60 seconds at 60 BPM in 4/4
+shows −60, −59, …, −1, then bar 1. If the film begins between beats, it
+rolls silently until the first beat that fits.
 Film audio is muted by default. YouTube sync is approximate; use **Resync to
 clicks** after buffering. The offline and fullscreen stage views stay video-free.
 
 Tick **Streamer and punch** on the video hit points that need a visual cue,
 then create or update the click track. You can also mark section boundaries in
-Edit. In **Practice with video**, the streamer starts on the nearest preceding
+Edit. A marked opening hit can also get a streamer when rehearsing from
+0:00 if there are at least two seconds before the hit. For later hits, the
+streamer starts on the nearest preceding
 barline that gives at least two seconds of warning, using the scheduled tempo,
 meter and ramps. The punch lands on the click cue. If there is not enough
-continuous playback before a cue, only the punch appears. Cues overlay a local
+continuous playback before a cue, only the punch appears. On wider screens, cues overlay a local
 video and appear in a strip above YouTube, whose sync remains approximate.

@@ -71,6 +71,10 @@
 
   <!-- ===================== PERFORM ===================== -->
   <main id="view-perform" class="view">
+    {% if not offline %}
+    <label class="practice-toggle"><input type="checkbox" id="practice-enable" aria-controls="practice-video"> Enable video</label>
+    {% endif %}
+    <div class="perform-layout" id="perform-layout">
     <section class="stage" id="stage">
       <div class="stage-head">
         <div class="stage-secnum" id="d-secnum"></div>
@@ -113,9 +117,16 @@
       </div>
     </section>
 
+    <section class="transport">
+      <button class="btn" id="btn-prev" title="Previous section (at the next barline while playing)">⏮ Prev</button>
+      <button class="btn primary huge" id="btn-play" title="Start / pause / resume">▶ Start</button>
+      <button class="btn" id="btn-stop" title="Stop and reset position (Esc)" disabled>Stop</button>
+      <button class="btn green huge" id="btn-next" title="Next section">Next ⏭</button>
+      <button class="btn" id="btn-tap" title="Tap tempo for the current section (T)">Tap</button>
+    </section>
+
     {% if not offline %}
-    <details id="practice-video" class="practice-video">
-      <summary>Practice with video</summary>
+    <section id="practice-video" class="practice-video" aria-label="Practice video" hidden>
       <div id="practice-no-video">
         <p class="muted small">No video is linked to this track. Open a saved YouTube draft and choose <strong>Link open draft to track</strong>. For a local file, open it in the video editor and save over this track; the file stays in this tab.</p>
         <button type="button" class="btn small" id="btn-practice-edit-video">Edit with video</button>
@@ -127,24 +138,20 @@
           </div>
           <div id="practice-player"></div>
         </div>
-        <div class="stage-tool-row">
-          <label><input type="checkbox" id="practice-sound"> Play film audio</label>
-          <label><input type="checkbox" id="practice-show-cues" checked> Show streamers and punches</label>
-          <button type="button" class="btn small" id="practice-resync" disabled>Resync to clicks</button>
+        <div class="practice-actions">
+          <div class="stage-tool-row">
+            <button type="button" class="btn small" id="practice-from-start" disabled>Start video from beginning</button>
+            <button type="button" class="btn small" id="practice-resync" disabled>Resync to clicks</button>
+            <label><input type="checkbox" id="practice-sound"> Play film audio</label>
+            <label><input type="checkbox" id="practice-show-cues" checked> Show streamers and punches</label>
+          </div>
+          <p class="muted small">Start video from beginning rolls the film from 0:00 and counts down every beat that fits before the first musical cue. Regular Start uses the selected section’s saved count-in. YouTube sync is approximate. Film audio uses your system output.</p>
+          <p id="practice-status" class="muted small" role="status"></p>
         </div>
-        <p class="muted small">Practice opens the track’s linked YouTube draft or its local video. The film rolls into the selected section during the count-in and stops at cue pauses. YouTube sync is approximate. Film audio uses your system output.</p>
-        <p id="practice-status" class="muted small" role="status"></p>
       </div>
-    </details>
-    {% endif %}
-
-    <section class="transport">
-      <button class="btn" id="btn-prev" title="Previous section (at the next barline while playing)">⏮ Prev</button>
-      <button class="btn primary huge" id="btn-play" title="Start / pause / resume">▶ Start</button>
-      <button class="btn" id="btn-stop" title="Stop and reset position (Esc)" disabled>Stop</button>
-      <button class="btn green huge" id="btn-next" title="Next section">Next ⏭</button>
-      <button class="btn" id="btn-tap" title="Tap tempo for the current section (T)">Tap</button>
     </section>
+    {% endif %}
+    </div>
 
     <div class="performance-tools">
       <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
