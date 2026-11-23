@@ -1778,7 +1778,7 @@
     youtube: null, draftId: null, draftsBusy: false,
     reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null,
   };
-  const markerFields = ['bar', 'skip', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
+  const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
 
   function nextMarkerNumber(used, start) {
     let number = start;
@@ -2174,7 +2174,8 @@
     $('builder-load-youtube').disabled = $('builder-file').disabled = busy;
     $('btn-edit-video').disabled = busy;
     $('btn-practice-edit-video').disabled = !current || busy;
-    $('builder-create').disabled = busy || !videoReady() || !builder.planValid;
+    $('builder-create').disabled = busy || !videoReady() || !builder.planValid
+      || (!$('builder-skip').disabled && !$('builder-skip').validity.valid);
     $('builder-target-track').disabled = busy;
     $('builder-overwrite').disabled = $('builder-create').disabled || !builderTargetTrack();
     $('builder-back-to-edit').hidden = !track;
@@ -2341,13 +2342,29 @@
     list.replaceChildren(...builder.markers.map((m, i) => new Option(m.label + ' · ' + markerTime(m.time)
       + (m.figure?.trim() ? ' · ' + figureLabel(m.figure.trim()) : '')
       + (m.visualCue ? ' · Visual cue' : '')
-      + (Number(m.skip) ? ' · Skip ' + m.skip + ' score bars before' : '')
+      + (Number(nextMusicalMarker(i)?.skip) ? ' · Skip ' + nextMusicalMarker(i).skip + ' score bars before next hit' : '')
       + (m.bar ? ' · Bar ' + m.bar : i === 0 ? ' · Video start' : ' · Add bar number')
       + (i > 0 && i === builder.markers.length - 1 ? ' · Current closing point' : ''), i)));
     list.value = builder.selected;
   }
 
   const markerHeading = (marker, time = marker.time) => 'Hit point ' + marker.label + ' at ' + markerTime(time);
+
+  // Saved drafts store each span's skip count on its closing hit point.
+  function nextMusicalMarker(index) {
+    if (!builder.markers[index]?.bar) return null;
+    const next = builder.markers[index + 1];
+    return next?.bar ? next : null;
+  }
+
+  function renderSelectedSkip() {
+    const next = nextMusicalMarker(builder.selected), input = $('builder-skip');
+    input.disabled = !next;
+    input.value = next?.skip ?? '0';
+    $('builder-skip-help').textContent = next
+      ? 'Applies to this span, before hit point ' + next.label + ' (bar ' + next.bar + ').'
+      : 'Add a score bar here and a following score-bar hit point to set skips for this span.';
+  }
 
   function renderSelectedMarkerHeading() {
     const marker = builder.markers[builder.selected];
@@ -2365,6 +2382,7 @@
     $('builder-remove').disabled = index === 0;
     $('builder-retime').disabled = index === 0 || !videoReady();
     for (const field of markerFields) $('builder-' + field).value = marker[field] ?? '';
+    renderSelectedSkip();
     $('builder-visual-cue').checked = marker.visualCue === true;
     $('builder-bpm-field').hidden = marker.shape === 'steady';
     if (recenter && builder.zoomStart !== null && videoReady()) zoomAroundMarker();
@@ -2872,18 +2890,33 @@
     });
     for (const field of markerFields) {
       $('builder-' + field).addEventListener('change', (e) => {
-        if (field === 'skip') {
-          if (e.target.value === '') e.target.value = '0';
-          if (!e.target.reportValidity()) return;
-        }
         builder.markers[builder.selected][field] = e.target.value;
         builder.dirty = true;
+        if (field === 'bar') renderSelectedSkip();
         $('builder-bpm-field').hidden = builder.markers[builder.selected].shape === 'steady';
         renderVideoMarkers();
         renderVideoTimeline();
         renderVideoPlan();
       });
     }
+    $('builder-skip').addEventListener('input', (e) => {
+      if (!e.target.validity.valid) $('builder-result').textContent = 'Enter skipped score bars as a whole number from 0 to 9998.';
+      else renderVideoPlan();
+      renderDraftControls();
+    });
+    $('builder-skip').addEventListener('change', (e) => {
+      if (e.target.value === '') e.target.value = '0';
+      if (!e.target.reportValidity()) return;
+      const next = nextMusicalMarker(builder.selected);
+      if (!next) {
+        $('builder-result').textContent = 'Add a following score-bar hit point before setting skipped bars.';
+        return;
+      }
+      next.skip = e.target.value;
+      builder.dirty = true;
+      renderVideoMarkers();
+      renderVideoPlan();
+    });
     $('builder-visual-cue').addEventListener('change', (e) => {
       builder.markers[builder.selected].visualCue = e.target.checked;
       builder.dirty = true;

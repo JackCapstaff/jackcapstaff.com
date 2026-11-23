@@ -10,10 +10,11 @@ Choose a local MP4, or paste a YouTube video link and select **Load YouTube vide
 Use **Play video** or **Enter** to play or pause without changing hit points.
 Press **Space** or select **Add hit point** to mark the current time and pause.
 Type the **Score bar** and press **Enter** to keep it and resume playback.
-When score bars are omitted from the film, enter their count in **Score bars
-skipped before this hit** on the next hit point. For example, with hit points
-at bars 10 and 12, enter 1 on bar 12 to fit one played bar between them; the
-display then jumps directly from bar 10 to bar 12. Skipped bars take no time.
+When score bars are omitted from the film, select the hit point at the start
+of the span and enter their count in **Score bars skipped before the next
+hit**. For example, with hit points at bars 129 and 131, set bar 129 to 9/8
+and enter 1 skipped bar to combine score bars 129 and 130 into one played
+9/8 bar. The display then jumps directly to bar 131. Skipped bars take no time.
 If the embedded player has keyboard focus, use the controls below it.
 
 To revise a draft, select a hit point and play from there. **Pause at existing

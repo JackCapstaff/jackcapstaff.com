@@ -75,7 +75,7 @@
           <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
           <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
-          <label>Score bars skipped before this hit <input id="builder-skip" type="number" min="0" max="9998" step="1" value="0" inputmode="numeric"></label>
+          <label>Score bars skipped before the next hit <input id="builder-skip" type="number" min="0" max="9998" step="1" value="0" inputmode="numeric" aria-describedby="builder-skip-help"></label>
           <label>Rehearsal figure <input id="builder-figure" type="text" maxlength="32" placeholder="e.g. 6 or A"></label>
           <label><span><input id="builder-visual-cue" type="checkbox"> Streamer and punch</span></label>
           <label>Meter numerator <input id="builder-num" type="number" min="1" max="32" step="1"></label>
@@ -89,6 +89,7 @@
           <label id="builder-bpm-field" hidden>Starting BPM <input id="builder-bpm" type="number" min="10" max="400" step="0.01" placeholder="Use previous tempo"></label>
           <label class="builder-dialogue">On-screen dialogue / cue <textarea id="builder-dialogue" rows="2" maxlength="500"></textarea></label>
         </div>
+        <p id="builder-skip-help" class="muted small">Applies to the span starting at this hit. Add the next score-bar hit point first.</p>
         <div class="stage-tool-row">
           <button class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           <button class="btn small danger" id="builder-remove">Remove hit point</button>
@@ -98,7 +99,7 @@
   </div>
   <section class="video-builder-preview" aria-labelledby="builder-preview-title">
     <h2 id="builder-preview-title">Click track preview</h2>
-    <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. Enter skipped score bars on the next hit point; they add no time. The final hit point closes the last span. A ramp can use the previous span’s ending tempo.</p>
+    <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. Enter skipped score bars on the hit point at the start of that span; they add no time. The final hit point closes the last span. A ramp can use the previous span’s ending tempo.</p>
     <p id="builder-result" role="status"></p>
     <ol id="builder-preview"></ol>
     <label>Starting count-in (bars)

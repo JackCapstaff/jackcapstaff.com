@@ -191,6 +191,8 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertIn(b'id="track-count-in"', response.data)
         self.assertIn(b'id="builder-count-in"', response.data)
         self.assertIn(b'id="builder-preview"', response.data)
+        self.assertIn(b'Score bars skipped before the next hit', response.data)
+        self.assertIn(b'id="builder-skip-help"', response.data)
 
     def test_practice_video_is_separate_from_pre_show_audio_test(self):
         response = self.client.get("/clicktrack/")
