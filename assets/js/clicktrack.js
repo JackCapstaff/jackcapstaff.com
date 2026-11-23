@@ -87,7 +87,7 @@
   function defaultSection(over) {
     return Object.assign({
       type: 'click', name: '', notes: '', bpm: 120, bpmEnd: null, beatUnit: 'auto',
-      num: 4, den: 4, grouping: '', bars: 8, advance: 'auto', click: 'beats', countIn: 0, startBar: null,
+      num: 4, den: 4, grouping: '', bars: 8, advance: 'auto', click: 'beats', countIn: null, startBar: null,
       unitPitch: 0, unitVelocity: 53, subPitch: 0, subVelocity: 32,
       calcStart: '', calcEnd: '',
     }, over || {});
@@ -114,7 +114,7 @@
     s.unitVelocity = num(raw.unitVelocity, 53, 0, 127, true);
     s.subPitch = num(raw.subPitch, 0, -24, 24);
     s.subVelocity = num(raw.subVelocity, 32, 0, 127, true);
-    s.countIn = num(raw.countIn, 0, 0, 8, true);
+    s.countIn = raw.countIn == null || raw.countIn === '' ? null : num(raw.countIn, 0, 0, 8, true);
     s.startBar = raw.startBar == null || raw.startBar === '' ? null : num(raw.startBar, null, 1, 99999, true);
     s.figure = String(raw.figure || '').trim().slice(0, 32);
     s.visualCue = raw.visualCue === true;
@@ -453,7 +453,7 @@
 
   // ----------------------------------------------------------------- engine
   // phase: stopped | countin | play | pause | end. bar/tick/sub describe the *next* step to schedule.
-  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0, filmCountIn: false, swingSide: 1 };
+  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0, filmCountIn: false, swingSide: 1, startBarOffset: 0, countBpm: 120 };
   const clock = { start: 0, elapsed: 0, videoStart: 0 };
   let transportBusy = false;
   const visQ = [];
@@ -507,6 +507,7 @@
       type, time: E.nextTime, secIdx: E.secIdx, phase: E.phase, bar: E.bar, tick: E.tick, sub: E.sub, queued: E.queued, countIn: E.countIn,
       phaseStart: E.phaseStart,
       filmCountIn: E.filmCountIn,
+      startBarOffset: E.startBarOffset,
     }, extra || {}));
   }
 
@@ -514,17 +515,23 @@
     const secs = sections();
     E.phaseStart = E.nextTime;
     E.bar = 0; E.tick = 0; E.sub = 0; E.countIn = 0;
+    E.startBarOffset = 0;
     E.filmCountIn = false;
     if (idx < 0 || idx >= secs.length) { E.phase = 'end'; pushVis('end'); return; }
     E.secIdx = idx;
     const s = secs[idx];
+    E.countBpm = s.bpm;
     cueOnEntry = s.visualCue;
     if (s.type === 'pause') { E.phase = 'pause'; pushVis('state', { punch: cueOnEntry }); return; }
-    if (!flowing) E.countIn = countInOverride ?? s.countIn;
+    if (!flowing) E.countIn = countInOverride ?? effectiveCountIn(s);
     E.phase = E.countIn > 0 ? 'countin' : 'play';
   }
 
   const countInSeconds = (section, bars) => bars * section.num * unitSeconds(section, section.bpm);
+  const effectiveCountIn = (section) => section.countIn ?? Math.max(1, Math.ceil(2 / countInSeconds(section, 1)));
+  const countInLabel = (section) => section.countIn == null
+    ? 'Auto: ' + effectiveCountIn(section) + ' bars, at least 2 seconds'
+    : section.countIn + ' bars';
 
   function filmCountIn(s, cueTime) {
     const unit = unitSeconds(s, s.bpm);
@@ -561,7 +568,7 @@
     const counting = E.phase === 'countin';
     const subN = counting ? 1 : subdivOf(s);
     const level = E.sub === 0 ? levels[E.tick] : 0;
-    const bpm = counting ? s.bpm : bpmAt(s, (E.bar + (E.tick + E.sub / subN) / s.num) / s.bars);
+    const bpm = counting ? E.countBpm : bpmAt(s, (E.bar + (E.tick + E.sub / subN) / s.num) / s.bars);
     const groups = groupsOf(s), groupIndex = groupIndexOf(s, E.tick);
     const groupStart = groups.slice(0, groupIndex).reduce((sum, length) => sum + length, 0);
     if (level >= 2) E.swingSide *= -1;
@@ -597,7 +604,7 @@
       if (E.bar >= E.countIn) {
         E.phase = 'play';
         E.phaseStart = E.nextTime;
-        E.bar = 0;
+        E.bar = E.startBarOffset;
         E.filmCountIn = false;
       }
     } else if (E.bar >= s.bars && s.advance === 'auto') {
@@ -606,7 +613,7 @@
     }
   }
 
-  function start(fromIdx, countInOverride = null, fromVideoBeginning = false) {
+  function start(fromIdx, countInOverride = null, fromVideoBeginning = false, barOffset = 0) {
     if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
     if (!sections().length) return;
     stopTester();
@@ -622,10 +629,13 @@
     const idx = clamp(fromIdx, 0, sections().length - 1);
     const s = sections()[idx];
     const videoStart = ctx.currentTime + 0.1;
-    const cueTime = sectionTimeline()[idx].start;
+    let cueTime = sectionTimeline()[idx].start;
+    for (let bar = 0; bar < barOffset; bar++) cueTime += barSeconds(s, bar);
+    const startBpm = bpmAt(s, barOffset / s.bars);
+    const countSection = barOffset ? { ...s, bpm: startBpm } : s;
     const film = fromVideoBeginning && s.type !== 'pause' ? filmCountIn(s, cueTime) : null;
-    const countIn = film?.bars ?? (s.type === 'pause' ? 0 : countInOverride ?? s.countIn);
-    const lead = film?.lead ?? countInSeconds(s, countIn);
+    const countIn = film?.bars ?? (s.type === 'pause' ? 0 : countInOverride ?? effectiveCountIn(countSection));
+    const lead = film?.lead ?? countInSeconds(countSection, countIn);
     const intro = fromVideoBeginning ? Math.max(0, cueTime - lead) : 0;
     if (intro > 0) {
       E.nextTime = videoStart;
@@ -634,7 +644,11 @@
       });
     }
     E.nextTime = videoStart + intro;
-    enterSection(idx, false, film?.bars ?? countInOverride);
+    enterSection(idx, false, countIn);
+    E.startBarOffset = barOffset;
+    E.countBpm = startBpm;
+    if (barOffset) cueOnEntry = false;
+    if (E.phase === 'play') E.bar = barOffset;
     if (film?.bars) {
       E.filmCountIn = true;
       E.tick = film.tick;
@@ -1284,37 +1298,8 @@
   }
 
   // --------------------------------------------------------------- stage tools
-  function renderCueCountIn() {
-    const cue = $('cue-target'), countIn = $('cue-count-in'), figures = $('cue-figure');
-    const section = cue.value === '' ? null : sections()[Number(cue.value)];
-    figures.value = section?.figure ? cue.value : '';
-    countIn.disabled = !section || section.type === 'pause';
-    if (countIn.disabled) countIn.value = '';
-    countIn.options[0].textContent = countIn.disabled ? 'Use section setting'
-      : 'Use section setting (' + section.countIn + ')';
-  }
-
-  function renderStageTools(preferredCue) {
-    const filter = $('cue-filter').value.trim().toLowerCase().replace(/^b(?:ar)?\.?\s+(?=\d)/, '');
-    const bar = /^\d+$/.test(filter) ? Number(filter) : null;
+  function renderStageTools() {
     const secs = sections(), bars = startBars(secs);
-    const cue = $('cue-target'), figures = $('cue-figure');
-    const previous = typeof preferredCue === 'string' ? preferredCue : cue.value;
-    cue.replaceChildren();
-    figures.replaceChildren(new Option('Choose a figure', ''));
-    secs.forEach((section, i) => {
-      const location = (bars[i] == null ? 'Cue' : 'b. ' + bars[i]) + ' · ' + sectionTitle(section, i);
-      const label = section.figure ? figureLabel(section.figure) + ' · ' + location : location;
-      if (section.figure) figures.add(new Option(label, i));
-      if (!filter || (bar == null ? label.toLowerCase().includes(filter)
-        : bars[i] != null && bar >= bars[i] && bar < bars[i] + section.bars)) {
-        cue.add(new Option(label, i));
-      }
-    });
-    $('cue-figure-field').hidden = figures.options.length < 2;
-    if (Array.from(cue.options).some((o) => o.value === previous)) cue.value = previous;
-    $('btn-recover-cue').disabled = !cue.options.length;
-    renderCueCountIn();
     const select = $('wav-run'), run = select.value;
     select.replaceChildren();
     for (let i = 0; i < secs.length;) {
@@ -1340,7 +1325,7 @@
         + (s.type === 'pause' ? 'cue (unknown)' : (t.endEstimated ? '≈ ' : '') + timecode(t.end));
       const cells = [(s.figure ? figureLabel(s.figure) + ' · ' : '') + sectionTitle(s, i), bars[i] == null ? '—' : bars[i] + (s.bars > 1 ? '–' + (bars[i] + s.bars - 1) : ''),
         timing, s.type === 'pause' ? '—' : s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd),
-        s.type === 'pause' ? 'Wait for cue' : (s.advance === 'manual' ? 'Repeat until pedal' : 'Automatic') + (s.countIn ? ' · ' + s.countIn + ' count-in bars on entry from start/cue' : ''),
+        s.type === 'pause' ? 'Wait for cue' : (s.advance === 'manual' ? 'Repeat until pedal' : 'Automatic') + (effectiveCountIn(s) ? ' · ' + countInLabel(s) + ' count-in on entry from start/cue' : ''),
         s.notes];
       return '<tr>' + cells.map((cell) => '<td>' + esc(cell) + '</td>').join('') + '</tr>';
     }).join('');
@@ -1423,7 +1408,7 @@
       if (volume === 0) throw new Error('Raise the app volume before exporting a click WAV.');
       const rate = 22050, tail = 0.13;
       const duration = run.reduce((sum, s) => sum + sectionSeconds(s), 0)
-        + run[0].countIn * run[0].num * unitSeconds(run[0], run[0].bpm);
+        + countInSeconds(run[0], effectiveCountIn(run[0]));
       if (duration > 1800) throw new Error('This run exceeds the 30-minute WAV limit.');
       const frames = Math.ceil((duration + tail) * rate);
       const data = new ArrayBuffer(44 + frames * 2), wav = new DataView(data);
@@ -1451,7 +1436,7 @@
       }
       let time = 0, barsRendered = 0;
       for (const [i, s] of run.entries()) {
-        const levels = unitLevels(s), countIn = i === 0 ? s.countIn : 0;
+        const levels = unitLevels(s), countIn = i === 0 ? effectiveCountIn(s) : 0;
         for (let bar = -countIn; bar < s.bars; bar++) {
           const phase = bar < 0 ? 'countin' : 'play', subN = bar < 0 ? 1 : subdivOf(s);
           for (let tick = 0; tick < s.num; tick++) {
@@ -1625,7 +1610,7 @@
         + fld('Bars', inp(i, 'bars', s.bars, 'type="number" min="1" max="9999" inputmode="numeric"'))
         + fld('Click', sel(i, 'click', CLICK_MODES, s.click))
         + fld('Advance', sel(i, 'advance', [['auto', 'Auto'], ['manual', 'Wait for pedal']], s.advance))
-        + fld('Count-in bars', inp(i, 'countIn', s.countIn, 'type="number" min="0" max="8" inputmode="numeric"'))
+        + fld('Count-in bars', inp(i, 'countIn', s.countIn, 'type="number" min="0" max="8" inputmode="numeric" placeholder="auto (2 seconds)"'))
         + fld('Score bar', inp(i, 'startBar', s.startBar, 'type="number" min="1" max="99999" inputmode="numeric" placeholder="auto"'))
         + fld('Streamer and punch at automatic end', '<input type="checkbox" data-f="visualEndCue" data-i="' + i + '"' + (s.visualEndCue ? ' checked' : '') + '>')
         + performanceNotes(i, s)
@@ -1764,7 +1749,7 @@
     const prev = secs.slice().reverse().find((s) => s.type !== 'pause');
     const s = pause
       ? defaultSection({ type: 'pause', name: 'Pause' })
-      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, figure: '', countIn: 0, bpmEnd: null, calcStart: '', calcEnd: '', visualCue: false, visualEndCue: false }) : { countIn: secs.length ? 0 : 1 });
+      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, figure: '', countIn: null, bpmEnd: null, calcStart: '', calcEnd: '', visualCue: false, visualEndCue: false }) : {});
     secs.push(s);
     markDirty(); renderSections(); renderSetlist(); renderIdle();
     const row = document.querySelector('[data-row="' + (secs.length - 1) + '"]');
@@ -1773,7 +1758,7 @@
 
   // ------------------------------------------------------------ views & UI
   const builderMarker = (time, previous) => ({
-    time, label: time === 0 ? '0' : '', bar: '', num: previous?.num ?? '4', den: previous?.den ?? '4',
+    time, label: time === 0 ? '0' : '', bar: '', skip: '0', num: previous?.num ?? '4', den: previous?.den ?? '4',
     unit: previous?.unit ?? 'auto', shape: 'steady', bpm: '', dialogue: '', figure: '', visualCue: false,
   });
   const builder = {
@@ -1781,7 +1766,7 @@
     youtube: null, draftId: null, draftsBusy: false,
     reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null,
   };
-  const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
+  const markerFields = ['bar', 'skip', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
 
   function nextMarkerNumber(used, start) {
     let number = start;
@@ -2072,9 +2057,13 @@
     const previousBoundary = source.rollUntil;
     if (entering || force) {
       source.positionKey = positionKey;
-      const start = sectionTimeline()[idx].start;
+      let start = sectionTimeline()[idx].start;
+      if (rolling && shown?.startBarOffset) {
+        for (let bar = 0; bar < shown.startBarOffset; bar++) start += barSeconds(section, bar);
+      }
       const preRoll = phase === 'countin'
-        ? shown.filmCountIn ? clock.start - entry : countInSeconds(section, shown.countIn) : 0;
+        ? shown.filmCountIn ? clock.start - entry
+          : countInSeconds({ ...section, bpm: bpmAt(section, (shown.startBarOffset ?? 0) / section.bars) }, shown.countIn) : 0;
       source.cueTime = phase === 'intro' ? 0 : start - preRoll;
       source.rollUntil = phase === 'intro' ? shown.introEnd
         : phase === 'countin' ? entry + preRoll : null;
@@ -2268,10 +2257,12 @@
     const secs = [];
     for (let i = 0; i < points.length - 1; i++) {
       const a = points[i], b = points[i + 1], startBar = Number(a.bar), endBar = Number(b.bar);
-      const bars = endBar - startBar, numerator = Number(a.num), duration = b.time - a.time;
+      const skip = b.skip === '' || b.skip == null ? 0 : Number(b.skip);
+      const bars = endBar - startBar - skip, numerator = Number(a.num), duration = b.time - a.time;
       try {
+        if (!Number.isInteger(skip) || skip < 0 || skip > 9998) throw new Error('Enter skipped score bars as a whole number from 0 to 9998.');
         if (!Number.isInteger(startBar) || startBar < 1 || !Number.isInteger(endBar) || endBar > 99999
-          || bars < 1 || bars > 9999) throw new Error('Enter increasing whole score bars for both hit points (1–99999, up to 9999 bars per span).');
+          || bars < 1 || bars > 9999) throw new Error('Score bars and skipped bars must leave 1–9999 played bars between hit points.');
         if (!(duration > 0)) throw new Error('The next hit point must have a later video time.');
         if (!Number.isInteger(numerator) || numerator < 1 || numerator > 32) throw new Error('Enter a meter numerator from 1 to 32.');
         const s = defaultSection({
@@ -2295,7 +2286,7 @@
           s.bpm = Math.round(start * 100) / 100;
           s.bpmEnd = fitRamp(s, duration, a.shape);
         }
-        secs.push({ section: s, average, hitPoint: a.label, endHitPoint: b.label });
+        secs.push({ section: s, average, hitPoint: a.label, endHitPoint: b.label, skip });
       } catch (e) {
         throw new Error('Hit point at ' + markerTime(a.time) + ': ' + e.message);
       }
@@ -2309,12 +2300,13 @@
     builder.planValid = false;
     try {
       const plan = planVideoTrack();
-      for (const { section: s, average, hitPoint, endHitPoint } of plan.secs) {
+      for (const { section: s, average, hitPoint, endHitPoint, skip } of plan.secs) {
         const li = document.createElement('li');
         li.textContent = 'Hit point ' + hitPoint + ' → ' + endHitPoint + ' · '
           + (s.figure ? figureLabel(s.figure) + ' · ' : '') + s.name + ' · ' + s.calcStart + ' → ' + s.calcEnd + ' · ' + s.bars + ' bars of '
           + s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm
           + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd + ' (average ' + average.toFixed(2) + ' BPM)')
+          + (skip ? ' · ' + skip + ' score bar' + (skip === 1 ? '' : 's') + ' skipped before next hit' : '')
           + (s.visualCue ? ' · Visual cue at start' : '') + (s.visualEndCue ? ' · Visual cue at end' : '')
           + (s.notes ? ' · ' + s.notes : '');
         preview.append(li);
@@ -2332,6 +2324,7 @@
     list.replaceChildren(...builder.markers.map((m, i) => new Option(m.label + ' · ' + markerTime(m.time)
       + (m.figure?.trim() ? ' · ' + figureLabel(m.figure.trim()) : '')
       + (m.visualCue ? ' · Visual cue' : '')
+      + (Number(m.skip) ? ' · Skip ' + m.skip + ' score bars before' : '')
       + (m.bar ? ' · Bar ' + m.bar : i === 0 ? ' · Video start' : ' · Add bar number')
       + (i > 0 && i === builder.markers.length - 1 ? ' · Current closing point' : ''), i)));
     list.value = builder.selected;
@@ -2657,6 +2650,74 @@
       openYoutube(id);
     }
     $('builder-load-youtube').addEventListener('click', loadLink);
+    $('builder-replace-youtube').addEventListener('click', () => {
+      const id = youtubeId(link.value);
+      if (!id) { draftStatus.textContent = 'Enter a valid YouTube video link first.'; return; }
+      if (builder.draftsBusy) return;
+      if (!window.confirm('Replace the video while keeping the hit points? Saving updates this draft for all linked tracks.')) return;
+      const draft = { id: builder.draftId, title: $('builder-title').value, markers: builder.markers };
+      openYoutube(id, draft);
+      builder.dirty = true;
+      draftStatus.textContent = 'Video replaced. Save the YouTube draft to keep this change.';
+    });
+    let shiftPreview = null;
+    function proposedShift() {
+      const input = $('builder-shift');
+      if (input.value === '' || !input.reportValidity() || !Number.isFinite(input.valueAsNumber)) throw new Error('Enter a shift in seconds.');
+      const shift = input.valueAsNumber, points = builder.markers;
+      const musical = points.filter((marker, index) => index > 0 || marker.bar !== '');
+      if (!musical.length) throw new Error('Add musical hit points before shifting.');
+      const shifted = musical.map((marker) => ({ ...marker, time: roundMarkerTime(marker.time + shift) }));
+      if (shifted.some((marker) => marker.time < 0 || marker.time > 86400
+        || (videoReady() && marker.time > roundMarkerTime(builderMedia().duration)))) {
+        throw new Error('The shift would put a hit point outside the video or the 24-hour limit.');
+      }
+      if (shifted[0].time > 0) {
+        const reference = points[0].bar === '' ? { ...points[0] } : builderMarker(0);
+        const used = new Set(shifted.map((marker) => marker.label));
+        if (used.has(reference.label)) reference.label = nextMarkerNumber(used, 0);
+        shifted.unshift(reference);
+      }
+      if (shifted.length > 502) throw new Error('The shifted draft would exceed the 502 hit point limit.');
+      return shifted;
+    }
+    $('builder-shift-preview').addEventListener('click', () => {
+      try {
+        const shifted = proposedShift();
+        shiftPreview = { original: JSON.stringify(builder.markers), value: $('builder-shift').value };
+        const before = builder.markers.find((m, i) => i > 0 || m.bar !== '');
+        const after = shifted.find((m, i) => i > 0 || m.bar !== '');
+        $('builder-shift-status').textContent = 'First musical hit point: ' + markerTime(before.time) + ' → ' + markerTime(after.time)
+          + '. Last hit point: ' + markerTime(builder.markers.at(-1).time) + ' → ' + markerTime(shifted.at(-1).time) + '.';
+        $('builder-shift-apply').disabled = false;
+      } catch (error) {
+        shiftPreview = null;
+        $('builder-shift-apply').disabled = true;
+        $('builder-shift-status').textContent = error.message;
+      }
+    });
+    $('builder-shift').addEventListener('input', () => { shiftPreview = null; $('builder-shift-apply').disabled = true; });
+    $('builder-shift-apply').addEventListener('click', () => {
+      if (!shiftPreview || shiftPreview.original !== JSON.stringify(builder.markers) || shiftPreview.value !== $('builder-shift').value) {
+        $('builder-shift-status').textContent = 'The draft changed. Preview the shift again.';
+        $('builder-shift-apply').disabled = true;
+        return;
+      }
+      try {
+        builder.markers = proposedShift();
+      } catch (error) {
+        $('builder-shift-status').textContent = error.message;
+        $('builder-shift-apply').disabled = true;
+        shiftPreview = null;
+        return;
+      }
+      builder.dirty = true;
+      shiftPreview = null;
+      $('builder-shift-apply').disabled = true;
+      selectVideoMarker(0);
+      renderVideoPlan();
+      $('builder-shift-status').textContent = 'Shift applied. Save the draft and update the click track separately.';
+    });
     link.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadLink(); } });
     drafts.addEventListener('change', renderDraftControls);
     $('builder-open-draft').addEventListener('click', () => runDraftAction(async () => {
@@ -2769,6 +2830,10 @@
     });
     for (const field of markerFields) {
       $('builder-' + field).addEventListener('change', (e) => {
+        if (field === 'skip') {
+          if (e.target.value === '') e.target.value = '0';
+          if (!e.target.reportValidity()) return;
+        }
         builder.markers[builder.selected][field] = e.target.value;
         builder.dirty = true;
         $('builder-bpm-field').hidden = builder.markers[builder.selected].shape === 'steady';
@@ -2809,7 +2874,7 @@
       if (!countIn.reportValidity()) return;
       try {
         const { offset, secs } = planVideoTrack();
-        const startingCountIn = countIn.value === '' ? firstClickSection(existing)?.countIn ?? 0 : countIn.valueAsNumber;
+        const startingCountIn = countIn.value === '' ? firstClickSection(existing)?.countIn ?? null : countIn.valueAsNumber;
         if (existing && !window.confirm('Replace all sections and the video offset in “' + existing.title
           + '”? Manual section edits will be replaced; the track title and notes will stay.'
           + (!builder.youtube && existing.videoDraftId ? ' This also removes the old YouTube draft link.' : ''))) return;
@@ -3224,23 +3289,46 @@
     $('btn-exit-stage').addEventListener('click', toggleFullscreen);
     $('rehearsal-play').addEventListener('click', () => { cancelPendingPedal(); togglePlay(); });
     let rehearsalTarget = null;
-    $('rehearsal-list').addEventListener('click', (e) => {
-      const button = e.target.closest('button[data-index]');
-      if (!button || (E.playing && !E.suspended) || transportBusy) return;
-      const idx = Number(button.dataset.index);
+    function openRehearsal(idx, offset, title) {
+      if ((E.playing && !E.suspended) || transportBusy) {
+        $('rehearsal-bar-status').textContent = 'Pause playback before choosing a restart.';
+        return;
+      }
       const section = sections()[idx];
       if (!section) return;
-      rehearsalTarget = { track: current, index: idx, section };
-      $('rehearsal-target').textContent = button.textContent;
+      rehearsalTarget = { track: current, index: idx, section, offset };
+      $('rehearsal-target').textContent = title;
       const select = $('rehearsal-count-in');
       select.disabled = section.type === 'pause';
       select.value = '';
+      const atBar = offset ? { ...section, bpm: bpmAt(section, offset / section.bars) } : section;
       select.options[0].textContent = select.disabled ? 'Silent cue — waits for pedal'
-        : 'Use section setting (' + section.countIn + ')';
+        : 'Use section setting (' + countInLabel(atBar) + ')';
       $('rehearsal-dialog-help').textContent = select.disabled
         ? 'This silent cue waits for the pedal; count-in does not apply.'
         : 'The count-in applies only to this restart.';
       $('rehearsal-dialog').showModal();
+    }
+    $('rehearsal-list').addEventListener('click', (e) => {
+      const button = e.target.closest('button[data-index]');
+      if (button) openRehearsal(Number(button.dataset.index), 0, button.textContent);
+    });
+    $('rehearsal-bar-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = $('rehearsal-bar');
+      if (!input.reportValidity()) return;
+      const target = input.valueAsNumber, secs = sections(), bars = startBars(secs);
+      const matches = secs.map((section, idx) => ({ section, idx }))
+        .filter(({ section, idx }) => section.type === 'click' && target >= bars[idx] && target < bars[idx] + section.bars);
+      if (matches.length !== 1) {
+        $('rehearsal-bar-status').textContent = matches.length
+          ? 'That score bar appears in more than one section. Select the section from the list instead.'
+          : 'That bar is not playable in this track; it may be a skipped score bar.';
+        return;
+      }
+      $('rehearsal-bar-status').textContent = '';
+      const { idx, section } = matches[0];
+      openRehearsal(idx, target - bars[idx], 'Bar ' + target + ' · ' + sectionTitle(section, idx));
     });
     $('rehearsal-cancel').addEventListener('click', () => $('rehearsal-dialog').close());
     $('rehearsal-form').addEventListener('submit', (e) => {
@@ -3257,7 +3345,7 @@
       $('rehearsal-dialog').close();
       stop(false);
       selectIdx(idx);
-      start(idx, override);
+      start(idx, override, false, rehearsalTarget.offset);
       focusPerformancePedal();
     });
     $('performance-menu').addEventListener('toggle', () => {
@@ -3279,28 +3367,6 @@
         $('pre-show-audio').textContent = '';
         releaseWake();
       }
-    });
-    $('cue-filter').addEventListener('input', renderStageTools);
-    $('cue-figure').addEventListener('change', (e) => {
-      if (!e.target.value) return;
-      $('cue-filter').value = '';
-      renderStageTools(e.target.value);
-    });
-    $('cue-target').addEventListener('change', renderCueCountIn);
-    $('btn-recover-cue').addEventListener('click', () => {
-      if (transportBusy) { toast('Wait for playback to finish pausing or resuming, then retry.'); return; }
-      if (outputBusy) { toast('Finish choosing an audio output before starting.'); return; }
-      if (!$('cue-target').value) return;
-      const idx = Number($('cue-target').value);
-      const countIn = $('cue-count-in');
-      const override = countIn.disabled || countIn.value === '' ? null : Number(countIn.value);
-      stop(false);
-      selectIdx(idx);
-      $('performance-menu').open = false;
-      start(idx, override);
-      countIn.value = '';
-      focusPerformancePedal();
-      window.scrollTo(0, 0);
     });
     $('btn-test-clicks').addEventListener('click', async () => {
       if (E.playing || outputBusy) return;
@@ -3386,7 +3452,7 @@
     });
     // No window.prompt here: some browsers (in-app / embedded) block it, which made New appear to do nothing.
     $('btn-new-track').addEventListener('click', () => {
-      addTrack(makeTrack('New click track', [{ countIn: 1 }]));
+      addTrack(makeTrack('New click track', [{}]));
       switchView('edit');
       const t = $('track-title');
       t.focus(); t.select();
@@ -3416,7 +3482,7 @@
     $('track-count-in').addEventListener('change', (e) => {
       const section = firstClickSection(current);
       if (!section || !e.target.reportValidity()) return;
-      section.countIn = e.target.value === '' ? 0 : e.target.valueAsNumber;
+      section.countIn = e.target.value === '' ? null : e.target.valueAsNumber;
       renderSections();
       markDirty();
       if (!E.playing) renderIdle();

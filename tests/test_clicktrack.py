@@ -5,6 +5,14 @@ from clicktrack import _clean_section
 
 
 class ClickTrackSectionTests(unittest.TestCase):
+    def test_auto_and_explicit_count_ins_round_trip(self):
+        for value in (None, 0, 1, 8):
+            with self.subTest(count_in=value):
+                section = _clean_section({"countIn": value})
+                self.assertEqual(section["countIn"], value)
+                self.assertEqual(_clean_section(section)["countIn"], value)
+        self.assertIsNone(_clean_section({})["countIn"])
+
     def test_existing_sections_receive_sound_defaults(self):
         section = _clean_section({"num": 6, "den": 8, "click": "beats"})
         self.assertEqual(section["click"], "beats")
@@ -204,7 +212,7 @@ class ClickTrackStorageTests(unittest.TestCase):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
-                options = response.data.split(b'id="cue-count-in"', 1)[1].split(b"</select>", 1)[0]
+                options = response.data.split(b'id="rehearsal-count-in"', 1)[1].split(b"</select>", 1)[0]
                 self.assertIn(b'<option value="">Use section setting</option>', options)
                 self.assertIn(b'<option value="0">No count-in</option>', options)
                 self.assertIn(b'<option value="1">1 bar</option>', options)
@@ -286,6 +294,21 @@ class ClickTrackStorageTests(unittest.TestCase):
                 self.assertEqual(self.client.put(url, json=payload).status_code, 400)
         self.assertEqual(self.client.get(url).json["markers"][2]["label"], "16A")
 
+    def test_video_draft_skip_count_round_trips_and_rejects_invalid_values(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"time": 0, "den": "4", "unit": "auto", "shape": "steady"}
+        points = [marker, {**marker, "time": 10, "bar": "12", "skip": "1"}]
+        payload = {"videoId": "abcdefghijk", "markers": points}
+        saved = self.client.post(path, json=payload)
+        self.assertEqual(saved.status_code, 201)
+        url = f"{path}/{saved.json['id']}"
+        self.assertEqual(self.client.get(url).json["markers"][1]["skip"], "1")
+        for invalid in ("-1", "1.5", "9999", True):
+            with self.subTest(skip=invalid):
+                points[1]["skip"] = invalid
+                self.assertEqual(self.client.put(url, json=payload).status_code, 400)
+                self.assertEqual(self.client.get(url).json["markers"][1]["skip"], "1")
+
     def test_rehearsal_figures_round_trip_without_changing_score_bars(self):
         path = "/clicktrack/api/tracks"
         sections = [{**self.payload["sections"][0], "figure": "  6A  ", "startBar": 42},
@@ -296,7 +319,7 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertEqual([section["figure"] for section in saved], ["6A", "B", ""])
         self.assertEqual(saved[0]["startBar"], 42)
         for page in ("/clicktrack/", "/clicktrack/offline/"):
-            self.assertIn(b'id="cue-figure"', self.client.get(page).data)
+            self.assertIn(b'id="rehearsal-list"', self.client.get(page).data)
 
     def test_drafts_reject_bad_inputs_and_other_accounts(self):
         path = "/clicktrack/api/video-drafts"

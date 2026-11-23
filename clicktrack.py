@@ -109,7 +109,7 @@ def _clean_section(raw):
         "unitVelocity": _clamp_int(raw.get("unitVelocity"), 53, 0, 127),
         "subPitch": _clamp_float(raw.get("subPitch"), 0, -24, 24),
         "subVelocity": _clamp_int(raw.get("subVelocity"), 32, 0, 127),
-        "countIn": _clamp_int(raw.get("countIn"), 0, 0, 8),
+        "countIn": None if raw.get("countIn") in (None, "") else _clamp_int(raw.get("countIn"), 0, 0, 8),
         "startBar": _clamp_int(raw.get("startBar"), None, 1, 99999) if raw.get("startBar") not in (None, "") else None,
         "figure": _text(raw.get("figure"), 32),
         "visualCue": raw.get("visualCue") is True,
@@ -261,6 +261,11 @@ def _apply_video_draft(draft, data):
             "figure": _text(raw.get("figure"), 32),
             "visualCue": raw.get("visualCue") is True,
         })
+        if "skip" in raw:
+            skip = raw["skip"]
+            if not isinstance(skip, (int, str)) or isinstance(skip, bool) or not re.fullmatch(r"\d{1,4}", str(skip)) or int(skip) > 9998:
+                abort(400, description="Skipped score bars must be a whole number from 0 to 9998.")
+            cleaned[-1]["skip"] = str(int(skip))
         if "label" in raw:
             label = raw["label"]
             if not isinstance(label, str) or not re.fullmatch(r"[0-9]{1,9}[A-Za-z]{0,8}", label.strip()):

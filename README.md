@@ -10,6 +10,10 @@ Choose a local MP4, or paste a YouTube video link and select **Load YouTube vide
 Use **Play video** or **Enter** to play or pause without changing hit points.
 Press **Space** or select **Add hit point** to mark the current time and pause.
 Type the **Score bar** and press **Enter** to keep it and resume playback.
+When score bars are omitted from the film, enter their count in **Score bars
+skipped before this hit** on the next hit point. For example, with hit points
+at bars 10 and 12, enter 1 on bar 12 to fit one played bar between them; the
+display then jumps directly from bar 10 to bar 12. Skipped bars take no time.
 If the embedded player has keyboard focus, use the controls below it.
 
 To revise a draft, select a hit point and play from there. **Pause at existing
@@ -43,11 +47,26 @@ choose **Save over existing track**. This replaces its sections and video
 offset, keeping its title and track-level notes. Local
 video remains available to revisit only while it is still open in the tab.
 For tighter timing, use a local file rather than relying on YouTube seeking.
+To resync a draft, enter a signed shift in seconds under **Resync hit-point
+times**, preview it, then apply it. Musical points shift together and the
+0:00 reference stays fixed. Save the draft, then use **Save over existing
+track** if the finished track should use the shifted timings. To switch to
+another YouTube link without losing the hit points, enter it and choose
+**Replace video, keep hit points**; saving updates the draft used by linked
+tracks. Alternatively, adjust **Video offset** in the regular track editor to
+shift the finished track without changing the draft.
 
 Set **Starting count-in (bars)** in Edit, or when creating a track from video.
 When saving over a track, leaving the field blank keeps its current count-in.
-For a one-off rehearsal start, open **Perform → Performance options**, choose
-a section and a **Rehearsal count-in**, then select **Restart from cue**.
+For a new section or track, a blank count-in automatically uses the fewest
+whole bars lasting at least two seconds at that section's starting tempo and
+meter. Change the field to a number to set an explicit count-in, including 0
+for none; clear it to restore automatic timing. Existing saved numeric
+count-ins are unchanged.
+For a one-off rehearsal start, open **Perform → Rehearsal points**, pause if
+playing, then choose a section or enter any playable score bar. Choose a
+**Rehearsal count-in** and select **Start from here**. A skipped score bar
+cannot be selected, and an ambiguous repeated bar requires choosing a section.
 Choose **No count-in** to skip a saved lead-in for that restart.
 Under **Performance options → Beat visual**, choose the existing circles,
 a swinging metronome, or both. The swing changes direction on each grouped
@@ -59,10 +78,8 @@ in the dialog, then select **Start from here**. Cancel leaves playback paused.
 Silent cues still wait for the pedal. The list also works in the offline view.
 
 Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
-Edit, or on the opening video hit point for that section. In **Perform →
-Performance options**, choose **Jump to rehearsal figure**, set the count-in,
-and select **Restart from cue**. The cue search also accepts names such as
-`Figure A`; bare numbers still search score bars.
+Edit, or on the opening video hit point for that section. Figures appear in the
+**Rehearsal points** list alongside their score bars.
 
 For rehearsal, tick **Enable video** in **Perform**. The film and metronome
 sit side by side on wider screens. On narrow screens the beat display,

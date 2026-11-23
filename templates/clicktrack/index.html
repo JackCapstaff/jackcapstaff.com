@@ -163,6 +163,11 @@
     <details id="rehearsal-panel" class="rehearsal-panel">
       <summary>Rehearsal points</summary>
       <button type="button" class="btn small" id="rehearsal-play">Start</button>
+      <form id="rehearsal-bar-form" class="stage-tool-row">
+        <label>Start from score bar <input id="rehearsal-bar" type="number" min="1" max="99999" step="1" inputmode="numeric" required></label>
+        <button type="submit" class="btn small">Choose bar</button>
+      </form>
+      <p class="muted small" id="rehearsal-bar-status" role="status"></p>
       <p class="muted small" id="rehearsal-instructions">Pause playback, then select a section to choose a count-in and restart.</p>
       <div id="rehearsal-list" class="rehearsal-list"></div>
     </details>
@@ -198,6 +203,7 @@
     </div>
     <details class="performance-menu" id="performance-menu">
       <summary>Performance options</summary>
+      <div class="performance-menu-body">
       <div class="stage-tool-row">
         <label>Beat visual
           <select id="pref-beat-visual">
@@ -206,26 +212,18 @@
             <option value="both">Both</option>
           </select>
         </label>
-        <label id="cue-figure-field" hidden>Jump to rehearsal figure
-          <select id="cue-figure"><option value="">Choose a figure</option></select>
-        </label>
-        <label>Find cue, figure or score bar
-          <input type="search" id="cue-filter" placeholder="e.g. Cue 8, Figure A or 42">
-        </label>
-        <label>Section <select id="cue-target"></select></label>
-        <label>Rehearsal count-in
-          <select id="cue-count-in" aria-describedby="cue-count-in-help">
-            <option value="">Use section setting</option>
-            <option value="0">No count-in</option>
-            {% for bars in range(1, 9) %}
-            <option value="{{ bars }}">{{ bars }} {{ 'bar' if bars == 1 else 'bars' }}</option>
-            {% endfor %}
+        <label>Volume <input type="range" id="pref-volume" min="0" max="1.5" step="0.05"></label>
+        <label>Sound
+          <select id="pref-sound">
+            <option value="beep">Beep</option>
+            <option value="wood">Woodblock</option>
+            <option value="hihat">Hi-hat</option>
           </select>
         </label>
-        <button class="btn small" id="btn-recover-cue">Restart from cue</button>
+        <label><span><input type="checkbox" id="pref-flash"> Flash on downbeat</span></label>
         <button class="btn small" id="btn-exit-fullscreen" hidden>Exit fullscreen</button>
       </div>
-      <p id="cue-count-in-help" class="muted small">Restart jumps to the start of the chosen section. The rehearsal count-in applies only to this restart and does not change the saved track. Silent cues still wait for the pedal.</p>
+      <p class="muted small">Change pedal bindings in Edit → Pedal setup. If your pedal scrolls, tap the pedal input above.</p>
       <details id="pre-show">
         <summary>Pre-show check</summary>
         <p class="muted small">Connect your glasses or headphones over Bluetooth first. Select an output, then listen for four clicks on that device. Pedal presses are reported here without changing the track while this check is open.</p>
@@ -264,20 +262,8 @@
         <p class="muted small">WAV includes only the selected automatic run and its starting count-in, if set. Cue waits and pedal repeats split runs; the WAV does not include video or follow live cues.</p>
         <p id="wav-status" role="status"></p>
       </details>
+      </div>
     </details>
-
-    <section class="prefs">
-      <label class="pref">Volume <input type="range" id="pref-volume" min="0" max="1.5" step="0.05"></label>
-      <label class="pref">Sound
-        <select id="pref-sound">
-          <option value="beep">Beep</option>
-          <option value="wood">Woodblock</option>
-          <option value="hihat">Hi-hat</option>
-        </select>
-      </label>
-      <label class="pref"><input type="checkbox" id="pref-flash"> Flash on downbeat</label>
-      <span class="muted small">Change pedal bindings in Edit → Pedal setup. If your pedal scrolls, tap the pedal input above.</span>
-    </section>
 
     <section class="setlist">
       <h3>Sections <span class="muted small">Tap one to start from it, or to jump there at the next barline while playing.</span></h3>
@@ -301,7 +287,7 @@
       </label>
       <label>Starting count-in (bars)
         <input type="number" id="track-count-in" min="0" max="8" step="1" inputmode="numeric">
-        <span class="muted small">Uses the first click section’s tempo and meter. 0 turns it off.</span>
+        <span class="muted small">Leave blank for the fewest whole bars lasting at least 2 seconds at the first section’s tempo and meter. 0 turns it off.</span>
       </label>
       <div class="muted small" id="track-summary"></div>
     </section>

@@ -10,6 +10,7 @@
   <div class="stage-tool-row">
     <label>YouTube link <input id="builder-youtube-url" type="url" maxlength="2048" placeholder="https://youtu.be/…"></label>
     <button type="button" class="btn small" id="builder-load-youtube">Load YouTube video</button>
+    <button type="button" class="btn small" id="builder-replace-youtube">Replace video, keep hit points</button>
   </div>
   <div class="stage-tool-row">
     <label>Saved YouTube drafts <select id="builder-drafts"><option value="">Choose a draft</option></select></label>
@@ -19,6 +20,15 @@
   </div>
   <p id="builder-draft-status" class="muted small" role="status"></p>
   <p id="builder-media-status" role="status"></p>
+  <fieldset>
+    <legend>Resync hit-point times</legend>
+    <label>Shift in seconds <input type="number" id="builder-shift" step="0.001" placeholder="e.g. 2.5 or -1.25"></label>
+    <div class="stage-tool-row">
+      <button type="button" class="btn small" id="builder-shift-preview">Preview shift</button>
+      <button type="button" class="btn small" id="builder-shift-apply" disabled>Apply shift</button>
+    </div>
+    <p id="builder-shift-status" class="muted small" role="status">Shifts musical hit points together; the 0:00 reference stays fixed. Save the draft and update the track separately.</p>
+  </fieldset>
   <div class="video-builder-grid">
     <section aria-label="Video player">
       <video id="builder-video" controls playsinline preload="metadata" tabindex="0" aria-label="Source video"></video>
@@ -65,6 +75,7 @@
           <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
           <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
+          <label>Score bars skipped before this hit <input id="builder-skip" type="number" min="0" max="9998" step="1" value="0" inputmode="numeric"></label>
           <label>Rehearsal figure <input id="builder-figure" type="text" maxlength="32" placeholder="e.g. 6 or A"></label>
           <label><span><input id="builder-visual-cue" type="checkbox"> Streamer and punch</span></label>
           <label>Meter numerator <input id="builder-num" type="number" min="1" max="32" step="1"></label>
@@ -87,12 +98,12 @@
   </div>
   <section class="video-builder-preview" aria-labelledby="builder-preview-title">
     <h2 id="builder-preview-title">Click track preview</h2>
-    <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. The final hit point only closes the last span: it needs a time and the next bar number. A ramp can use the previous span’s ending tempo; enter a starting BPM if it’s the first span or you want a different starting tempo.</p>
+    <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. Enter skipped score bars on the next hit point; they add no time. The final hit point closes the last span. A ramp can use the previous span’s ending tempo.</p>
     <p id="builder-result" role="status"></p>
     <ol id="builder-preview"></ol>
     <label>Starting count-in (bars)
       <input type="number" id="builder-count-in" min="0" max="8" step="1" inputmode="numeric">
-      <span class="muted small">Leave blank to keep an existing track’s count-in, or start without one on a new track.</span>
+      <span class="muted small">Leave blank to keep an existing track’s count-in, or use the automatic two-second minimum on a new track.</span>
     </label>
     <button type="button" class="btn" id="builder-save-draft" disabled>Save YouTube draft</button>
     <button class="btn primary" id="builder-create" disabled>Create click track</button>
