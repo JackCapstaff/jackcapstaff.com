@@ -24,7 +24,7 @@ MAX_SECTIONS = 500
 MAX_VIDEO_DRAFTS = 50
 YOUTUBE_ID_RE = re.compile(r"[A-Za-z0-9_-]{11}")
 
-SECTION_TYPES = {"click", "pause"}
+SECTION_TYPES = {"click", "pause", "timedPause"}
 ADVANCE_MODES = {"auto", "manual"}
 CLICK_MODES = {"beats", "units", "sub2", "sub3", "sub4", "silent"}
 VALID_DENOMINATORS = {1, 2, 4, 8, 16, 32}
@@ -67,6 +67,14 @@ def _text(value, limit):
     return str(value or "").strip()[:limit]
 
 
+def _clamp_float_ms(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(86400, number)) if math.isfinite(number) else 0
+
+
 def _clean_section(raw):
     raw = raw if isinstance(raw, dict) else {}
     num = _clamp_int(raw.get("num"), 4, 1, 32)
@@ -99,6 +107,7 @@ def _clean_section(raw):
         "bpm": _clamp_float(raw.get("bpm"), 120, 10, 400),
         "bpmEnd": bpm_end,
         "rampMode": "linearTime" if raw.get("rampMode") == "linearTime" else "linearBeat",
+        "pauseDuration": round(_clamp_float_ms(raw.get("pauseDuration")), 3),
         "beatUnit": beat_unit,
         "num": num,
         "den": den,
@@ -131,6 +140,11 @@ def _apply_payload(track, data):
         abort(400, description="Sections must be a list.")
     if len(sections) > MAX_SECTIONS:
         abort(400, description=f"A track can have at most {MAX_SECTIONS} sections.")
+    for section in sections:
+        if isinstance(section, dict) and section.get("type") == "timedPause":
+            duration = section.get("pauseDuration")
+            if type(duration) not in (int, float) or not math.isfinite(duration) or not 0.001 <= duration <= 86400:
+                abort(400, description="A timed pause duration must be between 0.001 and 86400 seconds.")
     track.title = title
     track.notes = _text(data.get("notes"), 2000)
     if "videoOffset" in data:
@@ -252,10 +266,10 @@ def _apply_video_draft(draft, data):
         if (type(time) not in (int, float) or not 0 <= time <= 86400
                 or time != round(time, 3) or time <= previous or (not cleaned and time != 0)):
             abort(400, description="Hit points must start at zero and have increasing times to millisecond precision.")
-        shape = _text(raw.get("shape"), 8)
+        shape = _text(raw.get("shape"), 10)
         unit = _text(raw.get("unit"), 8)
         den = _text(raw.get("den"), 2)
-        if shape not in ("steady", "accel", "rall") or not BEAT_UNIT_RE.fullmatch(unit) or den not in {
+        if shape not in ("steady", "accel", "rall", "timedPause") or not BEAT_UNIT_RE.fullmatch(unit) or den not in {
             str(v) for v in VALID_DENOMINATORS
         }:
             abort(400, description="Invalid hit point meter, beat unit or tempo shape.")

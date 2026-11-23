@@ -5,6 +5,12 @@ from clicktrack import _clean_section
 
 
 class ClickTrackSectionTests(unittest.TestCase):
+    def test_timed_pause_round_trips_millisecond_duration(self):
+        section = _clean_section({"type": "timedPause", "pauseDuration": 2.123, "bars": 1, "startBar": 175})
+        self.assertEqual(section["type"], "timedPause")
+        self.assertEqual(section["pauseDuration"], 2.123)
+        self.assertEqual(_clean_section(section), section)
+
     def test_auto_and_explicit_count_ins_round_trip(self):
         for value in (None, 0, 1, 8):
             with self.subTest(count_in=value):
@@ -328,6 +334,28 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertEqual(other_device.put(url, json={**payload, "title": "Revised"}).json["title"], "Revised")
         self.assertEqual(self.client.delete(url).status_code, 200)
         self.assertEqual(other_device.get(url).status_code, 404)
+
+    def test_timed_pause_draft_and_track_round_trip(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"time": 0, "bar": "175", "num": "3", "den": "4", "unit": "auto",
+                  "shape": "timedPause", "bpm": "", "dialogue": "", "figure": ""}
+        draft = self.client.post(path, json={"videoId": "abcdefghijk", "markers": [marker]})
+        self.assertEqual(draft.status_code, 201)
+        self.assertEqual(self.client.get(f"{path}/{draft.json['id']}").json["markers"][0]["shape"], "timedPause")
+        payload = {**self.payload, "videoDraftId": draft.json["id"], "sections": [
+            {"type": "timedPause", "pauseDuration": 2.123, "startBar": 175, "bars": 1},
+            {"type": "click", "startBar": 176, "bpm": 94},
+        ]}
+        saved = self.client.post("/clicktrack/api/tracks", json=payload)
+        self.assertEqual(saved.status_code, 201)
+        reloaded = self.client.get("/clicktrack/api/tracks").json["tracks"][0]
+        self.assertEqual(reloaded["sections"][0]["type"], "timedPause")
+        self.assertEqual(reloaded["sections"][0]["pauseDuration"], 2.123)
+        self.assertEqual(reloaded["sections"][1]["bpm"], 94)
+        for duration in (0, -1, "invalid", None):
+            with self.subTest(duration=duration):
+                bad = {**payload, "sections": [{"type": "timedPause", "pauseDuration": duration}]}
+                self.assertEqual(self.client.post("/clicktrack/api/tracks", json=bad).status_code, 400)
 
     def test_section_visual_cue_flags_round_trip_and_default_off(self):
         response = self.client.post("/clicktrack/api/tracks", json={

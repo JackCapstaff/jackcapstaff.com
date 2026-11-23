@@ -58,6 +58,19 @@ New video-generated accelerandos and rallentandos use the hit times and beat
 count to find the average tempo, then calculate the end tempo from the starting
 tempo. Tempo changes linearly over time, and clicks follow the resulting curve.
 Saved older ramps keep their original timing unless regenerated from video.
+For a fixed pause, select its opening hit point and choose **Timed pause and
+count-in** under **Tempo shape**. The span stays silent until a count-in at the
+next section's starting tempo, ending at the next hit point. It uses up to one
+bar of whole tempo beats; if a full bar does not fit, it uses as many whole
+beats as fit. The next span must be a click section, and at least one beat must
+fit. A ramp immediately after a timed pause needs an explicit starting BPM.
+Tempo beats use the next section's beat unit (including dotted units for
+compound meters), not irregular grouping. Save the draft and **Save over
+existing track** to apply the change. The normal editor can adjust the pause's
+duration, but video hit-point edits are needed to regenerate synchronised
+timings. Starting at a timed pause plays its silence and built-in count-in;
+the separate pedal-controlled pause still waits indefinitely for a cue.
+WAV exports split at timed pauses and do not include them.
 Select a musical hit point and choose **Perform from here** to save and replace
 the linked track, discard draft edits and play the saved track, or preview the
 current draft without changing the saved track. Preview uses the draft's
@@ -120,8 +133,9 @@ matching score-bar hit point. If there is no unique matching hit point, the
 video opens at the track's estimated section time instead. Saving a video draft
 does not update the track until you choose **Save over existing track**.
 Perform displays rounded BPM without changing the saved tempo or click timing.
-The next-section preview shows the rounded BPM change; if the beat unit
-changes, the difference is expressed in the next section's beat unit.
+The next-section preview compares the rounded conducting beats per minute
+directly, even when the beat unit changes. For example, crotchet = 90 to
+dotted crotchet = 60 shows **Slower (-30 BPM)**, with a beat-unit change.
 
 Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
 Edit, or on the opening video hit point for that section. Figures appear in the

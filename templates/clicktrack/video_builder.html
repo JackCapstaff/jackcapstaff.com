@@ -85,11 +85,13 @@
             <option value="steady">Steady</option>
             <option value="accel">Accelerando</option>
             <option value="rall">Rallentando</option>
+            <option value="timedPause">Timed pause and count-in</option>
           </select></label>
           <label id="builder-bpm-field" hidden>Starting BPM <input id="builder-bpm" type="number" min="10" max="400" step="0.01" placeholder="Use previous tempo"></label>
           <label class="builder-dialogue">On-screen dialogue / cue <textarea id="builder-dialogue" rows="2" maxlength="500"></textarea></label>
         </div>
         <p id="builder-skip-help" class="muted small">Applies to the span starting at this hit. Add the next score-bar hit point first.</p>
+        <p class="muted small">For a timed pause, choose that tempo shape on the hit at the start of the pause. It stays silent, then counts into the next section using its starting tempo.</p>
         <div class="stage-tool-row">
           <button class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           <button class="btn small danger" id="builder-remove">Remove hit point</button>
