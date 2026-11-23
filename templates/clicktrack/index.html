@@ -71,6 +71,9 @@
 
   <!-- ===================== PERFORM ===================== -->
   <main id="view-perform" class="view">
+    <div class="fullscreen-controls">
+      <button type="button" class="btn small" id="btn-exit-stage">Exit fullscreen</button>
+    </div>
     {% if not offline %}
     <label class="practice-toggle"><input type="checkbox" id="practice-enable" aria-controls="practice-video"> Enable video</label>
     {% endif %}
@@ -101,6 +104,10 @@
       </div>
 
       <div class="beats" id="d-beats" aria-hidden="true"></div>
+      <div class="pendulum" id="d-pendulum" aria-hidden="true" hidden>
+        <div class="pendulum-rod" id="d-pendulum-rod"><span class="pendulum-weight"></span></div>
+        <span class="pendulum-pivot"></span>
+      </div>
       <div class="performance-clock">
         <div>Running <strong id="d-elapsed">0:00.0</strong></div>
         <div>Video position <strong id="d-video-time">0:00.0</strong></div>
@@ -153,6 +160,33 @@
     {% endif %}
     </div>
 
+    <details id="rehearsal-panel" class="rehearsal-panel">
+      <summary>Rehearsal points</summary>
+      <button type="button" class="btn small" id="rehearsal-play">Start</button>
+      <p class="muted small" id="rehearsal-instructions">Pause playback, then select a section to choose a count-in and restart.</p>
+      <div id="rehearsal-list" class="rehearsal-list"></div>
+    </details>
+    <dialog id="rehearsal-dialog" aria-labelledby="rehearsal-dialog-title">
+      <form method="dialog" id="rehearsal-form">
+        <h2 id="rehearsal-dialog-title">Restart from rehearsal point</h2>
+        <p id="rehearsal-target"></p>
+        <label>Rehearsal count-in
+          <select id="rehearsal-count-in">
+            <option value="">Use section setting</option>
+            <option value="0">No count-in</option>
+            {% for bars in range(1, 9) %}
+            <option value="{{ bars }}">{{ bars }} {{ 'bar' if bars == 1 else 'bars' }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <p class="muted small" id="rehearsal-dialog-help">The count-in applies only to this restart.</p>
+        <div class="stage-tool-row">
+          <button type="button" class="btn" id="rehearsal-cancel">Cancel</button>
+          <button type="submit" class="btn primary">Start from here</button>
+        </div>
+      </form>
+    </dialog>
+
     <div class="performance-tools">
       <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
       <button class="btn small" id="btn-fullscreen">Fullscreen performance</button>
@@ -165,6 +199,13 @@
     <details class="performance-menu" id="performance-menu">
       <summary>Performance options</summary>
       <div class="stage-tool-row">
+        <label>Beat visual
+          <select id="pref-beat-visual">
+            <option value="circles">Circles</option>
+            <option value="pendulum">Swinging metronome</option>
+            <option value="both">Both</option>
+          </select>
+        </label>
         <label id="cue-figure-field" hidden>Jump to rehearsal figure
           <select id="cue-figure"><option value="">Choose a figure</option></select>
         </label>

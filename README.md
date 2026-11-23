@@ -21,6 +21,8 @@ labels of later points, tick **Renumber following hit points** before editing
 **15** to **14**, and so on, keeping any letter suffixes on the later points.
 With the option off, only the selected point changes. Neither mode changes
 score bars or timestamps. Labels are kept when you save a YouTube draft.
+The click-track preview uses the same hit-point numbers as the list, including
+letter suffixes; each row shows the starting and closing hit points.
 To replace a marker's time
 without changing its details, select it, seek to the new time on the timeline
 and choose **Move hit point to playhead**.
@@ -47,6 +49,14 @@ When saving over a track, leaving the field blank keeps its current count-in.
 For a one-off rehearsal start, open **Perform → Performance options**, choose
 a section and a **Rehearsal count-in**, then select **Restart from cue**.
 Choose **No count-in** to skip a saved lead-in for that restart.
+Under **Performance options → Beat visual**, choose the existing circles,
+a swinging metronome, or both. The swing changes direction on each grouped
+beat, follows tempo ramps and freezes when playback is paused. Your choice
+is saved on this browser and included when preparing an offline show.
+In fullscreen, open **Rehearsal points** on the right. Pause playback and
+select a section to see its figure and score bar, choose a one-off count-in
+in the dialog, then select **Start from here**. Cancel leaves playback paused.
+Silent cues still wait for the pedal. The list also works in the offline view.
 
 Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
 Edit, or on the opening video hit point for that section. In **Perform →
@@ -72,7 +82,8 @@ counting back from the downbeat. For example, 60 seconds at 60 BPM in 4/4
 shows −60, −59, …, −1, then bar 1. If the film begins between beats, it
 rolls silently until the first beat that fits.
 Film audio is muted by default. YouTube sync is approximate; use **Resync to
-clicks** after buffering. The offline and fullscreen stage views stay video-free.
+clicks** after buffering. Video can also be enabled in fullscreen; the offline
+stage view remains video-free.
 
 Tick **Streamer and punch** on the video hit points that need a visual cue,
 then create or update the click track. You can also mark section boundaries in

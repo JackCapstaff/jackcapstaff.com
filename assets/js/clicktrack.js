@@ -222,8 +222,9 @@
 
   // ------------------------------------------------------------------ prefs
   const offlineShow = CFG.offline ? loadJSON(OFFLINE_KEY, null) : null;
-  const prefs = Object.assign({ volume: 1, sound: 'beep', flash: true, midi: false },
+  const prefs = Object.assign({ volume: 1, sound: 'beep', flash: true, midi: false, beatVisual: 'circles' },
     CFG.offline ? offlineShow && offlineShow.prefs : loadJSON(LS_PREFS, {}));
+  if (!['circles', 'pendulum', 'both'].includes(prefs.beatVisual)) prefs.beatVisual = 'circles';
   const bindings = defaultBindings();
   if (prefs.pedalBindings) {
     for (const gesture of ['single', 'double']) {
@@ -452,7 +453,7 @@
 
   // ----------------------------------------------------------------- engine
   // phase: stopped | countin | play | pause | end. bar/tick/sub describe the *next* step to schedule.
-  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0, filmCountIn: false };
+  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0, filmCountIn: false, swingSide: 1 };
   const clock = { start: 0, elapsed: 0, videoStart: 0 };
   let transportBusy = false;
   const visQ = [];
@@ -561,6 +562,14 @@
     const subN = counting ? 1 : subdivOf(s);
     const level = E.sub === 0 ? levels[E.tick] : 0;
     const bpm = counting ? s.bpm : bpmAt(s, (E.bar + (E.tick + E.sub / subN) / s.num) / s.bars);
+    const groups = groupsOf(s), groupIndex = groupIndexOf(s, E.tick);
+    const groupStart = groups.slice(0, groupIndex).reduce((sum, length) => sum + length, 0);
+    if (level >= 2) E.swingSide *= -1;
+    const duration = unitSeconds(s, bpm) / subN;
+    const swing = {
+      side: E.swingSide, progress: (E.tick - groupStart + E.sub / subN) / groups[groupIndex],
+      increment: 1 / (subN * groups[groupIndex]), duration,
+    };
     if (audible(s, level, E.phase)) playClick(E.nextTime, level, s);
     const downbeat = !counting && E.tick === 0 && E.sub === 0;
     const punch = downbeat && cueOnEntry;
@@ -568,8 +577,8 @@
     const lead = downbeat && practice?.media && E.queued == null ? streamerLead(sections(), E.secIdx, E.bar) : null;
     const beatsLeft = counting && E.filmCountIn
       ? (E.countIn - E.bar) * groupsOf(s).length - groupIndexOf(s, E.tick) : null;
-    pushVis('tick', { level, bpm, punch, beatsLeft, streamerEnd: lead === null ? null : E.nextTime + lead, cueRoute });
-    E.nextTime += unitSeconds(s, bpm) / subN;
+    pushVis('tick', { level, bpm, punch, beatsLeft, swing, streamerEnd: lead === null ? null : E.nextTime + lead, cueRoute });
+    E.nextTime += duration;
 
     if (++E.sub < subN) return;
     E.sub = 0;
@@ -609,6 +618,7 @@
     E.playing = true;
     E.suspended = false;
     E.queued = null;
+    E.swingSide = 1;
     const idx = clamp(fromIdx, 0, sections().length - 1);
     const s = sections()[idx];
     const videoStart = ctx.currentTime + 0.1;
@@ -989,15 +999,40 @@
       return '<li class="' + cls + '" data-i="' + i + '"><span class="idx">' + (i + 1) + '</span><span class="nm">'
         + esc(sectionTitle(s, i)) + '</span><span class="meta">' + esc((s.figure ? figureLabel(s.figure) + ' · ' : '') + meta) + '</span></li>';
     }).join('');
+    renderRehearsalList();
   }
 
   function renderTransport() {
     $('btn-play').textContent = !E.playing ? '▶ Start' : E.suspended ? '▶ Resume' : 'Pause';
+    $('rehearsal-play').textContent = !E.playing ? 'Start' : E.suspended ? 'Resume' : 'Pause';
+    $('rehearsal-play').disabled = !sections().length;
     $('btn-play').classList.toggle('primary', !E.playing);
     $('btn-stop').disabled = !E.playing;
     renderOutputControls();
     $('btn-export-wav').disabled = E.playing || wavBusy || !$('wav-run').value;
     $('stage').classList.toggle('transport-paused', E.suspended);
+    renderRehearsalList();
+  }
+
+  function renderRehearsalList() {
+    const list = $('rehearsal-list');
+    const bars = startBars(sections());
+    const active = E.playing && !E.suspended;
+    $('rehearsal-instructions').textContent = active
+      ? 'Pause playback, then select a section to choose a count-in and restart.'
+      : 'Select a section to choose a count-in and restart.';
+    list.replaceChildren(...sections().map((section, i) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'rehearsal-point';
+      button.dataset.index = i;
+      button.disabled = active;
+      const location = bars[i] == null ? 'Cue' : 'Bar ' + bars[i];
+      button.textContent = (section.figure ? figureLabel(section.figure) + ' · ' : '')
+        + location + ' · ' + sectionTitle(section, i);
+      if (i === (E.playing ? shown?.secIdx ?? selectedIdx : selectedIdx)) button.setAttribute('aria-current', 'true');
+      return button;
+    }));
   }
 
   function renderClock() {
@@ -1011,6 +1046,27 @@
       : E.playing ? (shown?.phase === 'intro' ? 'Film intro — clicks have not started'
         : ctx.currentTime < clock.start ? 'Count-in — clock starts with music' : 'Running (cue waits included)')
         : practice?.media ? 'Practice video follows the selected section' : 'Starts from selected section; video time is not linked to a video player';
+  }
+
+  function renderBeatVisual() {
+    const circles = prefs.beatVisual !== 'pendulum';
+    const pendulum = prefs.beatVisual !== 'circles';
+    $('d-beats').hidden = !circles;
+    $('d-pendulum').hidden = !pendulum;
+    $('stage').classList.toggle('show-pendulum', pendulum);
+  }
+
+  function renderPendulum() {
+    if ($('d-pendulum').hidden) return;
+    const swing = shown?.swing;
+    if (!E.playing || !swing || !ctx) {
+      $('d-pendulum-rod').style.transform = 'rotate(0deg)';
+      return;
+    }
+    const elapsed = clamp((ctx.currentTime - shown.time) / swing.duration, 0, 1);
+    const progress = clamp(swing.progress + elapsed * swing.increment, 0, 1);
+    const angle = swing.side * 34 * Math.cos(Math.PI * progress);
+    $('d-pendulum-rod').style.transform = 'rotate(' + angle.toFixed(2) + 'deg)';
   }
 
   let flashTimer = null;
@@ -1049,6 +1105,7 @@
       syncPracticeVideo();
       renderPracticeCues();
     }
+    renderPendulum();
     renderClock();
     requestAnimationFrame(frame);
   }
@@ -2238,7 +2295,7 @@
           s.bpm = Math.round(start * 100) / 100;
           s.bpmEnd = fitRamp(s, duration, a.shape);
         }
-        secs.push({ section: s, average });
+        secs.push({ section: s, average, hitPoint: a.label, endHitPoint: b.label });
       } catch (e) {
         throw new Error('Hit point at ' + markerTime(a.time) + ': ' + e.message);
       }
@@ -2252,9 +2309,10 @@
     builder.planValid = false;
     try {
       const plan = planVideoTrack();
-      for (const { section: s, average } of plan.secs) {
+      for (const { section: s, average, hitPoint, endHitPoint } of plan.secs) {
         const li = document.createElement('li');
-        li.textContent = (s.figure ? figureLabel(s.figure) + ' · ' : '') + s.name + ' · ' + s.calcStart + ' → ' + s.calcEnd + ' · ' + s.bars + ' bars of '
+        li.textContent = 'Hit point ' + hitPoint + ' → ' + endHitPoint + ' · '
+          + (s.figure ? figureLabel(s.figure) + ' · ' : '') + s.name + ' · ' + s.calcStart + ' → ' + s.calcEnd + ' · ' + s.bars + ' bars of '
           + s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm
           + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd + ' (average ' + average.toFixed(2) + ' BPM)')
           + (s.visualCue ? ' · Visual cue at start' : '') + (s.visualEndCue ? ' · Visual cue at end' : '')
@@ -2549,9 +2607,11 @@
       if (!builder.draftsBusy) runDraftAction(async () => { await refreshDraftList(); return ''; });
     });
     const link = $('builder-youtube-url'), drafts = $('builder-drafts'), draftStatus = $('builder-draft-status');
-    function editWithVideo() {
+    async function editWithVideo() {
       if (!current || builder.draftsBusy) return;
       const track = current;
+      if (performanceMode) await toggleFullscreen();
+      if (current !== track) return;
       builder.returnTrack = track;
       switchView('video');
       refreshBuilderTargets(track.id);
@@ -2704,6 +2764,7 @@
       renderSelectedMarkerHeading();
       renderVideoMarkers();
       renderVideoTimeline();
+      renderVideoPlan();
       if (following) toast('Renumbered ' + following + ' following hit point' + (following === 1 ? '.' : 's.'));
     });
     for (const field of markerFields) {
@@ -2806,11 +2867,15 @@
 
   let performanceMode = false, nativeFullscreen = false;
   function setPerformanceMode(on) {
-    if (on && !CFG.offline) closePracticeVideo();
     performanceMode = on;
     document.body.classList.toggle('performance-mode', on);
     $('btn-exit-fullscreen').hidden = !on;
     $('performance-menu').open = false;
+    if (!on) {
+      $('rehearsal-panel').open = false;
+      if ($('rehearsal-dialog').open) $('rehearsal-dialog').close();
+    }
+    renderRehearsalList();
     focusPerformancePedal();
   }
 
@@ -3023,6 +3088,7 @@
   }
 
   function onKeyDown(e) {
+    if ($('rehearsal-dialog').open) return;
     const k = pedalKey(e);
     const menu = $('track-actions');
     if (k === 'Escape' && menu.open) {
@@ -3155,6 +3221,45 @@
     });
     $('btn-fullscreen').addEventListener('click', toggleFullscreen);
     $('btn-exit-fullscreen').addEventListener('click', toggleFullscreen);
+    $('btn-exit-stage').addEventListener('click', toggleFullscreen);
+    $('rehearsal-play').addEventListener('click', () => { cancelPendingPedal(); togglePlay(); });
+    let rehearsalTarget = null;
+    $('rehearsal-list').addEventListener('click', (e) => {
+      const button = e.target.closest('button[data-index]');
+      if (!button || (E.playing && !E.suspended) || transportBusy) return;
+      const idx = Number(button.dataset.index);
+      const section = sections()[idx];
+      if (!section) return;
+      rehearsalTarget = { track: current, index: idx, section };
+      $('rehearsal-target').textContent = button.textContent;
+      const select = $('rehearsal-count-in');
+      select.disabled = section.type === 'pause';
+      select.value = '';
+      select.options[0].textContent = select.disabled ? 'Silent cue — waits for pedal'
+        : 'Use section setting (' + section.countIn + ')';
+      $('rehearsal-dialog-help').textContent = select.disabled
+        ? 'This silent cue waits for the pedal; count-in does not apply.'
+        : 'The count-in applies only to this restart.';
+      $('rehearsal-dialog').showModal();
+    });
+    $('rehearsal-cancel').addEventListener('click', () => $('rehearsal-dialog').close());
+    $('rehearsal-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (transportBusy || outputBusy) { toast('Wait for the audio operation to finish, then retry.'); return; }
+      if (!rehearsalTarget || rehearsalTarget.track !== current
+        || sections()[rehearsalTarget.index] !== rehearsalTarget.section || (E.playing && !E.suspended)) {
+        $('rehearsal-dialog').close();
+        toast('Pause playback and select the rehearsal point again.');
+        return;
+      }
+      const idx = rehearsalTarget.index, countIn = $('rehearsal-count-in');
+      const override = countIn.disabled || countIn.value === '' ? null : Number(countIn.value);
+      $('rehearsal-dialog').close();
+      stop(false);
+      selectIdx(idx);
+      start(idx, override);
+      focusPerformancePedal();
+    });
     $('performance-menu').addEventListener('toggle', () => {
       cancelPendingPedal();
       if ($('performance-menu').open) renderStageTools();
@@ -3349,6 +3454,15 @@
     $('btn-add-pause').addEventListener('click', () => addSection(true));
 
     $('pref-volume').value = prefs.volume;
+    $('pref-beat-visual').value = prefs.beatVisual;
+    renderBeatVisual();
+    $('pref-beat-visual').addEventListener('change', (e) => {
+      prefs.beatVisual = e.target.value;
+      renderBeatVisual();
+      renderPendulum();
+      savePrefs();
+      e.target.blur();
+    });
     $('pref-sound').value = prefs.sound;
     $('pref-flash').checked = !!prefs.flash;
     $('pref-midi').checked = !!prefs.midi;

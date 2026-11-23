@@ -150,6 +150,11 @@ class ClickTrackStorageTests(unittest.TestCase):
                 self.assertNotIn(b'id="practice-video"', response.data)
                 self.assertNotIn(b'id="practice-enable"', response.data)
                 self.assertIn(b'id="audio-output"', response.data)
+                self.assertIn(b'id="rehearsal-panel"', response.data)
+                self.assertIn(b'id="rehearsal-dialog"', response.data)
+                self.assertIn(b'id="rehearsal-play"', response.data)
+                self.assertIn(b'id="pref-beat-visual"', response.data)
+                self.assertIn(b'id="d-pendulum"', response.data)
                 self.assertNotIn(self.payload["title"].encode(), response.data)
         guest = self.app.test_client()
         self.assertEqual(guest.get("/clicktrack/api/tracks").status_code, 401)
@@ -177,6 +182,7 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertIn(b'id="builder-overwrite"', response.data)
         self.assertIn(b'id="track-count-in"', response.data)
         self.assertIn(b'id="builder-count-in"', response.data)
+        self.assertIn(b'id="builder-preview"', response.data)
 
     def test_practice_video_is_separate_from_pre_show_audio_test(self):
         response = self.client.get("/clicktrack/")
@@ -188,6 +194,8 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertIn(b'id="practice-resync"', response.data)
         self.assertIn(b'id="practice-from-start" disabled', response.data)
         self.assertIn(b'id="practice-show-cues"', response.data)
+        self.assertIn(b'<option value="pendulum">Swinging metronome</option>', response.data)
+        self.assertIn(b'<option value="both">Both</option>', response.data)
         self.assertIn(b'id="builder-visual-cue"', response.data)
         self.assertIn(b'id="btn-test-clicks"', response.data)
 
@@ -201,6 +209,10 @@ class ClickTrackStorageTests(unittest.TestCase):
                 self.assertIn(b'<option value="0">No count-in</option>', options)
                 self.assertIn(b'<option value="1">1 bar</option>', options)
                 self.assertIn(b'<option value="8">8 bars</option>', options)
+                self.assertIn(b'id="rehearsal-list"', response.data)
+                rehearsal = response.data.split(b'id="rehearsal-count-in"', 1)[1].split(b"</select>", 1)[0]
+                self.assertIn(b'<option value="0">No count-in</option>', rehearsal)
+                self.assertIn(b'<option value="8">8 bars</option>', rehearsal)
 
     def test_track_actions_group_creation_json_and_pedal_setup(self):
         response = self.client.get("/clicktrack/")
