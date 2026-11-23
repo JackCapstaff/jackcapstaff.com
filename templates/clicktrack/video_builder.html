@@ -100,7 +100,7 @@
   </div>
   <section class="video-builder-preview" aria-labelledby="builder-preview-title">
     <h2 id="builder-preview-title">Click track preview</h2>
-    <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. Enter skipped score bars on the hit point at the start of that span; they add no time. The final hit point closes the last span. A ramp can use the previous span’s ending tempo.</p>
+    <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. Enter skipped score bars on the hit point at the start of that span; they add no time. The final hit point closes the last span. Tempo is calculated from hit-point times; a ramp can use the previous span’s ending tempo.</p>
     <p id="builder-result" role="status"></p>
     <ol id="builder-preview"></ol>
     <label>Starting count-in (bars)
@@ -118,7 +118,7 @@
   </section>
   <dialog id="builder-perform-dialog" aria-labelledby="builder-perform-title">
     <h2 id="builder-perform-title">Perform from this hit point</h2>
-    <p>Save replaces the linked track's sections and updates the saved YouTube draft used by any linked tracks. Discard restores the last saved draft and plays the saved track. Preview plays the current draft without saving it.</p>
+    <p>Save updates the linked track from the video and updates the saved YouTube draft used by any linked tracks. Matching sections keep their other performance settings. Discard restores the last saved draft and plays the saved track. Preview plays the current draft without saving it.</p>
     <div class="stage-tool-row">
       <button type="button" class="btn primary" id="builder-perform-save">Save and perform</button>
       <button type="button" class="btn" id="builder-perform-discard">Discard and perform</button>

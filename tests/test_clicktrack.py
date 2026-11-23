@@ -34,6 +34,20 @@ class ClickTrackSectionTests(unittest.TestCase):
         self.assertEqual(section["click"], "beats")
         self.assertTrue(section["compoundClickDefaulted"])
 
+    def test_ramp_mode_defaults_and_round_trips(self):
+        self.assertEqual(_clean_section({"bpmEnd": 80})["rampMode"], "linearBeat")
+        for mode in ("linearBeat", "linearTime"):
+            section = _clean_section({"bpm": 120, "bpmEnd": 80, "rampMode": mode})
+            self.assertEqual(section["rampMode"], mode)
+            self.assertEqual(_clean_section(section), section)
+        self.assertEqual(_clean_section({"rampMode": "invalid"})["rampMode"], "linearBeat")
+
+    def test_section_hit_point_round_trips(self):
+        section = _clean_section({"hitPoint": "24A", "figure": "5", "startBar": 267})
+        self.assertEqual(_clean_section(section), section)
+        self.assertEqual(section["hitPoint"], "24A")
+        self.assertEqual(_clean_section({})["hitPoint"], "")
+
     def test_sound_settings_and_multiline_notes_round_trip(self):
         section = _clean_section({
             "num": 6, "den": 8, "click": "units",
@@ -255,6 +269,22 @@ class ClickTrackStorageTests(unittest.TestCase):
         for action in (b"builder-perform", b"builder-perform-save", b"builder-perform-discard",
                        b"builder-perform-preview", b"preview-return"):
             self.assertIn(b'id="' + action + b'"', page)
+
+    def test_performance_options_are_above_stage_without_duplicate_sections_list(self):
+        for path in ("/clicktrack/", "/clicktrack/offline/"):
+            with self.subTest(path=path):
+                page = self.client.get(path).data
+                self.assertLess(page.index(b'id="performance-menu"'), page.index(b'id="stage"'))
+                self.assertNotIn(b'id="setlist"', page)
+
+    def test_rehearsal_grid_headings_available_online_and_offline(self):
+        for path in ("/clicktrack/", "/clicktrack/offline/"):
+            with self.subTest(path=path):
+                page = self.client.get(path).data
+                header = page.split(b'class="rehearsal-header', 1)[1].split(b'id="rehearsal-list"', 1)[0]
+                self.assertIn(b"Hit point", header)
+                self.assertIn(b"Figure", header)
+                self.assertIn(b"Bar", header)
 
     def test_track_actions_group_creation_json_and_pedal_setup(self):
         response = self.client.get("/clicktrack/")

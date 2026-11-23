@@ -111,6 +111,7 @@
     s.calcEnd = String(raw.calcEnd || '').slice(0, 32);
     s.bpm = num(raw.bpm, 120, 10, 400);
     s.bpmEnd = raw.bpmEnd == null || raw.bpmEnd === '' ? null : num(raw.bpmEnd, null, 10, 400);
+    s.rampMode = raw.rampMode === 'linearTime' ? 'linearTime' : 'linearBeat';
     s.beatUnit = BEAT_UNITS.some((u) => u[0] === raw.beatUnit) || /^[1-9]\/(1|2|4|8|16|32)$/.test(raw.beatUnit || '') ? raw.beatUnit : 'auto';
     s.num = num(raw.num, 4, 1, 32, true);
     s.den = DENOMS.includes(+raw.den) ? +raw.den : 4;
@@ -125,6 +126,7 @@
     s.subVelocity = num(raw.subVelocity, 32, 0, 127, true);
     s.countIn = raw.countIn == null || raw.countIn === '' ? null : num(raw.countIn, 0, 0, 8, true);
     s.startBar = raw.startBar == null || raw.startBar === '' ? null : num(raw.startBar, null, 1, 99999, true);
+    s.hitPoint = String(raw.hitPoint || '').trim().slice(0, 17);
     s.figure = String(raw.figure || '').trim().slice(0, 32);
     s.visualCue = raw.visualCue === true;
     s.visualEndCue = raw.visualEndCue === true;
@@ -175,10 +177,21 @@
 
   function bpmAt(s, progress) {
     if (s.bpmEnd == null) return s.bpm;
-    return s.bpm + (s.bpmEnd - s.bpm) * clamp(progress, 0, 1);
+    const p = clamp(progress, 0, 1);
+    if (s.rampMode === 'linearTime') return Math.sqrt(s.bpm ** 2 + (s.bpmEnd ** 2 - s.bpm ** 2) * p);
+    return s.bpm + (s.bpmEnd - s.bpm) * p;
   }
 
   const subdivOf = (s) => ({ sub2: 2, sub3: 3, sub4: 4 }[s.click] || 1);
+
+  function stepSeconds(s, progress, subN) {
+    const bpm = bpmAt(s, progress);
+    if (s.bpmEnd != null && s.rampMode === 'linearTime') {
+      const next = bpmAt(s, progress + 1 / (s.bars * s.num * subN));
+      return 2 * unitSeconds(s, 1) / (subN * (bpm + next));
+    }
+    return unitSeconds(s, bpm) / subN;
+  }
 
   function audible(s, level, phase) {
     if (phase === 'countin') return level >= 2;
@@ -208,7 +221,7 @@
     if (durationCache.has(s)) return durationCache.get(s);
     const steps = total * subdivOf(s);
     let t = 0;
-    for (let i = 0; i < steps; i++) t += unitSeconds(s, bpmAt(s, i / steps)) / subdivOf(s);
+    for (let i = 0; i < steps; i++) t += stepSeconds(s, i / steps, subdivOf(s));
     durationCache.set(s, t);
     return t;
   }
@@ -474,7 +487,7 @@
     const steps = s.num * subdivOf(s);
     let seconds = 0;
     for (let i = 0; i < steps; i++) {
-      seconds += unitSeconds(s, bpmAt(s, (bar + i / steps) / s.bars)) / subdivOf(s);
+      seconds += stepSeconds(s, (bar + i / steps) / s.bars, subdivOf(s));
     }
     return seconds;
   }
@@ -578,11 +591,12 @@
     const counting = E.phase === 'countin';
     const subN = counting ? 1 : subdivOf(s);
     const level = E.sub === 0 ? levels[E.tick] : 0;
-    const bpm = counting ? E.countBpm : bpmAt(s, (E.bar + (E.tick + E.sub / subN) / s.num) / s.bars);
+    const progress = (E.bar + (E.tick + E.sub / subN) / s.num) / s.bars;
+    const bpm = counting ? E.countBpm : bpmAt(s, progress);
     const groups = groupsOf(s), groupIndex = groupIndexOf(s, E.tick);
     const groupStart = groups.slice(0, groupIndex).reduce((sum, length) => sum + length, 0);
     if (level >= 2) E.swingSide *= -1;
-    const duration = unitSeconds(s, bpm) / subN;
+    const duration = counting ? unitSeconds(s, bpm) / subN : stepSeconds(s, progress, subN);
     const swing = {
       side: E.swingSide, progress: (E.tick - groupStart + E.sub / subN) / groups[groupIndex],
       increment: 1 / (subN * groups[groupIndex]), duration,
@@ -1007,24 +1021,6 @@
   }
 
   function renderSetlist() {
-    const secs = sections();
-    const sb = startBars(secs);
-    const cur = E.playing && shown ? shown.secIdx : -1;
-    const queued = E.playing ? E.queued : null;
-    $('setlist').innerHTML = secs.map((s, i) => {
-      const cls = [
-        s.type === 'pause' ? 'pause' : '',
-        i === cur ? 'current' : '',
-        i === queued ? 'queued' : '',
-        !E.playing && i === selectedIdx ? 'selected' : '',
-      ].join(' ');
-      const meta = s.type === 'pause'
-        ? 'pause · waits for cue'
-        : s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + Math.round(s.bpm) + (s.bpmEnd != null ? '→' + Math.round(s.bpmEnd) : '')
-          + ' · ' + s.bars + ' bar' + (s.bars === 1 ? '' : 's') + (s.advance === 'manual' ? ' · wait' : '') + ' · b.' + sb[i];
-      return '<li class="' + cls + '" data-i="' + i + '"><span class="idx">' + (i + 1) + '</span><span class="nm">'
-        + esc(sectionTitle(s, i)) + '</span><span class="meta">' + esc((s.figure ? figureLabel(s.figure) + ' · ' : '') + meta) + '</span></li>';
-    }).join('');
     renderRehearsalList();
   }
 
@@ -1041,25 +1037,102 @@
     renderRehearsalList();
   }
 
-  function renderRehearsalList() {
+  let rehearsalListTrack = null, rehearsalListIndex = null, rehearsalLabels = new Map(), rehearsalLabelRequest = 0;
+  let rehearsalLabelsPending = null;
+  async function loadRehearsalLabels(track) {
+    const request = ++rehearsalLabelRequest;
+    rehearsalLabels = new Map();
+    const status = $('rehearsal-hit-status');
+    status.hidden = true;
+    if (!track?.videoDraftId || CFG.offline || track.sections.every((section) => section.hitPoint || section.type === 'pause')) return true;
+    try {
+      const draft = await draftRequest('GET', track.videoDraftId);
+      if (request !== rehearsalLabelRequest || track !== current) return false;
+      const points = draft.markers.filter((marker) => marker.bar !== '');
+      const starts = startBars(track.sections);
+      track.sections.forEach((section, index) => {
+        const bar = starts[index];
+        const markers = points.slice(0, -1).filter((marker) => Number(marker.bar) === bar);
+        if (bar != null && markers.length === 1 && starts.filter((start) => start === bar).length === 1) {
+          rehearsalLabels.set(bar, markers[0].label || '');
+        }
+      });
+      renderRehearsalList();
+      return true;
+    } catch (e) {
+      if (request !== rehearsalLabelRequest || track !== current) return false;
+      status.textContent = 'Could not load linked hit-point labels: ' + e.message;
+      status.hidden = false;
+      return false;
+    }
+  }
+  function scrollToCurrentRehearsal() {
     const list = $('rehearsal-list');
+    const row = list.querySelector('.rehearsal-row.current');
+    if (!$('rehearsal-panel').open || !row) return;
+    const listRect = list.getBoundingClientRect(), rowRect = row.getBoundingClientRect();
+    if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) {
+      list.scrollTop += rowRect.top - listRect.top - (list.clientHeight - rowRect.height) / 2;
+    }
+  }
+
+  function renderRehearsalList() {
+    const list = $('rehearsal-list'), secs = sections();
     const bars = startBars(sections());
     const active = E.playing && !E.suspended;
+    const index = E.playing ? shown?.secIdx ?? selectedIdx : selectedIdx;
+    const changed = rehearsalListTrack !== current || rehearsalListIndex !== index;
     $('rehearsal-instructions').textContent = active
-      ? 'Pause playback, then select a section to choose a count-in and restart.'
+      ? 'Select a section to jump at the next barline.' + (CFG.offline ? '' : ' Editing a section stops playback.')
       : 'Select a section to choose a count-in and restart.';
-    list.replaceChildren(...sections().map((section, i) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'rehearsal-point';
-      button.dataset.index = i;
-      button.disabled = active;
-      const location = bars[i] == null ? 'Cue' : 'Bar ' + bars[i];
-      button.textContent = (section.figure ? figureLabel(section.figure) + ' · ' : '')
-        + location + ' · ' + sectionTitle(section, i);
-      if (i === (E.playing ? shown?.secIdx ?? selectedIdx : selectedIdx)) button.setAttribute('aria-current', 'true');
-      return button;
-    }));
+    if (rehearsalListTrack !== current || list.children.length !== secs.length) {
+      list.replaceChildren(...secs.map((section, i) => {
+        const row = document.createElement('div');
+        row.className = 'rehearsal-row';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'rehearsal-point';
+        button.dataset.index = i;
+        const cells = document.createElement('span');
+        cells.className = 'rehearsal-columns';
+        for (let column = 0; column < 3; column++) cells.append(document.createElement('span'));
+        button.append(cells);
+        row.append(button);
+        if (!CFG.offline) {
+          const edit = document.createElement('button');
+          edit.type = 'button';
+          edit.className = 'btn small rehearsal-edit';
+          edit.dataset.index = i;
+          edit.textContent = 'Edit';
+          row.append(edit);
+        }
+        return row;
+      }));
+    }
+    secs.forEach((section, i) => {
+      const row = list.children[i], button = row.querySelector('.rehearsal-point');
+      const hit = section.hitPoint || (bars[i] != null && bars.filter((bar) => bar === bars[i]).length === 1
+        ? rehearsalLabels.get(bars[i]) : '') || '';
+      const location = bars[i] == null ? 'Cue' : String(bars[i]);
+      const label = (hit ? 'Hit point ' + hit + ' · ' : '') + (section.figure ? figureLabel(section.figure) + ' · ' : '')
+        + (bars[i] == null ? 'Cue' : 'Bar ' + location) + ' · ' + sectionTitle(section, i);
+      const cells = button.firstElementChild.children;
+      [hit || '—', section.figure || '—', location].forEach((value, column) => {
+        if (cells[column].textContent !== value) cells[column].textContent = value;
+      });
+      button.setAttribute('aria-label', label);
+      button.disabled = false;
+      row.classList.toggle('current', i === index);
+      row.classList.toggle('queued', E.playing && E.queued === i);
+      button.title = active ? 'Jump to this section at the next barline' : 'Choose a count-in and restart';
+      if (i === index) button.setAttribute('aria-current', 'true');
+      else button.removeAttribute('aria-current');
+      const edit = row.querySelector('.rehearsal-edit');
+      if (edit) edit.setAttribute('aria-label', 'Edit ' + label);
+    });
+    rehearsalListTrack = current;
+    rehearsalListIndex = index;
+    if (changed) scrollToCurrentRehearsal();
   }
 
   function renderClock() {
@@ -1282,6 +1355,7 @@
     if (!CFG.offline && track !== current) closePracticeVideo();
     if (current?._preview && track !== current) tracks = tracks.filter((t) => t !== current);
     current = track;
+    if (rehearsalListTrack !== track) rehearsalLabelsPending = loadRehearsalLabels(track);
     if (current && !current._preview) saveJSON(LS_LAST, current.id);
     if (!CFG.offline) $('preview-notice').hidden = !current?._preview;
     selectedIdx = 0;
@@ -1372,10 +1446,21 @@
     renderStageTools();
     const status = $('offline-prepare-status');
     status.textContent = 'Preparing offline show…';
-    const snapshot = JSON.stringify({ prepared: new Date().toISOString(), prefs, track: {
-      title: current.title, notes: current.notes, videoOffset: current.videoOffset, sections: current.sections,
-    } });
+    const track = current;
     try {
+      if (rehearsalLabelsPending && !(await rehearsalLabelsPending)) {
+        throw new Error('Could not load the linked hit-point labels. Retry after reopening the track.');
+      }
+      if (track !== current) throw new Error('The selected track changed. Prepare the offline show again.');
+      const bars = startBars(track.sections);
+      const snapshot = JSON.stringify({ prepared: new Date().toISOString(), prefs, track: {
+        title: track.title, notes: track.notes, videoOffset: track.videoOffset,
+        sections: track.sections.map((section, index) => {
+          const bar = bars[index];
+          return { ...section, hitPoint: section.hitPoint || (bar != null && bars.filter((value) => value === bar).length === 1
+            ? rehearsalLabels.get(bar) : '') || '' };
+        }),
+      } });
       if (!navigator.serviceWorker || !window.caches) throw new Error('Offline storage needs HTTPS and a supported browser.');
       const response = await withTimeout(fetch(CFG.offlinePage, { cache: 'no-store', credentials: 'omit' }),
         'The offline page did not respond. Check your connection and try again.');
@@ -1468,8 +1553,8 @@
                   wav.setInt16(at, clamp(wav.getInt16(at, true) + Math.round(sample[n] * 32767), -32768, 32767), true);
                 }
               }
-              const bpm = bar < 0 ? s.bpm : bpmAt(s, (bar + (tick + sub / subN) / s.num) / s.bars);
-              time += unitSeconds(s, bpm) / subN;
+              const progress = (bar + (tick + sub / subN) / s.num) / s.bars;
+              time += bar < 0 ? unitSeconds(s, s.bpm) / subN : stepSeconds(s, progress, subN);
             }
           }
           if (++barsRendered % 32 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1613,6 +1698,7 @@
     const acts = '<div class="acts">' + btn('up', '↑', 'Move up', i === 0) + btn('down', '↓', 'Move down', i === n - 1)
       + btn('dup', '⧉', 'Duplicate') + btn('play', '▶ Perform', 'Perform from here') + btn('del', '✕', 'Delete') + '</div>';
     let f = fld('Type', sel(i, 'type', [['click', 'Click'], ['pause', 'Pause / cue']], s.type))
+      + fld('Hit point', inp(i, 'hitPoint', s.hitPoint, 'type="text" maxlength="17" placeholder="e.g. 24A"'))
       + fld('Rehearsal figure', inp(i, 'figure', s.figure, 'type="text" maxlength="32" placeholder="e.g. 6 or A"'))
       + fld('Streamer and punch at start', '<input type="checkbox" data-f="visualCue" data-i="' + i + '"' + (s.visualCue ? ' checked' : '') + '>');
     if (s.type === 'pause') {
@@ -1714,7 +1800,7 @@
     renderSections();
   }
 
-  const RAW_FIELDS = ['name', 'notes', 'grouping', 'calcStart', 'calcEnd', 'figure'];
+  const RAW_FIELDS = ['name', 'notes', 'grouping', 'calcStart', 'calcEnd', 'figure', 'hitPoint'];
   function onFieldInput(e) {
     const el = e.target, f = el.dataset.f;
     if (!f || !current) return;
@@ -1766,7 +1852,7 @@
     if (E.playing) stop(false);
     if (act === 'up' && i > 0) [secs[i - 1], secs[i]] = [secs[i], secs[i - 1]];
     else if (act === 'down' && i < secs.length - 1) [secs[i + 1], secs[i]] = [secs[i], secs[i + 1]];
-    else if (act === 'dup') secs.splice(i + 1, 0, normSection(Object.assign({}, secs[i], { startBar: null, figure: '', visualCue: false, visualEndCue: false })));
+    else if (act === 'dup') secs.splice(i + 1, 0, normSection(Object.assign({}, secs[i], { startBar: null, hitPoint: '', figure: '', visualCue: false, visualEndCue: false })));
     else if (act === 'del') secs.splice(i, 1);
     selectedIdx = clamp(selectedIdx, 0, Math.max(0, secs.length - 1));
     markDirty(); renderSections(); renderSetlist(); renderIdle();
@@ -1780,7 +1866,7 @@
     const prev = secs.slice().reverse().find((s) => s.type !== 'pause');
     const s = pause
       ? defaultSection({ type: 'pause', name: 'Pause' })
-      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, figure: '', countIn: null, bpmEnd: null, calcStart: '', calcEnd: '', visualCue: false, visualEndCue: false }) : {});
+      : normSection(prev ? Object.assign({}, prev, { name: '', notes: '', startBar: null, hitPoint: '', figure: '', countIn: null, bpmEnd: null, calcStart: '', calcEnd: '', visualCue: false, visualEndCue: false }) : {});
     secs.push(s);
     markDirty(); renderSections(); renderSetlist(); renderIdle();
     const row = document.querySelector('[data-row="' + (secs.length - 1) + '"]');
@@ -2269,30 +2355,18 @@
   }
 
   function fitRamp(s, duration, direction) {
-    const steps = s.bars * s.num * subdivOf(s);
-    if (steps < 2) throw new Error('A ramp needs at least two timed notes.');
-    const scale = unitSeconds(s, 1) / subdivOf(s);
-    // Sum the same musical steps that playback schedules, not the arithmetic mean of the endpoints.
-    const at = (end) => {
-      let total = 0;
-      for (let i = 0; i < steps; i++) total += 1 / (s.bpm + (end - s.bpm) * i / steps);
-      return total * scale;
-    };
-    const start = Math.round(s.bpm * 100);
-    const min = direction === 'accel' ? start + 1 : 1000;
-    const max = direction === 'accel' ? 40000 : start - 1;
-    const tolerance = 0.0005;
-    if (min > max || duration > at(min / 100) + tolerance || duration < at(max / 100) - tolerance) {
-      throw new Error('This ' + (direction === 'accel' ? 'accelerando' : 'rallentando')
-        + ' cannot reach the next hit point from ' + s.bpm + ' BPM within 10–400 BPM. Check the starting tempo, markers or tempo shape.');
+    const average = s.bars * s.num * unitSeconds(s, 60) * 60 / duration;
+    const end = 2 * average - s.bpm;
+    if ((direction === 'accel' && end <= s.bpm) || (direction === 'rall' && end >= s.bpm)) {
+      throw new Error('The average tempo ' + average.toFixed(2) + ' BPM requires '
+        + (end > s.bpm ? 'an accelerando' : end < s.bpm ? 'a rallentando' : 'a steady tempo')
+        + ' from ' + s.bpm + ' BPM. Check the starting tempo, hit points or tempo shape.');
     }
-    let lo = min, hi = max;
-    while (lo < hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      if (at(mid / 100) > duration) lo = mid + 1; else hi = mid;
+    if (end < 10 || end > 400) {
+      throw new Error('The average tempo ' + average.toFixed(2) + ' BPM requires an ending tempo of '
+        + end.toFixed(2) + ' BPM, outside 10–400 BPM. Check the starting tempo or hit points.');
     }
-    if (lo > min && Math.abs(at((lo - 1) / 100) - duration) < Math.abs(at(lo / 100) - duration)) lo--;
-    return lo / 100;
+    return Math.round(end * 100) / 100;
   }
 
   function planVideoTrack() {
@@ -2315,7 +2389,7 @@
         if (!(duration > 0)) throw new Error('The next hit point must have a later video time.');
         if (!Number.isInteger(numerator) || numerator < 1 || numerator > 32) throw new Error('Enter a meter numerator from 1 to 32.');
         const s = defaultSection({
-          name: 'Bar ' + startBar, notes: a.dialogue, figure: (a.figure || '').trim(), startBar, bars, num: numerator,
+          name: 'Bar ' + startBar, hitPoint: a.label, notes: a.dialogue, figure: (a.figure || '').trim(), startBar, bars, num: numerator,
           visualCue: a.visualCue === true, visualEndCue: i === points.length - 2 && b.visualCue === true,
           den: Number(a.den), beatUnit: a.unit, calcStart: markerTime(a.time), calcEnd: markerTime(b.time),
         });
@@ -2334,6 +2408,7 @@
           if (!Number.isFinite(start) || start < 10 || start > 400) throw new Error('Starting BPM must be between 10 and 400.');
           s.bpm = Math.round(start * 100) / 100;
           s.bpmEnd = fitRamp(s, duration, a.shape);
+          s.rampMode = 'linearTime';
         }
         secs.push({ section: s, average, hitPoint: a.label, endHitPoint: b.label, skip });
       } catch (e) {
@@ -2366,6 +2441,82 @@
       result.textContent = e.message;
     }
     renderDraftControls();
+  }
+
+  function inheritTrackSettings(track) {
+    const starts = startBars(track.sections);
+    const musical = builder.markers.filter((marker) => marker.bar !== '');
+    const updates = [], unmatched = [];
+    for (const marker of musical.slice(0, -1)) {
+      const bar = Number(marker.bar);
+      const candidates = track.sections.filter((section, index) => section.type === 'click' && starts[index] === bar);
+      if (candidates.length !== 1 || musical.filter((point) => Number(point.bar) === bar).length !== 1) {
+        unmatched.push(bar);
+        continue;
+      }
+      const section = candidates[0];
+      const values = {
+        num: String(section.num), den: String(section.den), unit: section.beatUnit,
+        dialogue: section.notes, figure: section.figure, visualCue: section.visualCue,
+        shape: section.bpmEnd == null || section.bpmEnd === section.bpm ? 'steady'
+          : section.bpmEnd > section.bpm ? 'accel' : 'rall',
+      };
+      if (section.hitPoint && /^[0-9]{1,9}[A-Za-z]{0,8}$/.test(section.hitPoint)) {
+        const label = section.hitPoint.toUpperCase();
+        if (!builder.markers.some((point) => point !== marker && point.label === label)) values.label = label;
+        else if (marker.label !== label) unmatched.push(bar);
+      }
+      if (values.shape !== 'steady') values.bpm = String(section.bpm);
+      if (Object.keys(values).some((key) => marker[key] !== values[key])) updates.push({ marker, values });
+    }
+    if (musical.length >= 2) {
+      const lastStart = Number(musical[musical.length - 2].bar);
+      const candidates = track.sections.filter((section, index) => section.type === 'click' && starts[index] === lastStart);
+      const closing = musical[musical.length - 1];
+      if (candidates.length === 1 && musical.filter((point) => Number(point.bar) === lastStart).length === 1
+        && closing.visualCue !== candidates[0].visualEndCue) {
+        updates.push({ marker: closing, values: { visualCue: candidates[0].visualEndCue } });
+      }
+    }
+    let message = '';
+    if (updates.length) {
+      if (window.confirm('The track and video draft differ at ' + updates.length
+        + ' hit point(s). Use the track’s hit-point label, meter, beat unit, cue text and tempo shape?'
+        + ' This replaces those fields in the open draft; hit-point times stay unchanged.'
+        + ' Cancel keeps the draft values.')) {
+        updates.forEach(({ marker, values }) => Object.assign(marker, values));
+        builder.dirty = true;
+        selectVideoMarker(builder.selected);
+        renderVideoPlan();
+        message = ' Track settings copied into the draft; save the draft to keep them.';
+      } else {
+        message = ' Draft values retained; saving over the track will use them.';
+      }
+    }
+    if (unmatched.length) message += ' Some hit points have no unique matching track section or have a conflicting label; review them before saving.';
+    return message + ' Tempos are calculated from the hit-point times.';
+  }
+
+  function mergeVideoSections(track, sections) {
+    if (!track) return { sections, unmatched: 0 };
+    const starts = startBars(track.sections), used = new Set();
+    const merged = sections.map((section, sectionIndex) => {
+      const matches = track.sections.map((original, index) => ({ original, index }))
+        .filter(({ original, index }) => original.type === 'click' && starts[index] === section.startBar);
+      if (matches.length !== 1 || sections.filter((other) => other.startBar === section.startBar).length !== 1) return section;
+      const { original, index } = matches[0];
+      if (original.grouping && !parseGrouping(original.grouping, section.num)) {
+        throw new Error('Bar ' + section.startBar + ' has grouping ' + original.grouping
+          + ', which does not match the new meter. Edit the grouping in the track before updating from video.');
+      }
+      used.add(index);
+      return { ...section, name: original.name, grouping: original.grouping,
+        advance: original.advance, click: original.click, countIn: original.countIn,
+        visualEndCue: sectionIndex === sections.length - 1 ? section.visualEndCue : original.visualEndCue,
+        unitPitch: original.unitPitch, unitVelocity: original.unitVelocity,
+        subPitch: original.subPitch, subVelocity: original.subVelocity };
+    });
+    return { sections: merged, unmatched: track.sections.length - used.size };
   }
 
   function renderVideoMarkers() {
@@ -2412,6 +2563,11 @@
     $('builder-time').readOnly = index === 0;
     $('builder-remove').disabled = index === 0;
     $('builder-retime').disabled = index === 0 || !videoReady();
+    const unitSelect = $('builder-unit');
+    unitSelect.replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
+    if (marker.unit && !BEAT_UNITS.some(([value]) => value === marker.unit)) {
+      unitSelect.add(new Option(marker.unit, marker.unit));
+    }
     for (const field of markerFields) $('builder-' + field).value = marker[field] ?? '';
     renderSelectedSkip();
     $('builder-visual-cue').checked = marker.visualCue === true;
@@ -2699,7 +2855,7 @@
         await refreshDraftList();
         if ($('view-video').hidden || builder.returnTrack !== track) return 'Open cancelled.';
         if (track.videoDraftId) {
-          if (track.videoDraftId === builder.draftId) return 'Linked video draft is open.' + focusVideoSection(target);
+          if (track.videoDraftId === builder.draftId) return 'Linked video draft is open.' + inheritTrackSettings(track) + focusVideoSection(target);
           if (!Array.from(drafts.options).some((o) => o.value === String(track.videoDraftId))) {
             return 'The linked draft is no longer available. Open another saved draft to link it.';
           }
@@ -2707,9 +2863,9 @@
           if ($('view-video').hidden || builder.returnTrack !== track || !confirmBuilderReplace()) return 'Open cancelled.';
           drafts.value = draft.id;
           openYoutube(draft.videoId, draft);
-          return 'Opened linked draft: ' + draft.title + '.' + focusVideoSection(target);
+          return 'Opened linked draft: ' + draft.title + '.' + inheritTrackSettings(track) + focusVideoSection(target);
         }
-        if (builder.localTrack === track) return 'Local video is still open in this tab.' + focusVideoSection(target);
+        if (builder.localTrack === track) return 'Local video is still open in this tab.' + inheritTrackSettings(track) + focusVideoSection(target);
         return 'Open your saved YouTube draft below, then link it to this track for next time.';
       });
     }
@@ -2739,6 +2895,7 @@
       track.videoDraftId = builder.draftId;
       track._linkDirty = true;
       markDirty(track);
+      if (track === current) rehearsalLabelsPending = loadRehearsalLabels(track);
       renderDraftControls();
       draftStatus.textContent = 'Draft linked. Changes to the draft do not change the finished track.';
     });
@@ -2831,6 +2988,7 @@
     $('builder-save-draft').addEventListener('click', () => runDraftAction(async () => {
       await saveYoutubeDraft();
       await refreshDraftList();
+      if (current?.videoDraftId === builder.draftId) rehearsalLabelsPending = loadRehearsalLabels(current);
       return builder.dirty ? 'Draft saved, but there are newer unsaved edits.' : 'Draft saved to your account.';
     }));
     $('builder-delete-draft').addEventListener('click', () => {
@@ -2839,6 +2997,7 @@
       runDraftAction(async () => {
         await draftRequest('DELETE', id);
         tracks.filter((t) => t.videoDraftId === id).forEach((t) => { t.videoDraftId = null; });
+        if (current) { rehearsalLabelsPending = loadRehearsalLabels(current); renderRehearsalList(); }
         cacheLocal();
         if (builder.draftId === id) { builder.draftId = null; builder.dirty = true; }
         await refreshDraftList();
@@ -2991,8 +3150,11 @@
       try {
         const { offset, secs } = planVideoTrack();
         const startingCountIn = countIn.value === '' ? firstClickSection(existing)?.countIn ?? null : countIn.valueAsNumber;
+        const merged = mergeVideoSections(existing, secs.map(({ section }) => section));
         if (existing && !window.confirm('Replace all sections and the video offset in “' + existing.title
-          + '”? Manual section edits will be replaced; the track title and notes will stay.'
+          + '”? Matching sections keep their name, click, sound, grouping, advance and count-in settings. '
+          + 'Meter, cues and timing come from the video draft.'
+          + (merged.unmatched ? ' WARNING: ' + merged.unmatched + ' existing section(s) have no unique match and will be removed, including their settings.' : '')
           + (!builder.youtube && existing.videoDraftId ? ' This also removes the old YouTube draft link.' : ''))) return;
         let draftId = null;
         if (builder.youtube) {
@@ -3007,7 +3169,7 @@
           draftId = builder.draftId;
         }
         if (existing && !tracks.includes(existing)) throw new Error('The selected track was removed.');
-        const sections = secs.map(({ section }) => section);
+        const sections = merged.sections;
         sections[0].countIn = startingCountIn;
         const track = existing || makeTrack($('builder-title').value.trim() || 'Click track from video', sections);
         track.videoOffset = offset;
@@ -3085,7 +3247,12 @@
         if (!videoReady()) throw new Error('Wait for the video to load.');
         if (!$('builder-count-in').checkValidity()) throw new Error('Close this dialog and enter a valid starting count-in.');
         const plan = planVideoTrack();
-        const preview = makeTrack('Preview: ' + (builder.returnTrack?.title || $('builder-title').value), plan.secs.map((item) => item.section));
+        const previewSections = mergeVideoSections(builder.returnTrack, plan.secs.map((item) => item.section));
+        if (previewSections.unmatched) {
+          performStatus.textContent = 'Preview would omit ' + previewSections.unmatched + ' unmatched existing section(s). Review the track before previewing.';
+          return;
+        }
+        const preview = makeTrack('Preview: ' + (builder.returnTrack?.title || $('builder-title').value), previewSections.sections);
         preview.videoOffset = plan.offset;
         preview.sections[0].countIn = $('builder-count-in').value === '' ? firstClickSection(builder.returnTrack)?.countIn ?? null : $('builder-count-in').valueAsNumber;
         preview._dirty = false;
@@ -3522,17 +3689,18 @@
     $('btn-exit-fullscreen').addEventListener('click', toggleFullscreen);
     $('btn-exit-stage').addEventListener('click', toggleFullscreen);
     $('rehearsal-play').addEventListener('click', () => { cancelPendingPedal(); togglePlay(); });
-    $('btn-quick-edit').addEventListener('click', () => {
-      if (CFG.offline || !current || !sections().length) return;
+    function openQuickEdit(index) {
+      if (CFG.offline || !current || !sections()[index]) return;
       if (transportBusy || outputBusy) { toast('Wait for the audio operation to finish, then retry.'); return; }
       cancelPendingPedal();
       if (E.playing) stop(false);
-      quickEditIndex = selectedIdx;
+      quickEditIndex = index;
       $('quick-edit-title').textContent = 'Edit ' + sectionTitle(sections()[quickEditIndex], quickEditIndex);
       $('quick-edit-dialog').showModal();
       renderSections();
       $('quick-edit-section').querySelector('[data-f="name"]')?.focus();
-    });
+    }
+    $('btn-quick-edit').addEventListener('click', () => openQuickEdit(E.playing ? shown?.secIdx ?? selectedIdx : selectedIdx));
     $('quick-edit-section').addEventListener('input', onFieldInput);
     $('quick-edit-section').addEventListener('change', onFieldInput);
     $('quick-edit-section').addEventListener('click', onSectionAction);
@@ -3574,7 +3742,13 @@
     }
     $('rehearsal-list').addEventListener('click', (e) => {
       const button = e.target.closest('button[data-index]');
-      if (button) openRehearsal(Number(button.dataset.index), 0, button.textContent);
+      if (!button) return;
+      if (button.classList.contains('rehearsal-edit')) openQuickEdit(Number(button.dataset.index));
+      else if (E.playing && !E.suspended) jumpTo(Number(button.dataset.index));
+      else openRehearsal(Number(button.dataset.index), 0, button.getAttribute('aria-label'));
+    });
+    $('rehearsal-panel').addEventListener('toggle', () => {
+      if ($('rehearsal-panel').open) scrollToCurrentRehearsal();
     });
     $('rehearsal-bar-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -3704,8 +3878,6 @@
     // pointerdown gives tighter timing than click for tapping.
     $('btn-tap').addEventListener('pointerdown', (e) => { e.preventDefault(); tapTempo(); });
     $('btn-tap').addEventListener('keydown', (e) => { if (e.key === 'Enter') tapTempo(); });
-    $('setlist').addEventListener('click', (e) => { const li = e.target.closest('li[data-i]'); if (li) jumpTo(+li.dataset.i); });
-    $('setlist').addEventListener('dblclick', (e) => { const li = e.target.closest('li[data-i]'); if (li && !E.playing) start(+li.dataset.i); });
     document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
 
     $('track-select').addEventListener('change', (e) => { selectTrack(e.target.value); e.target.blur(); });

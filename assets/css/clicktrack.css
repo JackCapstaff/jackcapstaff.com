@@ -124,7 +124,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .next-heading { font-weight: 800; overflow-wrap: anywhere; }
 .next-change { color: var(--accent); font-weight: 700; }
 .next-notes { color: var(--beat-on); white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 6px; }
-.performance-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start; margin-bottom: 10px; }
+.performance-tools { position: relative; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start; margin-bottom: 10px; }
 .pedal-setup { background: var(--panel); border-bottom: 1px solid var(--line); padding-bottom: 14px; }
 .pedal-setup h2 { margin: 0; font-size: 20px; }
 .pedal-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
@@ -135,8 +135,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 /* CSS focus mode also works when a mobile browser cannot enter native fullscreen. */
 body.performance-mode .ct-top,
 body.performance-mode .prefs,
-body.performance-mode .setlist,
-body.performance-mode .performance-tools .btn,
+body.performance-mode .performance-tools > .btn,
 body.performance-mode #btn-tap,
 body.performance-mode #btn-stop:disabled { display: none; }
 body.performance-mode #view-perform { max-width: none; min-height: 100vh; min-height: 100dvh; padding-top: max(8px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
@@ -155,14 +154,21 @@ body.performance-mode .rehearsal-panel {
 }
 .rehearsal-panel:not([open]) { width: auto !important; }
 .rehearsal-panel summary { cursor: pointer; font-weight: 700; padding: 4px; }
+.rehearsal-header { padding: 8px 11px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.rehearsal-header.with-edit { padding-right: 67px; }
+.rehearsal-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
+.rehearsal-columns span { min-width: 0; overflow-wrap: anywhere; }
 .rehearsal-list { display: grid; gap: 4px; max-height: 65vh; max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain; }
+.rehearsal-row { display: flex; gap: 4px; border: 2px solid transparent; border-radius: 10px; }
+.rehearsal-row.current { border-color: var(--green); background: var(--panel2); }
+.rehearsal-row.queued:not(.current) { border-color: var(--green); border-style: dashed; }
 .rehearsal-point {
   text-align: left; font: inherit; color: var(--text); background: var(--panel2);
   border: 1px solid var(--line); border-radius: 8px; padding: 9px; cursor: pointer;
-  overflow-wrap: anywhere;
+  overflow-wrap: anywhere; min-width: 0; flex: 1;
 }
-.rehearsal-point[aria-current] { border-color: var(--green); }
 .rehearsal-point:disabled { opacity: .6; cursor: default; }
+.rehearsal-edit { flex: none; align-self: center; width: 52px; }
 #rehearsal-dialog {
   width: min(420px, 90vw); color: var(--text); background: var(--panel);
   border: 1px solid var(--line); border-radius: 12px; padding: 20px;
@@ -180,7 +186,7 @@ body.performance-mode .rehearsal-panel {
 #quick-edit-dialog .sec { grid-template-columns: minmax(0, 1fr); }
 #quick-edit-dialog .sec > .num, #quick-edit-dialog .sec > .acts { display: none; }
 #quick-edit-dialog .sec .info, #quick-edit-dialog .section-timing { grid-column: 1; }
-.performance-menu { position: relative; width: fit-content; max-width: 100%; }
+.performance-menu { position: static; width: fit-content; max-width: 100%; }
 .performance-menu > summary {
   display: inline-flex; cursor: pointer; padding: 8px 14px; border: 1px solid var(--line);
   border-radius: 999px; background: var(--panel2); font-weight: 600;
@@ -335,21 +341,6 @@ body.performance-mode .rehearsal-panel {
 .prefs { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: center; padding: 10px; color: var(--muted); }
 .pref { display: inline-flex; align-items: center; gap: 8px; }
 .pref select { width: auto; }
-
-.setlist h3 { margin: 18px 0 8px; font-size: 18px; }
-#setlist { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-#setlist li {
-  display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center;
-  padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; cursor: pointer;
-}
-#setlist li:hover { border-color: var(--accent); }
-#setlist li.selected { border-color: var(--muted); }
-#setlist li.current { border-color: var(--green); background: #12261c; }
-#setlist li.queued { border-style: dashed; border-color: var(--green); }
-#setlist li.pause { color: var(--beat-on); }
-#setlist .idx { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
-#setlist .nm { font-weight: 700; }
-#setlist .meta { color: var(--muted); font-size: 14px; text-align: right; }
 
 /* ---------- editor ---------- */
 .track-meta { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; align-items: start; margin-bottom: 10px; }

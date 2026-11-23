@@ -86,6 +86,7 @@
       {% endif %}
       <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
       <button class="btn small" id="btn-fullscreen">Fullscreen performance</button>
+      {% include "clicktrack/performance_options.html" %}
     </div>
     <div class="perform-layout" id="perform-layout">
     <section class="stage" id="stage">
@@ -180,6 +181,10 @@
       </form>
       <p class="muted small" id="rehearsal-bar-status" role="status"></p>
       <p class="muted small" id="rehearsal-instructions">Pause playback, then select a section to choose a count-in and restart.</p>
+      <p class="muted small" id="rehearsal-hit-status" role="status" hidden></p>
+      <div class="rehearsal-header{% if not offline %} with-edit{% endif %}" aria-hidden="true">
+        <div class="rehearsal-columns"><span>Hit point</span><span>Figure</span><span>Bar</span></div>
+      </div>
       <div id="rehearsal-list" class="rehearsal-list"></div>
     </details>
     <dialog id="rehearsal-dialog" aria-labelledby="rehearsal-dialog-title">
@@ -219,74 +224,6 @@
       <input id="performance-pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Tap here to focus pedal input" aria-describedby="performance-pedal-focus">
       <span id="performance-pedal-focus" class="muted small" role="status"></span>
     </div>
-    <details class="performance-menu" id="performance-menu">
-      <summary>Performance options</summary>
-      <div class="performance-menu-body">
-      <div class="stage-tool-row">
-        <label>Beat visual
-          <select id="pref-beat-visual">
-            <option value="circles">Circles</option>
-            <option value="pendulum">Swinging metronome</option>
-            <option value="both">Both</option>
-          </select>
-        </label>
-        <label>Volume <input type="range" id="pref-volume" min="0" max="1.5" step="0.05"></label>
-        <label>Sound
-          <select id="pref-sound">
-            <option value="beep">Beep</option>
-            <option value="wood">Woodblock</option>
-            <option value="hihat">Hi-hat</option>
-          </select>
-        </label>
-        <label><span><input type="checkbox" id="pref-flash"> Flash on downbeat</span></label>
-        <button class="btn small" id="btn-exit-fullscreen" hidden>Exit fullscreen</button>
-      </div>
-      <p class="muted small">Change pedal bindings in Edit → Pedal setup. If your pedal scrolls, tap the pedal input above.</p>
-      <details id="pre-show">
-        <summary>Pre-show check</summary>
-        <p class="muted small">Connect your glasses or headphones over Bluetooth first. Select an output, then listen for four clicks on that device. Pedal presses are reported here without changing the track while this check is open.</p>
-        <div class="stage-tool-row" id="audio-output-controls" hidden>
-          <label>Click audio output
-            <select id="audio-output" aria-describedby="audio-output-status"><option value="">System default</option></select>
-          </label>
-          <button class="btn small" id="btn-choose-output" hidden>Choose another output…</button>
-        </div>
-        <p id="audio-output-status" class="muted small" role="status"></p>
-        <div class="stage-tool-row">
-          <button class="btn small" id="btn-test-clicks">Play four test clicks</button>
-          <button class="btn small" id="btn-test-wake">Check screen awake</button>
-          <button class="btn small" id="btn-test-pedal">Focus pedal test</button>
-        </div>
-        <p id="pre-show-audio" role="status"></p>
-        <p id="pre-show-wake" role="status"></p>
-        <p id="pre-show-pedal" role="status">No pedal input yet.</p>
-      </details>
-      <details id="stage-backups">
-        <summary>Show backups</summary>
-        {% if not offline %}
-        <p class="muted small">Prepare on the device and browser you will use. This stores one track snapshot on this browser, accessible without login; use only a trusted device. Re-prepare after edits and test the bookmarked page in airplane mode.</p>
-        <div class="stage-tool-row">
-          <button class="btn small" id="btn-prepare-offline">Prepare offline show</button>
-          <a id="open-offline" href="{{ url_for('clicktrack.offline_performance') }}" hidden>Open offline show</a>
-        </div>
-        <p id="offline-prepare-status" role="status"></p>
-        {% endif %}
-        <div class="stage-tool-row">
-          <button class="btn small" id="btn-print-cues">Print cue sheet</button>
-          <button class="btn small" id="btn-backup-json">Export track JSON</button>
-          <label>Fixed run <select id="wav-run"></select></label>
-          <button class="btn small" id="btn-export-wav">Download click WAV</button>
-        </div>
-        <p class="muted small">WAV includes only the selected automatic run and its starting count-in, if set. Cue waits and pedal repeats split runs; the WAV does not include video or follow live cues.</p>
-        <p id="wav-status" role="status"></p>
-      </details>
-      </div>
-    </details>
-
-    <section class="setlist">
-      <h3>Sections <span class="muted small">Tap one to start from it, or to jump there at the next barline while playing.</span></h3>
-      <ol id="setlist"></ol>
-    </section>
   </main>
 
   <!-- ===================== EDIT ===================== -->

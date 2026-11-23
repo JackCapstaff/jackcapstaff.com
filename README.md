@@ -43,10 +43,21 @@ track does not need the video. For YouTube, this also saves and links the draft.
 Open the track's **Edit** tab and choose **Edit with video** to reopen it. For
 older tracks, open the matching saved draft and choose **Link open draft to
 track** once. Editing or saving the draft does not overwrite the finished
-track. To apply revised hit points, pick an **Existing click track** and
-choose **Save over existing track**. This replaces its sections and video
-offset, keeping its title and track-level notes. Local
+track. When opening a linked draft, differences in meter, beat unit, cues and
+tempo shape can be copied from matching track sections into the draft; you are
+asked before replacing draft values. Video hit-point times determine tempo:
+manually edited tempos are recalculated from those times, and an impossible
+ramp is reported. To apply revised hit points, pick an **Existing click track**
+and choose **Save over existing track**. Matching score-bar sections retain
+their names, click and sound settings, grouping, advance and count-in; timing,
+meter and cues come from the draft. The track title and track-level notes stay.
+The confirmation warns if existing sections have no unique match and will be
+removed. Local
 video remains available to revisit only while it is still open in the tab.
+New video-generated accelerandos and rallentandos use the hit times and beat
+count to find the average tempo, then calculate the end tempo from the starting
+tempo. Tempo changes linearly over time, and clicks follow the resulting curve.
+Saved older ramps keep their original timing unless regenerated from video.
 Select a musical hit point and choose **Perform from here** to save and replace
 the linked track, discard draft edits and play the saved track, or preview the
 current draft without changing the saved track. Preview uses the draft's
@@ -86,6 +97,18 @@ In fullscreen, open **Rehearsal points** on the right. Pause playback and
 select a section to see its figure and score bar, choose a one-off count-in
 in the dialog, then select **Start from here**. Cancel leaves playback paused.
 Silent cues still wait for the pedal. The list also works in the offline view.
+The current section is highlighted, and the list follows section changes and
+returns to the current section when reopened. You can scroll manually between
+changes. Use **Edit** beside a rehearsal point to open its quick editor;
+editing stops playback. Editing is unavailable in the read-only offline copy.
+The fixed column headings show hit point, figure and score bar. Video-generated
+sections retain their hit-point labels, including letter suffixes; existing
+linked tracks can display labels from uniquely matching saved video hit points.
+Sections without a label show a dash, and labels can also be edited in the
+section editor. Prepare the offline show again to include these labels.
+While playback is running, selecting a rehearsal point queues a jump at the
+next barline (or jumps immediately from a silent cue). Pause first to choose a
+count-in and restart instead.
 
 Use **Edit current section** in Perform, including fullscreen, to open the
 same section fields without leaving the stage. Opening it stops playback;
