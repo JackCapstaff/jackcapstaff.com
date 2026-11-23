@@ -67,7 +67,10 @@ For a one-off rehearsal start, open **Perform → Rehearsal points**, pause if
 playing, then choose a section or enter any playable score bar. Choose a
 **Rehearsal count-in** and select **Start from here**. A skipped score bar
 cannot be selected, and an ambiguous repeated bar requires choosing a section.
-Choose **No count-in** to skip a saved lead-in for that restart.
+If the section's saved count-in is 0, rehearsal restarts default to enough whole
+bars for at least two seconds at the restart tempo. Other saved count-in
+settings are respected. Choose **No count-in** to start without a lead-in for
+that restart; this does not change the saved setting or regular playback.
 Under **Performance options → Beat visual**, choose the existing circles,
 a swinging metronome, or both. The swing changes direction on each grouped
 beat, follows tempo ramps and freezes when playback is paused. Your choice

@@ -3303,7 +3303,9 @@
       select.value = '';
       const atBar = offset ? { ...section, bpm: bpmAt(section, offset / section.bars) } : section;
       select.options[0].textContent = select.disabled ? 'Silent cue — waits for pedal'
-        : 'Use section setting (' + countInLabel(atBar) + ')';
+        : section.countIn === 0
+          ? 'Automatic (' + countInLabel({ ...atBar, countIn: null }) + ')'
+          : 'Use section setting (' + countInLabel(atBar) + ')';
       $('rehearsal-dialog-help').textContent = select.disabled
         ? 'This silent cue waits for the pedal; count-in does not apply.'
         : 'The count-in applies only to this restart.';
@@ -3341,11 +3343,15 @@
         return;
       }
       const idx = rehearsalTarget.index, countIn = $('rehearsal-count-in');
-      const override = countIn.disabled || countIn.value === '' ? null : Number(countIn.value);
+      const section = rehearsalTarget.section, offset = rehearsalTarget.offset;
+      const override = countIn.disabled ? null : countIn.value !== '' ? Number(countIn.value)
+        : section.countIn === 0
+          ? effectiveCountIn({ ...section, bpm: bpmAt(section, offset / section.bars), countIn: null })
+          : null;
       $('rehearsal-dialog').close();
       stop(false);
       selectIdx(idx);
-      start(idx, override, false, rehearsalTarget.offset);
+      start(idx, override, false, offset);
       focusPerformancePedal();
     });
     $('performance-menu').addEventListener('toggle', () => {
