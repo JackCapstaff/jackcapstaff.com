@@ -130,6 +130,7 @@
       <button class="btn" id="btn-stop" title="Stop and reset position (Esc)" disabled>Stop</button>
       <button class="btn green huge" id="btn-next" title="Next section">Next ⏭</button>
       <button class="btn" id="btn-tap" title="Tap tempo for the current section (T)">Tap</button>
+      <button type="button" class="btn" id="btn-quick-edit"{% if offline %} hidden{% endif %}>Edit current section</button>
     </section>
 
     {% if not offline %}
@@ -190,6 +191,15 @@
           <button type="submit" class="btn primary">Start from here</button>
         </div>
       </form>
+    </dialog>
+    <dialog id="quick-edit-dialog" aria-labelledby="quick-edit-title">
+      <h2 id="quick-edit-title">Edit current section</h2>
+      <p class="muted small">Playback stops when editing. Changes save automatically; close this window and start again to hear them.</p>
+      <div id="quick-edit-section"></div>
+      <div class="stage-tool-row">
+        <button type="button" class="btn primary" id="quick-edit-done">Done</button>
+        <span id="quick-edit-save-status" class="muted small" role="status"></span>
+      </div>
     </dialog>
 
     <div class="performance-tools">

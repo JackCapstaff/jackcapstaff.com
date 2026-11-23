@@ -170,6 +170,16 @@ body.performance-mode .rehearsal-panel {
 #rehearsal-dialog::backdrop { background: rgb(0 0 0 / 75%); }
 #rehearsal-dialog h2 { margin-top: 0; font-size: 20px; }
 #rehearsal-dialog label { display: grid; gap: 6px; }
+#quick-edit-dialog {
+  width: min(950px, calc(100vw - 24px)); max-width: none; max-height: 90vh; max-height: 90dvh;
+  overflow-y: auto; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+}
+#quick-edit-dialog::backdrop { background: rgb(0 0 0 / 75%); }
+#quick-edit-dialog h2 { margin-top: 0; font-size: 20px; }
+#quick-edit-dialog .sec { grid-template-columns: minmax(0, 1fr); }
+#quick-edit-dialog .sec > .num, #quick-edit-dialog .sec > .acts { display: none; }
+#quick-edit-dialog .sec .info, #quick-edit-dialog .section-timing { grid-column: 1; }
 .performance-menu { position: relative; width: fit-content; max-width: 100%; }
 .performance-menu > summary {
   display: inline-flex; cursor: pointer; padding: 8px 14px; border: 1px solid var(--line);

@@ -222,6 +222,15 @@ class ClickTrackStorageTests(unittest.TestCase):
                 self.assertIn(b'<option value="0">No count-in</option>', rehearsal)
                 self.assertIn(b'<option value="8">8 bars</option>', rehearsal)
 
+    def test_quick_editor_is_available_online_but_hidden_offline(self):
+        online = self.client.get("/clicktrack/")
+        offline = self.client.get("/clicktrack/offline/")
+        self.assertIn(b'id="btn-quick-edit">', online.data)
+        self.assertIn(b'id="btn-quick-edit" hidden>', offline.data)
+        for response in (online, offline):
+            self.assertIn(b'id="quick-edit-dialog"', response.data)
+            self.assertIn(b'id="quick-edit-section"', response.data)
+
     def test_track_actions_group_creation_json_and_pedal_setup(self):
         response = self.client.get("/clicktrack/")
         menu = response.data.split(b'id="track-actions">', 1)[1].split(b"</details>", 1)[0]

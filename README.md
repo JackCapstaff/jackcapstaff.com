@@ -80,6 +80,11 @@ select a section to see its figure and score bar, choose a one-off count-in
 in the dialog, then select **Start from here**. Cancel leaves playback paused.
 Silent cues still wait for the pedal. The list also works in the offline view.
 
+Use **Edit current section** in Perform, including fullscreen, to open the
+same section fields without leaving the stage. Opening it stops playback;
+changes save automatically, and playback must be started again after closing
+the editor. The offline performance copy is read-only and has no quick editor.
+
 Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
 Edit, or on the opening video hit point for that section. Figures appear in the
 **Rehearsal points** list alongside their score bars.

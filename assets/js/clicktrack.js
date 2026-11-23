@@ -81,7 +81,10 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
   }
-  function setStatus(msg) { $('save-status').textContent = msg || ''; }
+  function setStatus(msg) {
+    $('save-status').textContent = msg || '';
+    $('quick-edit-save-status').textContent = msg || '';
+  }
 
   // --------------------------------------------------------------- sections
   function defaultSection(over) {
@@ -1020,6 +1023,7 @@
     $('btn-play').textContent = !E.playing ? '▶ Start' : E.suspended ? '▶ Resume' : 'Pause';
     $('rehearsal-play').textContent = !E.playing ? 'Start' : E.suspended ? 'Resume' : 'Pause';
     $('rehearsal-play').disabled = !sections().length;
+    $('btn-quick-edit').disabled = !sections().length;
     $('btn-play').classList.toggle('primary', !E.playing);
     $('btn-stop').disabled = !E.playing;
     renderOutputControls();
@@ -1639,12 +1643,18 @@
     input.value = section?.countIn ?? '';
   }
 
+  let quickEditIndex = null;
   function renderSections() {
     renderStartingCountIn();
     const secs = sections();
+    $('quick-edit-section').replaceChildren();
     $('sections').innerHTML = secs.length
       ? secs.map((s, i) => sectionRow(s, i, secs.length)).join('')
       : '<p class="muted">No sections yet. Add one below.</p>';
+    if ($('quick-edit-dialog').open && quickEditIndex != null) {
+      const row = $('sections').querySelector('[data-row="' + quickEditIndex + '"]');
+      if (row) $('quick-edit-section').append(row);
+    }
     updateInfos();
     renderTester();
   }
@@ -3031,6 +3041,7 @@
     pendingPedals.clear();
   }
   function runPedal(action, key) {
+    if ($('quick-edit-dialog').open || $('rehearsal-dialog').open) return;
     if ($('performance-menu').open && $('pre-show').open) {
       if (action) $('pre-show-pedal').textContent = keyName(key) + ' → ' + PEDAL_ACTIONS[action] + ' (test only).';
       return;
@@ -3061,7 +3072,8 @@
 
   let learning = false, learnTimer = null;
   function focusPerformancePedal() {
-    if (!$('view-perform').hidden && $('pedal-setup').hidden) {
+    if (!$('view-perform').hidden && $('pedal-setup').hidden
+      && !$('quick-edit-dialog').open && !$('rehearsal-dialog').open) {
       $('performance-pedal-capture').focus({ preventScroll: true });
       renderPedalFocus();
     }
@@ -3153,7 +3165,7 @@
   }
 
   function onKeyDown(e) {
-    if ($('rehearsal-dialog').open) return;
+    if ($('rehearsal-dialog').open || $('quick-edit-dialog').open) return;
     const k = pedalKey(e);
     const menu = $('track-actions');
     if (k === 'Escape' && menu.open) {
@@ -3288,6 +3300,26 @@
     $('btn-exit-fullscreen').addEventListener('click', toggleFullscreen);
     $('btn-exit-stage').addEventListener('click', toggleFullscreen);
     $('rehearsal-play').addEventListener('click', () => { cancelPendingPedal(); togglePlay(); });
+    $('btn-quick-edit').addEventListener('click', () => {
+      if (CFG.offline || !current || !sections().length) return;
+      if (transportBusy || outputBusy) { toast('Wait for the audio operation to finish, then retry.'); return; }
+      cancelPendingPedal();
+      if (E.playing) stop(false);
+      quickEditIndex = selectedIdx;
+      $('quick-edit-title').textContent = 'Edit ' + sectionTitle(sections()[quickEditIndex], quickEditIndex);
+      $('quick-edit-dialog').showModal();
+      renderSections();
+      $('quick-edit-section').querySelector('[data-f="name"]')?.focus();
+    });
+    $('quick-edit-section').addEventListener('input', onFieldInput);
+    $('quick-edit-section').addEventListener('change', onFieldInput);
+    $('quick-edit-section').addEventListener('click', onSectionAction);
+    $('quick-edit-done').addEventListener('click', () => $('quick-edit-dialog').close());
+    $('quick-edit-dialog').addEventListener('close', () => {
+      quickEditIndex = null;
+      renderSections();
+      focusPerformancePedal();
+    });
     let rehearsalTarget = null;
     function openRehearsal(idx, offset, title) {
       if ((E.playing && !E.suspended) || transportBusy) {
