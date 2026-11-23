@@ -890,7 +890,7 @@
       const bpm = st.bpm != null && s.type !== 'pause' ? st.bpm : info.bpm;
       $('d-tempo').textContent = unitLabel(info) + '=' + Math.round(bpm);
       $('d-tempo-sub').textContent = info.bpmEnd != null
-        ? info.bpm + ' → ' + info.bpmEnd + (info.bpmEnd > info.bpm ? ' accel.' : ' rit.')
+        ? Math.round(info.bpm) + ' → ' + Math.round(info.bpmEnd) + (info.bpmEnd > info.bpm ? ' accel.' : ' rit.')
         : (s.type === 'pause' ? 'next section' : '');
     } else {
       $('d-meter').textContent = '–'; $('d-grouping').textContent = '';
@@ -953,16 +953,18 @@
     preview.hidden = !s;
     $('d-next-name').textContent = 'Up next: ' + title;
     $('d-next-details').textContent = !next ? '' : next.type === 'pause' ? 'Pause / cue — waits for pedal'
-      : 'Score bar ' + sb[target] + ' · ' + next.num + '/' + next.den + ' · ' + unitLabel(next) + '=' + next.bpm
-        + (next.bpmEnd != null ? ' → ' + next.bpmEnd : '');
+      : 'Score bar ' + sb[target] + ' · ' + next.num + '/' + next.den + ' · ' + unitLabel(next) + '=' + Math.round(next.bpm)
+        + (next.bpmEnd != null ? ' → ' + Math.round(next.bpmEnd) : '');
     $('d-next-notes').textContent = next ? next.notes : '';
     let change = '';
     if (s && s.type !== 'pause' && next && next.type !== 'pause') {
-      // Compare physical note durations, not BPM numbers with potentially different beat units.
       const currentBpm = E.playing && st.phase === 'play' && st.bpm != null ? st.bpm : s.bpm;
-      const quarterSeconds = (section, bpm) => unitSeconds(section, bpm) * section.den / 4;
-      const ratio = quarterSeconds(s, currentBpm) / quarterSeconds(next, next.bpm);
-      change = ratio > 1.01 ? 'Faster' : ratio < 0.99 ? 'Slower' : 'Same pace';
+      const currentBeat = beatUnitFrac(s), nextBeat = beatUnitFrac(next);
+      const equivalentBpm = currentBpm * (currentBeat.n / currentBeat.d) / (nextBeat.n / nextBeat.d);
+      const difference = Math.round(next.bpm) - Math.round(equivalentBpm);
+      change = difference === 0 ? 'Same pace'
+        : (difference > 0 ? 'Faster (+' : 'Slower (') + difference + ' BPM'
+          + (unitLabel(s) !== unitLabel(next) ? ' at ' + unitLabel(next) : '') + ')';
       if (s.num !== next.num || s.den !== next.den) change += ' · meter change';
       if (unitLabel(s) !== unitLabel(next)) change += ' · beat unit changes';
     }
@@ -983,7 +985,7 @@
     else {
       const left = queued != null ? 1 : Math.max(1, s.bars - st.bar);
       const beatsLeft = groupsOf(s).length - groupIndexOf(s, Math.max(0, st.tick));
-      text = left > 1 ? left + ' bars left (including this bar)'
+      text = left > 1 ? left + ' bars left'
         : 'After this bar · ' + beatsLeft + ' beat' + (beatsLeft === 1 ? '' : 's') + ' left';
       text += ' → ' + title;
       if (queued != null) cls = 'queued';
@@ -1011,7 +1013,7 @@
       ].join(' ');
       const meta = s.type === 'pause'
         ? 'pause · waits for cue'
-        : s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm + (s.bpmEnd != null ? '→' + s.bpmEnd : '')
+        : s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + Math.round(s.bpm) + (s.bpmEnd != null ? '→' + Math.round(s.bpmEnd) : '')
           + ' · ' + s.bars + ' bar' + (s.bars === 1 ? '' : 's') + (s.advance === 'manual' ? ' · wait' : '') + ' · b.' + sb[i];
       return '<li class="' + cls + '" data-i="' + i + '"><span class="idx">' + (i + 1) + '</span><span class="nm">'
         + esc(sectionTitle(s, i)) + '</span><span class="meta">' + esc((s.figure ? figureLabel(s.figure) + ' · ' : '') + meta) + '</span></li>';
@@ -1960,6 +1962,11 @@
         renderVideoTimeline();
         renderVideoPlan();
       } else updateVideoPlayhead();
+      if (videoReady() && source.pendingSeek) {
+        const pending = source.pendingSeek;
+        source.pendingSeek = null;
+        if (pending.markerIndex === null || pending.markerIndex === builder.selected) seekBuilderVideo(pending.time);
+      }
       reviewVideoPlayback();
     };
     try {
@@ -2610,7 +2617,22 @@
       if (!builder.draftsBusy) runDraftAction(async () => { await refreshDraftList(); return ''; });
     });
     const link = $('builder-youtube-url'), drafts = $('builder-drafts'), draftStatus = $('builder-draft-status');
-    async function editWithVideo() {
+    function focusVideoSection(target) {
+      if (!target) return '';
+      const matches = builder.markers.map((marker, index) => ({ marker, index }))
+        .filter(({ marker }) => target.bar != null && marker.bar !== '' && Number(marker.bar) === target.bar);
+      const match = matches.length === 1 ? matches[0] : null;
+      const time = match ? match.marker.time : target.time;
+      if (match) selectVideoMarker(match.index);
+      if (videoReady()) seekBuilderVideo(time);
+      else if (builder.youtube) builder.youtube.pendingSeek = { time, markerIndex: match ? match.index : null };
+      return match
+        ? ' Selected hit point ' + match.marker.label + ' for score bar ' + target.bar + '.'
+        : ' No unique hit point for ' + (target.bar == null ? 'this cue' : 'score bar ' + target.bar)
+          + '; showing its estimated video position instead.';
+    }
+
+    async function editWithVideo(target = null) {
       if (!current || builder.draftsBusy) return;
       const track = current;
       if (performanceMode) await toggleFullscreen();
@@ -2620,8 +2642,9 @@
       refreshBuilderTargets(track.id);
       runDraftAction(async () => {
         await refreshDraftList();
+        if ($('view-video').hidden || builder.returnTrack !== track) return 'Open cancelled.';
         if (track.videoDraftId) {
-          if (track.videoDraftId === builder.draftId) return 'Linked video draft is open.';
+          if (track.videoDraftId === builder.draftId) return 'Linked video draft is open.' + focusVideoSection(target);
           if (!Array.from(drafts.options).some((o) => o.value === String(track.videoDraftId))) {
             return 'The linked draft is no longer available. Open another saved draft to link it.';
           }
@@ -2629,14 +2652,23 @@
           if ($('view-video').hidden || builder.returnTrack !== track || !confirmBuilderReplace()) return 'Open cancelled.';
           drafts.value = draft.id;
           openYoutube(draft.videoId, draft);
-          return 'Opened linked draft: ' + draft.title;
+          return 'Opened linked draft: ' + draft.title + '.' + focusVideoSection(target);
         }
-        if (builder.localTrack === track) return 'Local video is still open in this tab.';
+        if (builder.localTrack === track) return 'Local video is still open in this tab.' + focusVideoSection(target);
         return 'Open your saved YouTube draft below, then link it to this track for next time.';
       });
     }
-    $('btn-edit-video').addEventListener('click', editWithVideo);
-    $('btn-practice-edit-video').addEventListener('click', editWithVideo);
+    $('btn-edit-video').addEventListener('click', () => editWithVideo());
+    $('btn-practice-edit-video').addEventListener('click', () => editWithVideo());
+    $('quick-edit-video').addEventListener('click', () => {
+      if (builder.draftsBusy || quickEditIndex == null || !sections()[quickEditIndex]) {
+        toast('Wait for the video operation to finish, then retry.');
+        return;
+      }
+      const target = { bar: startBars(sections())[quickEditIndex], time: sectionTimeline()[quickEditIndex].start };
+      $('quick-edit-dialog').close();
+      editWithVideo(target);
+    });
     $('builder-back-to-edit').addEventListener('click', () => {
       if (tracks.includes(builder.returnTrack)) selectTrack(builder.returnTrack.id);
       switchView('edit');
@@ -3165,7 +3197,14 @@
   }
 
   function onKeyDown(e) {
-    if ($('rehearsal-dialog').open || $('quick-edit-dialog').open) return;
+    if ($('quick-edit-dialog').open) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        $('quick-edit-dialog').close();
+      }
+      return;
+    }
+    if ($('rehearsal-dialog').open) return;
     const k = pedalKey(e);
     const menu = $('track-actions');
     if (k === 'Escape' && menu.open) {

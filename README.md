@@ -84,6 +84,14 @@ Use **Edit current section** in Perform, including fullscreen, to open the
 same section fields without leaving the stage. Opening it stops playback;
 changes save automatically, and playback must be started again after closing
 the editor. The offline performance copy is read-only and has no quick editor.
+Press **Escape** to close the quick editor without leaving fullscreen.
+Choose **Edit with video** in the quick editor to open the linked draft at the
+matching score-bar hit point. If there is no unique matching hit point, the
+video opens at the track's estimated section time instead. Saving a video draft
+does not update the track until you choose **Save over existing track**.
+Perform displays rounded BPM without changing the saved tempo or click timing.
+The next-section preview shows the rounded BPM change; if the beat unit
+changes, the difference is expressed in the next section's beat unit.
 
 Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
 Edit, or on the opening video hit point for that section. Figures appear in the

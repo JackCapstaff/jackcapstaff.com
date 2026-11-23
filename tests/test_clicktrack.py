@@ -230,6 +230,7 @@ class ClickTrackStorageTests(unittest.TestCase):
         for response in (online, offline):
             self.assertIn(b'id="quick-edit-dialog"', response.data)
             self.assertIn(b'id="quick-edit-section"', response.data)
+            self.assertIn(b'id="quick-edit-video"', response.data)
 
     def test_track_actions_group_creation_json_and_pedal_setup(self):
         response = self.client.get("/clicktrack/")
