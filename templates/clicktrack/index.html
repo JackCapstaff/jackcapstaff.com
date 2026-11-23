@@ -75,8 +75,18 @@
       <button type="button" class="btn small" id="btn-exit-stage">Exit fullscreen</button>
     </div>
     {% if not offline %}
-    <label class="practice-toggle"><input type="checkbox" id="practice-enable" aria-controls="practice-video"> Enable video</label>
+    <div id="preview-notice" class="stage-tool-row" hidden>
+      <strong>Unsaved video draft preview</strong>
+      <button type="button" class="btn small" id="preview-return">Return to video editor</button>
+    </div>
     {% endif %}
+    <div class="performance-tools">
+      {% if not offline %}
+      <label class="practice-toggle"><input type="checkbox" id="practice-enable" aria-controls="practice-video" checked> Enable video</label>
+      {% endif %}
+      <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
+      <button class="btn small" id="btn-fullscreen">Fullscreen performance</button>
+    </div>
     <div class="perform-layout" id="perform-layout">
     <section class="stage" id="stage">
       <div class="stage-head">
@@ -198,15 +208,12 @@
       <div id="quick-edit-section"></div>
       <div class="stage-tool-row">
         <button type="button" class="btn primary" id="quick-edit-done">Done</button>
+        <button type="button" class="btn" id="quick-edit-perform">Perform from here</button>
         <button type="button" class="btn" id="quick-edit-video">Edit with video</button>
         <span id="quick-edit-save-status" class="muted small" role="status"></span>
       </div>
     </dialog>
 
-    <div class="performance-tools">
-      <button class="btn small primary" id="btn-start-fullscreen">Start fullscreen</button>
-      <button class="btn small" id="btn-fullscreen">Fullscreen performance</button>
-    </div>
     <div class="performance-pedal">
       <label for="performance-pedal-capture">Pedal input</label>
       <input id="performance-pedal-capture" type="text" readonly inputmode="none" autocomplete="off" placeholder="Tap here to focus pedal input" aria-describedby="performance-pedal-focus">

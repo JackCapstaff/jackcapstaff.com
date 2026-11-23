@@ -88,12 +88,17 @@
 
   // --------------------------------------------------------------- sections
   function defaultSection(over) {
-    return Object.assign({
+    const section = Object.assign({
       type: 'click', name: '', notes: '', bpm: 120, bpmEnd: null, beatUnit: 'auto',
       num: 4, den: 4, grouping: '', bars: 8, advance: 'auto', click: 'beats', countIn: null, startBar: null,
       unitPitch: 0, unitVelocity: 53, subPitch: 0, subVelocity: 32,
       calcStart: '', calcEnd: '',
     }, over || {});
+    if (!over || !Object.prototype.hasOwnProperty.call(over, 'click')) {
+      section.click = isCompound(section) ? 'units' : 'beats';
+    }
+    section.compoundClickDefaulted = true;
+    return section;
   }
 
   function normSection(raw) {
@@ -112,7 +117,8 @@
     s.grouping = String(raw.grouping || '').replace(/\s+/g, '').slice(0, 60);
     s.bars = num(raw.bars, 4, 1, 9999, true);
     s.advance = raw.advance === 'manual' ? 'manual' : 'auto';
-    s.click = CLICK_MODES.some((c) => c[0] === raw.click) ? raw.click : 'beats';
+    s.click = CLICK_MODES.some((c) => c[0] === raw.click) ? raw.click : (isCompound(s) ? 'units' : 'beats');
+    if (!raw.compoundClickDefaulted && isCompound(s) && s.click === 'beats') s.click = 'units';
     s.unitPitch = num(raw.unitPitch, 0, -24, 24);
     s.unitVelocity = num(raw.unitVelocity, 53, 0, 127, true);
     s.subPitch = num(raw.subPitch, 0, -24, 24);
@@ -503,6 +509,7 @@
 
   let tracks = [];
   let current = null;
+  let videoEnabled = true;
   const sections = () => (current ? current.sections : []);
 
   function pushVis(type, extra) {
@@ -1140,6 +1147,8 @@
   }
 
   function normTrack(t) {
+    const migrated = Array.isArray(t.sections) && t.sections.some((s) =>
+      s && !s.compoundClickDefaulted && +s.den >= 8 && +s.num > 3 && +s.num % 3 === 0 && s.click === 'beats');
     return {
       id: t.id != null ? t.id : newLocalId(),
       title: String(t.title || 'Untitled').slice(0, 255),
@@ -1148,12 +1157,12 @@
       videoDraftId: Number.isInteger(t.videoDraftId) && t.videoDraftId > 0 ? t.videoDraftId : null,
       _linkDirty: !!t._linkDirty,
       sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
-      _dirty: !!t._dirty, _auto: !!t._auto, _ver: 1,
+      _dirty: !!t._dirty || migrated, _auto: !!t._auto, _ver: 1,
     };
   }
 
   const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, videoOffset: t.videoOffset, videoDraftId: t.videoDraftId, sections: t.sections, _dirty: t._dirty, _auto: t._auto, _linkDirty: t._linkDirty });
-  const cacheLocal = () => saveJSON(LS_TRACKS, tracks.map(serialise));
+  const cacheLocal = () => saveJSON(LS_TRACKS, tracks.filter((t) => !t._preview).map(serialise));
 
   async function api(method, path, body, base = CFG.apiBase) {
     const res = await fetch(base + (path || ''), {
@@ -1190,6 +1199,7 @@
     if (CFG.offline) return;
     t = t || current;
     if (!t) return;
+    if (t._preview) { setStatus('Preview only — changes are not saved'); return; }
     t._dirty = true;
     t._auto = false;
     t._ver = (t._ver || 0) + 1;
@@ -1200,7 +1210,7 @@
   }
 
   async function saveDirty() {
-    if (saving) { saveAgain = true; return; }
+    if (saving) { saveAgain = true; return false; }
     saving = true;
     let failed = null;
     for (const t of tracks.slice()) {
@@ -1211,6 +1221,7 @@
     if (failed) setStatus('⚠ Not saved to account (' + failed.message + ') — kept in this browser');
     else setStatus(CFG.authenticated ? 'Saved ✓' : 'Saved in this browser');
     if (saveAgain) { saveAgain = false; saveDirty(); }
+    return !failed;
   }
   window.addEventListener('online', () => { if (tracks.some((t) => t._dirty)) saveDirty(); });
   window.addEventListener('beforeunload', (e) => {
@@ -1269,8 +1280,10 @@
     stopTester();
     const track = tracks.find((t) => String(t.id) === String(id)) || tracks[0] || null;
     if (!CFG.offline && track !== current) closePracticeVideo();
+    if (current?._preview && track !== current) tracks = tracks.filter((t) => t !== current);
     current = track;
-    if (current) saveJSON(LS_LAST, current.id);
+    if (current && !current._preview) saveJSON(LS_LAST, current.id);
+    if (!CFG.offline) $('preview-notice').hidden = !current?._preview;
     selectedIdx = 0;
     tester.idx = 0;
     tap.times = [];
@@ -1279,6 +1292,7 @@
     renderAll();
     renderStageTools();
     if (!CFG.offline) renderPracticeAvailability();
+    if (!CFG.offline && !$('view-perform').hidden) showPracticeVideo();
   }
 
   function addTrack(t) {
@@ -1597,7 +1611,7 @@
   function sectionRow(s, i, n) {
     const btn = (act, label, title, disabled) => '<button class="btn icon' + (act === 'del' ? ' danger' : '') + '" data-act="' + act + '" data-i="' + i + '" title="' + title + '"' + (disabled ? ' disabled' : '') + '>' + label + '</button>';
     const acts = '<div class="acts">' + btn('up', '↑', 'Move up', i === 0) + btn('down', '↓', 'Move down', i === n - 1)
-      + btn('dup', '⧉', 'Duplicate') + btn('play', '▶', 'Perform from here') + btn('del', '✕', 'Delete') + '</div>';
+      + btn('dup', '⧉', 'Duplicate') + btn('play', '▶ Perform', 'Perform from here') + btn('del', '✕', 'Delete') + '</div>';
     let f = fld('Type', sel(i, 'type', [['click', 'Click'], ['pause', 'Pause / cue']], s.type))
       + fld('Rehearsal figure', inp(i, 'figure', s.figure, 'type="text" maxlength="32" placeholder="e.g. 6 or A"'))
       + fld('Streamer and punch at start', '<input type="checkbox" data-f="visualCue" data-i="' + i + '"' + (s.visualCue ? ' checked' : '') + '>');
@@ -1716,6 +1730,11 @@
       return;
     }
     const n = normSection(Object.assign({}, s, { [f]: el.type === 'checkbox' ? el.checked : el.value }));
+    if ((f === 'num' || f === 'den') && !isCompound(s) && isCompound(n) && s.click === 'beats') {
+      n.click = 'units';
+      const click = el.closest('[data-row]').querySelector('[data-f="click"]');
+      if (click) click.value = n.click;
+    }
     current.sections[i] = n;
     if (f === 'countIn' && n === firstClickSection(current)) renderStartingCountIn();
     if (['bpm', 'bpmEnd', 'num', 'den', 'bars', 'beatUnit', 'calcStart', 'calcEnd'].includes(f)) {
@@ -1776,7 +1795,7 @@
   const builder = {
     url: null, markers: [builderMarker(0)], selected: 0, dirty: false, zoomStart: null,
     youtube: null, draftId: null, draftsBusy: false,
-    reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null,
+    reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null, localSnapshot: null,
   };
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
 
@@ -1915,6 +1934,7 @@
     }
     builder.draftId = null;
     builder.localTrack = null;
+    builder.localSnapshot = null;
     builder.zoomStart = null;
     builder.dirty = false;
     $('builder-count-in').value = '';
@@ -2027,7 +2047,8 @@
   }
 
   function hasPracticeVideo() {
-    return !!(current?.videoDraftId || (builder.localTrack === current && builder.url));
+    return !!(current?._previewVideoId || current?.videoDraftId
+      || ((builder.localTrack === current || current?._previewLocal) && builder.url));
   }
 
   function renderPracticeAvailability() {
@@ -2046,12 +2067,20 @@
       source.player?.destroy();
       $('practice-player').replaceChildren();
     }
-    $('practice-enable').checked = false;
     $('practice-video').hidden = true;
     $('perform-layout').classList.remove('with-video');
     $('practice-visual-cues').hidden = true;
     $('practice-resync').disabled = true;
     $('practice-from-start').disabled = true;
+  }
+
+  function showPracticeVideo() {
+    if (!videoEnabled || practice || !current) return;
+    const available = hasPracticeVideo();
+    renderPracticeAvailability();
+    $('practice-video').hidden = false;
+    $('perform-layout').classList.toggle('with-video', available);
+    if (available) openPracticeVideo();
   }
 
   function syncPracticeVideo(force = false) {
@@ -2126,7 +2155,7 @@
     };
     const blocked = () => fail('Video playback was blocked. Tap Resync to clicks or use the player to allow playback.');
     try {
-      const local = !track.videoDraftId && builder.localTrack === track && builder.url;
+      const local = !track.videoDraftId && (builder.localTrack === track || track._previewLocal) && builder.url;
       $('practice-picture').classList.toggle('local-video', !!local);
       if (local) {
         const video = document.createElement('video');
@@ -2144,8 +2173,8 @@
         host.replaceChildren(video);
         return;
       }
-      if (!track.videoDraftId) throw new Error('No video is linked to this track.');
-      const draft = await draftRequest('GET', track.videoDraftId);
+      if (!track.videoDraftId && !track._previewVideoId) throw new Error('No video is linked to this track.');
+      const draft = track._previewVideoId ? { videoId: track._previewVideoId } : await draftRequest('GET', track.videoDraftId);
       if (practice !== source) return;
       const yt = await loadYoutubeApi();
       if (practice !== source) return;
@@ -2179,6 +2208,8 @@
     $('builder-target-track').disabled = busy;
     $('builder-overwrite').disabled = $('builder-create').disabled || !builderTargetTrack();
     $('builder-back-to-edit').hidden = !track;
+    $('builder-perform').hidden = !track;
+    $('builder-perform').disabled = busy;
     $('builder-link-draft').hidden = !track || !builder.draftId || track.videoDraftId === builder.draftId;
     $('builder-link-draft').disabled = busy;
   }
@@ -2655,6 +2686,12 @@
       const track = current;
       if (performanceMode) await toggleFullscreen();
       if (current !== track) return;
+      if (track._preview) {
+        switchView('video');
+        if (tracks.includes(builder.returnTrack)) selectTrack(builder.returnTrack.id);
+        draftStatus.textContent = 'Returned to the unsaved video draft.' + focusVideoSection(target);
+        return;
+      }
       builder.returnTrack = track;
       switchView('video');
       refreshBuilderTargets(track.id);
@@ -2690,6 +2727,10 @@
     $('builder-back-to-edit').addEventListener('click', () => {
       if (tracks.includes(builder.returnTrack)) selectTrack(builder.returnTrack.id);
       switchView('edit');
+    });
+    $('preview-return').addEventListener('click', () => {
+      switchView('video');
+      if (tracks.includes(builder.returnTrack)) selectTrack(builder.returnTrack.id);
     });
     $('builder-link-draft').addEventListener('click', () => {
       const track = builder.returnTrack;
@@ -2942,7 +2983,7 @@
       $('builder-review-status').textContent = 'Hit point removed. Resume video to continue from here.';
       renderVideoPlan();
     });
-    async function saveVideoTrack(existing = null) {
+    async function saveVideoTrack(existing = null, stayInBuilder = false) {
       if (!videoReady() || builder.draftsBusy) return;
       const action = existing ? 'save over “' + existing.title + '”' : 'create track';
       const countIn = $('builder-count-in');
@@ -2971,7 +3012,13 @@
         const track = existing || makeTrack($('builder-title').value.trim() || 'Click track from video', sections);
         track.videoOffset = offset;
         if (existing) track.sections = sections.map(normSection);
-        if (!builder.youtube) builder.localTrack = track;
+        if (!builder.youtube) {
+          builder.localTrack = track;
+          builder.localSnapshot = {
+            markers: builder.markers.map((marker) => ({ ...marker })),
+            title: $('builder-title').value, countIn: countIn.value,
+          };
+        }
         if (existing && (track.videoDraftId ?? null) !== draftId) track._linkDirty = true;
         track.videoDraftId = draftId;
         if (existing) {
@@ -2981,8 +3028,9 @@
         builder.returnTrack = track;
         refreshBuilderTargets(track.id);
         if (!builder.youtube) builder.dirty = false;
-        if (!$('view-video').hidden) switchView('edit');
+        if (!stayInBuilder && !$('view-video').hidden) switchView('edit');
         toast(existing ? 'Updated “' + track.title + '” from video hit points' : 'Created click track from video hit points');
+        return track;
       } catch (e) {
         $('builder-result').textContent = 'Could not ' + action + ': ' + e.message;
         setStatus('Track not updated');
@@ -2996,6 +3044,107 @@
     $('builder-overwrite').addEventListener('click', () => {
       const track = builderTargetTrack();
       if (track) saveVideoTrack(track);
+    });
+    const performDialog = $('builder-perform-dialog'), performStatus = $('builder-perform-status');
+    let performBar = null;
+    let performBusy = false;
+    function setPerformBusy(busy) {
+      performBusy = busy;
+      performDialog.querySelectorAll('button').forEach((button) => { button.disabled = busy; });
+    }
+    performDialog.addEventListener('cancel', (event) => { if (performBusy) event.preventDefault(); });
+    function locateBar(track, bar) {
+      const starts = startBars(track.sections);
+      const matches = track.sections.map((section, index) => ({ section, index, start: starts[index] }))
+        .filter(({ section, start }) => start != null && bar >= start && bar < start + section.bars);
+      if (matches.length !== 1) throw new Error('The selected score bar does not uniquely match a playable section.');
+      return { index: matches[0].index, offset: bar - matches[0].start };
+    }
+    function performTrack(track, bar) {
+      const target = locateBar(track, bar);
+      performDialog.close();
+      selectTrack(track.id);
+      switchView('perform');
+      selectIdx(target.index);
+      start(target.index, null, false, target.offset);
+    }
+    $('builder-perform').addEventListener('click', () => {
+      const marker = builder.markers[builder.selected];
+      const bar = Number(marker?.bar);
+      if (!marker || marker.bar === '' || !Number.isInteger(bar) || bar < 1) {
+        $('builder-result').textContent = 'Select a musical hit point with a score bar to perform from.';
+        return;
+      }
+      performBar = bar;
+      performStatus.textContent = '';
+      performDialog.showModal();
+    });
+    $('builder-perform-cancel').addEventListener('click', () => performDialog.close());
+    $('builder-perform-preview').addEventListener('click', () => {
+      try {
+        if (!videoReady()) throw new Error('Wait for the video to load.');
+        if (!$('builder-count-in').checkValidity()) throw new Error('Close this dialog and enter a valid starting count-in.');
+        const plan = planVideoTrack();
+        const preview = makeTrack('Preview: ' + (builder.returnTrack?.title || $('builder-title').value), plan.secs.map((item) => item.section));
+        preview.videoOffset = plan.offset;
+        preview.sections[0].countIn = $('builder-count-in').value === '' ? firstClickSection(builder.returnTrack)?.countIn ?? null : $('builder-count-in').valueAsNumber;
+        preview._dirty = false;
+        preview._auto = true;
+        preview._preview = true;
+        preview._previewVideoId = builder.youtube?.id || null;
+        preview._previewLocal = !builder.youtube && !!builder.url;
+        locateBar(preview, performBar);
+        tracks.push(preview);
+        performTrack(preview, performBar);
+        setStatus('Preview only — changes are not saved');
+      } catch (e) { performStatus.textContent = 'Could not preview: ' + e.message; }
+    });
+    $('builder-perform-discard').addEventListener('click', async () => {
+      const track = builder.returnTrack;
+      if (performBusy) return;
+      setPerformBusy(true);
+      try {
+        if (!tracks.includes(track)) throw new Error('The linked track is no longer available.');
+        locateBar(track, performBar);
+        if (builder.dirty) {
+          if (!builder.youtube && builder.localSnapshot) {
+            builder.markers = builder.localSnapshot.markers.map((marker) => ({ ...marker }));
+            $('builder-title').value = builder.localSnapshot.title;
+            $('builder-count-in').value = builder.localSnapshot.countIn;
+            builder.dirty = false;
+            selectVideoMarker(0);
+            renderVideoPlan();
+          } else {
+            if (!builder.draftId || !builder.youtube) throw new Error('This draft has no saved version to restore. Save it or preview instead.');
+            if (builder.draftsBusy) throw new Error('Wait for the current video operation to finish.');
+            builder.draftsBusy = true;
+            renderDraftControls();
+            const draft = await draftRequest('GET', builder.draftId);
+            await openYoutube(draft.videoId, draft);
+          }
+        }
+        $('builder-count-in').value = builder.youtube ? '' : builder.localSnapshot?.countIn ?? '';
+        performTrack(track, performBar);
+      } catch (e) { performStatus.textContent = 'Could not discard and perform: ' + e.message; }
+      finally { builder.draftsBusy = false; renderDraftControls(); setPerformBusy(false); }
+    });
+    $('builder-perform-save').addEventListener('click', async () => {
+      if (performBusy) return;
+      setPerformBusy(true);
+      try {
+        const track = builder.returnTrack;
+        if (!tracks.includes(track)) throw new Error('The linked track is no longer available.');
+        if (!videoReady()) throw new Error('Wait for the video to load before saving.');
+        if (!$('builder-count-in').checkValidity()) throw new Error('Close this dialog and enter a valid starting count-in.');
+        const plan = planVideoTrack();
+        locateBar({ sections: plan.secs.map((item) => item.section) }, performBar);
+        const saved = await saveVideoTrack(track, true);
+        if (!saved) throw new Error('Save was cancelled or failed. Check the video editor status before retrying.');
+        clearTimeout(saveTimer);
+        if (!(await saveDirty())) throw new Error('The track is not saved yet. Check the save status and retry.');
+        performTrack(saved, performBar);
+      } catch (e) { performStatus.textContent = 'Could not save and perform: ' + e.message; }
+      finally { setPerformBusy(false); }
     });
     window.addEventListener('beforeunload', (e) => {
       if (builder.dirty) { e.preventDefault(); e.returnValue = ''; }
@@ -3064,7 +3213,7 @@
         builderMedia().pause();
       }
       if (name !== 'perform') closePracticeVideo();
-      else renderPracticeAvailability();
+      else { renderPracticeAvailability(); showPracticeVideo(); }
     }
     $('btn-pedal-setup').hidden = name !== 'edit';
     $('btn-editor-fullscreen').hidden = name !== 'edit';
@@ -3327,7 +3476,8 @@
     if (!CFG.offline) wireVideoBuilder();
     if (!CFG.offline) {
       $('practice-enable').addEventListener('change', (e) => {
-        if (!e.target.checked) { closePracticeVideo(); return; }
+        videoEnabled = e.target.checked;
+        if (!videoEnabled) { closePracticeVideo(); return; }
         const available = hasPracticeVideo();
         renderPracticeAvailability();
         $('practice-video').hidden = false;
@@ -3387,6 +3537,13 @@
     $('quick-edit-section').addEventListener('change', onFieldInput);
     $('quick-edit-section').addEventListener('click', onSectionAction);
     $('quick-edit-done').addEventListener('click', () => $('quick-edit-dialog').close());
+    $('quick-edit-perform').addEventListener('click', () => {
+      if (quickEditIndex == null || !sections()[quickEditIndex]) return;
+      const index = quickEditIndex;
+      $('quick-edit-dialog').close();
+      selectIdx(index);
+      start(index);
+    });
     $('quick-edit-dialog').addEventListener('close', () => {
       quickEditIndex = null;
       renderSections();

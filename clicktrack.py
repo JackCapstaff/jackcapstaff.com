@@ -104,7 +104,10 @@ def _clean_section(raw):
         "grouping": grouping,
         "bars": _clamp_int(raw.get("bars"), 4, 1, 9999),
         "advance": raw.get("advance") if raw.get("advance") in ADVANCE_MODES else "auto",
-        "click": raw.get("click") if raw.get("click") in CLICK_MODES else "beats",
+        "click": raw.get("click") if raw.get("click") in CLICK_MODES else (
+            "units" if den >= 8 and num > 3 and num % 3 == 0 else "beats"
+        ),
+        "compoundClickDefaulted": raw.get("compoundClickDefaulted") is True,
         "unitPitch": _clamp_float(raw.get("unitPitch"), 0, -24, 24),
         "unitVelocity": _clamp_int(raw.get("unitVelocity"), 53, 0, 127),
         "subPitch": _clamp_float(raw.get("subPitch"), 0, -24, 24),

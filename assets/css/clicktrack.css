@@ -124,7 +124,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .next-heading { font-weight: 800; overflow-wrap: anywhere; }
 .next-change { color: var(--accent); font-weight: 700; }
 .next-notes { color: var(--beat-on); white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 6px; }
-.performance-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
+.performance-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-start; margin-bottom: 10px; }
 .pedal-setup { background: var(--panel); border-bottom: 1px solid var(--line); padding-bottom: 14px; }
 .pedal-setup h2 { margin: 0; font-size: 20px; }
 .pedal-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
@@ -136,7 +136,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 body.performance-mode .ct-top,
 body.performance-mode .prefs,
 body.performance-mode .setlist,
-body.performance-mode .performance-tools,
+body.performance-mode .performance-tools .btn,
 body.performance-mode #btn-tap,
 body.performance-mode #btn-stop:disabled { display: none; }
 body.performance-mode #view-perform { max-width: none; min-height: 100vh; min-height: 100dvh; padding-top: max(8px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
@@ -206,7 +206,7 @@ body.performance-mode .rehearsal-panel {
 #view-video label { display: grid; gap: 4px; }
 #builder-video { display: block; width: 100%; max-height: 55vh; background: #000; margin-bottom: 8px; }
 #builder-youtube iframe { display: block; width: 100%; aspect-ratio: 16 / 9; min-height: 200px; border: 0; margin-bottom: 8px; }
-.practice-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; margin-bottom: 8px; cursor: pointer; }
+.practice-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
 .practice-video { margin-bottom: 12px; padding: 8px 12px; min-width: 0; border: 1px solid var(--line); border-radius: 12px; }
 .perform-layout.with-video .stage-main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .perform-layout.with-video .stage-col .big { font-size: clamp(24px, 5vw, 64px); overflow-wrap: anywhere; }
@@ -318,6 +318,17 @@ body.performance-mode .rehearsal-panel {
 }
 
 .transport { display: flex; gap: 12px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
+@media (max-height: 900px) {
+  .stage { padding-block: clamp(8px, 1.5vh, 16px); }
+  .stage-name { font-size: clamp(24px, 5vh, 48px); }
+  .stage-notes { font-size: clamp(16px, 2.8vh, 28px); }
+  .stage-main { margin: 8px 0 4px; }
+  .stage-col .big { font-size: clamp(32px, 9vh, 80px); }
+  .beats { margin: 8px 0; min-height: 32px; }
+  .performance-clock { margin: 6px 0; font-size: clamp(14px, 2vh, 20px); }
+  .next-preview { margin-top: 6px; padding-top: 6px; font-size: clamp(14px, 2vh, 20px); }
+  .transport { margin: 8px 0; gap: 8px; }
+}
 .transport #btn-prev, .transport #btn-tap { min-height: 76px; }
 .transport #btn-tap { touch-action: manipulation; user-select: none; }
 

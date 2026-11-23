@@ -93,6 +93,7 @@
         <div class="stage-tool-row">
           <button class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           <button class="btn small danger" id="builder-remove">Remove hit point</button>
+          <button type="button" class="btn small" id="builder-perform" hidden>Perform from here</button>
         </div>
       </fieldset>
     </section>
@@ -115,4 +116,15 @@
       <button type="button" class="btn danger" id="builder-overwrite" disabled>Save over existing track</button>
     </div>
   </section>
+  <dialog id="builder-perform-dialog" aria-labelledby="builder-perform-title">
+    <h2 id="builder-perform-title">Perform from this hit point</h2>
+    <p>Save replaces the linked track's sections and updates the saved YouTube draft used by any linked tracks. Discard restores the last saved draft and plays the saved track. Preview plays the current draft without saving it.</p>
+    <div class="stage-tool-row">
+      <button type="button" class="btn primary" id="builder-perform-save">Save and perform</button>
+      <button type="button" class="btn" id="builder-perform-discard">Discard and perform</button>
+      <button type="button" class="btn" id="builder-perform-preview">Preview changes</button>
+      <button type="button" class="btn" id="builder-perform-cancel">Cancel</button>
+    </div>
+    <p id="builder-perform-status" role="status"></p>
+  </dialog>
 </main>

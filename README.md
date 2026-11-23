@@ -47,6 +47,12 @@ track. To apply revised hit points, pick an **Existing click track** and
 choose **Save over existing track**. This replaces its sections and video
 offset, keeping its title and track-level notes. Local
 video remains available to revisit only while it is still open in the tab.
+Select a musical hit point and choose **Perform from here** to save and replace
+the linked track, discard draft edits and play the saved track, or preview the
+current draft without changing the saved track. Preview uses the draft's
+generated sections and video; **Return to video editor** restores the draft.
+Discard restores the saved YouTube draft or the last in-tab local-video save.
+The selected score bar must uniquely match a playable section.
 For tighter timing, use a local file rather than relying on YouTube seeking.
 To resync a draft, enter a signed shift in seconds under **Resync hit-point
 times**, preview it, then apply it. Musical points shift together and the
@@ -83,8 +89,8 @@ Silent cues still wait for the pedal. The list also works in the offline view.
 
 Use **Edit current section** in Perform, including fullscreen, to open the
 same section fields without leaving the stage. Opening it stops playback;
-changes save automatically, and playback must be started again after closing
-the editor. The offline performance copy is read-only and has no quick editor.
+changes save automatically. Choose **Perform from here** to close the editor
+and start that section. The offline performance copy is read-only and has no quick editor.
 Press **Escape** to close the quick editor without leaving fullscreen.
 Choose **Edit with video** in the quick editor to open the linked draft at the
 matching score-bar hit point. If there is no unique matching hit point, the
@@ -98,7 +104,13 @@ Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
 Edit, or on the opening video hit point for that section. Figures appear in the
 **Rehearsal points** list alongside their score bars.
 
-For rehearsal, tick **Enable video** in **Perform**. The film and metronome
+Compound meters such as 6/8 and 9/8 default to **Every meter unit**, so all
+quavers sound. Existing compound sections previously set to **Beats only**
+are converted once; you can choose **Beats only** again and that choice is
+preserved. Other click settings are unchanged.
+
+For rehearsal, video is enabled by default in **Perform** when a video is
+linked. The film and metronome
 sit side by side on wider screens. On narrow screens the beat display,
 bar, meter and tempo overlay the bottom of the picture, with a cue strip
 at the top. Untick the box to close the player without stopping the clicks.

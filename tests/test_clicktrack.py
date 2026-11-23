@@ -21,6 +21,19 @@ class ClickTrackSectionTests(unittest.TestCase):
             [0, 53, 0, 32],
         )
 
+    def test_compound_click_defaults_and_explicit_choices(self):
+        for numerator in (6, 9, 12):
+            with self.subTest(numerator=numerator):
+                section = _clean_section({"num": numerator, "den": 8})
+                self.assertEqual(section["click"], "units")
+        self.assertEqual(_clean_section({"num": 4, "den": 4})["click"], "beats")
+        section = _clean_section({
+            "num": 6, "den": 8, "click": "beats", "compoundClickDefaulted": True,
+        })
+        self.assertEqual(_clean_section(section), section)
+        self.assertEqual(section["click"], "beats")
+        self.assertTrue(section["compoundClickDefaulted"])
+
     def test_sound_settings_and_multiline_notes_round_trip(self):
         section = _clean_section({
             "num": 6, "den": 8, "click": "units",
@@ -233,6 +246,15 @@ class ClickTrackStorageTests(unittest.TestCase):
             self.assertIn(b'id="quick-edit-dialog"', response.data)
             self.assertIn(b'id="quick-edit-section"', response.data)
             self.assertIn(b'id="quick-edit-video"', response.data)
+            self.assertIn(b'id="quick-edit-perform"', response.data)
+
+    def test_performance_video_and_draft_actions(self):
+        page = self.client.get("/clicktrack/").data
+        self.assertIn(b'id="practice-enable" aria-controls="practice-video" checked', page)
+        self.assertLess(page.index(b'id="btn-fullscreen"'), page.index(b'id="rehearsal-panel"'))
+        for action in (b"builder-perform", b"builder-perform-save", b"builder-perform-discard",
+                       b"builder-perform-preview", b"preview-return"):
+            self.assertIn(b'id="' + action + b'"', page)
 
     def test_track_actions_group_creation_json_and_pedal_setup(self):
         response = self.client.get("/clicktrack/")
