@@ -38,7 +38,9 @@
         <div class="stage-tool-row">
           <button type="button" class="btn primary" id="builder-play" aria-keyshortcuts="Enter" disabled>Play video</button>
           <button type="button" class="btn" id="builder-add" aria-keyshortcuts="Space" disabled>Add hit point</button>
+          <label><input type="checkbox" id="builder-click-preview"> Preview click with video</label>
         </div>
+        <p id="builder-click-status" class="muted small" role="status">Click preview is off.</p>
         <p id="builder-shortcuts" class="muted small"><kbd>Space</kbd> adds a hit point and pauses. <kbd>Enter</kbd> plays or pauses without changing any hit points. In <strong>Score bar</strong>, <kbd>Enter</kbd> keeps the bar number and resumes playback.</p>
       </fieldset>
       <div id="builder-timeline" hidden>

@@ -17,6 +17,15 @@ and enter 1 skipped bar to combine score bars 129 and 130 into one played
 9/8 bar. The display then jumps directly to bar 131. Skipped bars take no time.
 If the embedded player has keyboard focus, use the controls below it.
 
+Enable **Preview click with video** in the video controls to hear the current
+draft as the video plays, without switching to Perform. It follows seeking,
+pauses, playback speed, tempo changes and timed pauses, and updates when hit
+points change. Linked tracks use matching section click and sound settings;
+otherwise new-section defaults apply. Invalid hit-point plans are reported
+and cannot be previewed until corrected. The click uses the selected click
+audio output and volume. YouTube playback and seeking are approximate; use a
+local video for tighter sync. The preview turns off when leaving the editor.
+
 To revise a draft, select a hit point and play from there. **Pause at existing
 hit points** stops playback at the next marker so you can edit, move or remove
 it. Add new hit points between stops as usual. Inserting a point between

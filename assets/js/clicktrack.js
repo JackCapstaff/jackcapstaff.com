@@ -1968,6 +1968,113 @@
     reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null, localSnapshot: null,
   };
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
+  const builderClick = { plan: null, timer: null, cursor: null, next: null, anchor: null, sources: new Set(), revision: 0 };
+
+  function cancelBuilderClicks() {
+    builderClick.sources.forEach((source) => source.stop());
+    builderClick.sources.clear();
+    builderClick.cursor = builderClick.next = builderClick.anchor = null;
+  }
+
+  function* builderClickEvents(secs, from) {
+    for (let i = 0; i < secs.length; i++) {
+      const s = secs[i], start = parseTimecode(s.calcStart), end = parseTimecode(s.calcEnd);
+      if (end <= from) continue;
+      if (s.type === 'timedPause') {
+        const next = secs[i + 1], plan = timedPausePlan(s, next);
+        for (let beat = 0; beat < plan.count; beat++) {
+          const time = start + plan.silence + beat * plan.beat;
+          if (time >= from) yield { time, level: 2, section: next };
+        }
+        continue;
+      }
+      if (s.click === 'silent') continue;
+      const subN = subdivOf(s), levels = unitLevels(s);
+      let time = start;
+      for (let bar = 0; bar < s.bars && time < end; bar++) {
+        const barEnd = time + barSeconds(s, bar);
+        if (barEnd < from) { time = barEnd; continue; }
+        for (let tick = 0; tick < s.num && time < end; tick++) {
+          for (let sub = 0; sub < subN && time < end; sub++) {
+            const level = sub === 0 ? levels[tick] : 0;
+            if (time >= from && audible(s, level, 'play')) yield { time, level, section: s };
+            const progress = (bar + (tick + sub / subN) / s.num) / s.bars;
+            time += stepSeconds(s, progress, subN);
+          }
+        }
+      }
+    }
+  }
+
+  function builderClickTick() {
+    if (!$('builder-click-preview').checked || $('view-video').hidden || !builderClick.plan) return;
+    const media = builderMedia();
+    const playing = builder.youtube ? builder.youtube.ready && builder.youtube.player.getPlayerState() === 1
+      : !media.paused && !media.seeking && media.readyState >= 3;
+    if (!playing || !ctx || ctx.state !== 'running') {
+      if (builderClick.anchor) cancelBuilderClicks();
+      $('builder-click-status').textContent = ctx && ctx.state !== 'running'
+        ? 'Click audio is suspended. Turn preview off and on to retry.'
+        : 'Click preview ready; play the video.';
+      return;
+    }
+    const time = media.currentTime, rate = builder.youtube ? builder.youtube.player.getPlaybackRate() : media.playbackRate;
+    if (!Number.isFinite(rate) || rate <= 0) {
+      cancelBuilderClicks();
+      $('builder-click-status').textContent = 'Click preview cannot follow this playback speed.';
+      return;
+    }
+    const now = ctx.currentTime, anchor = builderClick.anchor;
+    if (!anchor || anchor.rate !== rate || Math.abs(time - (anchor.time + (now - anchor.clock) * rate)) > 0.15) {
+      cancelBuilderClicks();
+      builderClick.anchor = { time, clock: now, rate };
+      builderClick.cursor = builderClickEvents(builderClick.plan, time - 0.025 * rate);
+      builderClick.next = builderClick.cursor.next();
+    }
+    const sync = builderClick.anchor;
+    while (!builderClick.next.done) {
+      const event = builderClick.next.value, at = sync.clock + (event.time - sync.time) / rate;
+      if (at > now + 0.1) break;
+      if (at >= now - 0.025) {
+        playClick(Math.max(now, at), event.level, event.section, {
+          ctx, master, noiseBuf, sound: prefs.sound,
+          track: (source) => {
+            builderClick.sources.add(source);
+            source.addEventListener('ended', () => builderClick.sources.delete(source), { once: true });
+          },
+        });
+      }
+      builderClick.next = builderClick.cursor.next();
+    }
+    $('builder-click-status').textContent = builderClick.next.done
+      ? 'Click preview: beyond the last hit point.' : 'Click preview on; follows the video and current draft.';
+  }
+
+  function updateBuilderClickPlan(plan, error) {
+    if (!$('builder-click-preview').checked) return;
+    cancelBuilderClicks();
+    builderClick.plan = null;
+    if (!plan) {
+      $('builder-click-status').textContent = 'Click preview unavailable: ' + error;
+      return;
+    }
+    try {
+      builderClick.plan = mergeVideoSections(builder.returnTrack, plan.secs.map(({ section }) => section)).sections;
+      builderClickTick();
+    } catch (e) {
+      $('builder-click-status').textContent = 'Click preview unavailable: ' + e.message;
+    }
+  }
+
+  function stopBuilderClickPreview() {
+    builderClick.revision++;
+    $('builder-click-preview').checked = false;
+    clearInterval(builderClick.timer);
+    builderClick.timer = null;
+    builderClick.plan = null;
+    cancelBuilderClicks();
+    $('builder-click-status').textContent = 'Click preview is off.';
+  }
 
   function nextMarkerNumber(used, start) {
     let number = start;
@@ -2085,6 +2192,11 @@
   }
 
   function resetBuilderSource() {
+    if ($('builder-click-preview').checked) {
+      cancelBuilderClicks();
+      builderClick.plan = null;
+      $('builder-click-status').textContent = 'Click preview ready; load a video and valid hit points.';
+    }
     const video = $('builder-video'), source = builder.youtube;
     builder.youtube = null;
     if (source) {
@@ -2177,6 +2289,8 @@
           },
           onStateChange: () => {
             if (builder.youtube === source && $('view-video').hidden && !builderMedia().paused) builderMedia().pause();
+            if (builder.youtube === source && $('builder-click-preview').checked
+              && source.player?.getPlayerState() !== 1) cancelBuilderClicks();
             refresh();
           },
           onError: (event) => fail('YouTube cannot play this video here (error ' + event.data + '). Try a link that allows embedding or a local file.'),
@@ -2535,8 +2649,10 @@
       }
       result.textContent = plan.secs.length + ' section(s) · video offset ' + markerTime(plan.offset);
       builder.planValid = true;
+      updateBuilderClickPlan(plan);
     } catch (e) {
       result.textContent = e.message;
+      updateBuilderClickPlan(null, e.message);
     }
     renderDraftControls();
   }
@@ -2685,6 +2801,7 @@
   function seekBuilderVideo(time) {
     const video = builderMedia();
     const target = clamp(time, 0, video.duration);
+    if ($('builder-click-preview').checked) cancelBuilderClicks();
     resetVideoReview(builder.youtube ? target : null);
     video.pause();
     video.currentTime = target;
@@ -3136,9 +3253,33 @@
     });
     for (const event of ['play', 'pause', 'ended']) video.addEventListener(event, setBuilderMediaControls);
     for (const event of ['timeupdate', 'seeking']) video.addEventListener(event, updateVideoPlayhead);
+    for (const event of ['pause', 'ended', 'seeking', 'waiting', 'ratechange']) {
+      video.addEventListener(event, () => { if (!builder.youtube && $('builder-click-preview').checked) cancelBuilderClicks(); });
+    }
     video.addEventListener('seeking', () => { if (!builder.youtube) builder.reviewTime = null; });
     video.addEventListener('ended', () => { if (!builder.youtube) reviewVideoPlayback(); });
     $('builder-play').addEventListener('click', () => toggleBuilderVideo());
+    $('builder-click-preview').addEventListener('change', async (event) => {
+      if (!event.target.checked) { stopBuilderClickPreview(); return; }
+      const revision = ++builderClick.revision;
+      if (outputBusy) {
+        stopBuilderClickPreview();
+        $('builder-click-status').textContent = 'Finish choosing an audio output before enabling click preview.';
+        return;
+      }
+      try {
+        const audio = ensureAudio(false);
+        if (audio.state !== 'running') await audio.resume();
+        if (revision !== builderClick.revision || !event.target.checked || $('view-video').hidden) return;
+        if (audio.state !== 'running') throw new Error('Audio did not start.');
+        builderClick.timer = setInterval(builderClickTick, TIMER_MS);
+        renderVideoPlan();
+      } catch (e) {
+        if (revision !== builderClick.revision) return;
+        stopBuilderClickPreview();
+        $('builder-click-status').textContent = 'Could not start click preview: ' + e.message;
+      }
+    });
     $('builder-review').addEventListener('change', () => resetVideoReview());
     $('builder-title').addEventListener('input', () => { builder.dirty = true; });
     $('builder-add').addEventListener('click', addVideoMarker);
@@ -3476,6 +3617,7 @@
       $('view-video').hidden = name !== 'video';
       $('btn-video-track').setAttribute('aria-pressed', String(name === 'video'));
       if (name !== 'video') {
+        stopBuilderClickPreview();
         resetVideoReview();
         builderMedia().pause();
       }
