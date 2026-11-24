@@ -587,6 +587,23 @@ class ClickTrackStorageTests(unittest.TestCase):
                 self.assertEqual(self.client.put(url, json=payload).status_code, 400)
                 self.assertEqual(self.client.get(url).json["markers"][1]["skip"], "1")
 
+    def test_video_draft_ramp_anchors_round_trip(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"time": 0, "bar": "1", "den": "4", "unit": "auto", "shape": "rall",
+                  "rampAnchor": "end", "endBpm": "96.51"}
+        response = self.client.post(path, json={"videoId": "abcdefghijk", "markers": [marker]})
+        self.assertEqual(response.status_code, 201)
+        url = f"{path}/{response.json['id']}"
+        saved = self.client.get(url).json["markers"][0]
+        self.assertEqual((saved["rampAnchor"], saved["endBpm"]), ("end", "96.51"))
+        for anchor in ("start", "end", "previous", "next"):
+            result = self.client.put(url, json={"videoId": "abcdefghijk", "markers": [{**marker, "rampAnchor": anchor}]})
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.json["markers"][0]["rampAnchor"], anchor)
+        self.assertEqual(self.client.put(url, json={"videoId": "abcdefghijk", "markers": [
+            {**marker, "rampAnchor": "invalid"},
+        ]}).status_code, 400)
+
     def test_rehearsal_figures_round_trip_without_changing_score_bars(self):
         path = "/clicktrack/api/tracks"
         sections = [{**self.payload["sections"][0], "figure": "  6A  ", "startBar": 42},

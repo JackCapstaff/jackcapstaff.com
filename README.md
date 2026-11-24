@@ -51,6 +51,12 @@ To replace a marker's time
 without changing its details, select it, seek to the new time on the timeline
 and choose **Move hit point to playhead**.
 
+During playback the hit-point list follows and scrolls to the current point,
+updating the selected section controls. Following waits until you finish editing
+an active hit-point or section field so your input is not interrupted. If
+pause-before-hit is enabled, stopping commits the active field before selecting
+the upcoming hit point.
+
 Hit-point changes save automatically when signed in. An incomplete new
 video draft can be reopened under **Import an existing video draft**; once it
 has a valid timing plan, a linked click track is created automatically and
@@ -58,11 +64,19 @@ appears in the track list. Open that track and select **Edit** to see its full
 track editor alongside the video and hit points. Collapse **Video and hit
 points** when you want to focus on sections. The video itself stays on YouTube,
 requires internet access and must allow embedding.
+Selecting an opening hit point also shows its matching track section directly
+under its hit-point controls. Its fields mirror the full track editor; timing
+derived from the video remains editable through the hit-point controls.
+Closing points and points without a unique saved section do not have section
+settings until a valid plan creates or matches them.
+In the full track editor, choose a section under **Jump to section** and press
+the button to scroll to its fields. The list includes hit points, figures and
+score bars when available; this does not change the playback position.
 
 For a portable backup, select the track and choose **Track actions → Export
 track backup (.json)**. If a saved YouTube draft is linked, the file includes
 both the track and the last saved draft: the video ID and all hit-point data,
-including times, bars, labels, meter, beat unit, tempo shape, dialogue, figures,
+including times, bars, labels, meter, beat unit, tempo shape and ramp anchor, dialogue, figures,
 skips and visual cues. Wait for changes to finish saving first; export fails rather
 than silently omitting a linked draft if it cannot be loaded. A track without
 a linked draft exports as a track-only backup. The video itself is not included.
@@ -86,9 +100,15 @@ track** once. When opening a linked draft, differences in meter, beat unit,
 cues and tempo shape are displayed so you can choose the draft or track values.
 If another track shares the draft, editing creates a separate copy. Concurrent
 changes are rejected rather than silently overwritten.
-New video-generated accelerandos and rallentandos use the hit times and beat
-count to find the average tempo, then calculate the end tempo from the starting
-tempo. Tempo changes linearly over time, and clicks follow the resulting curve.
+For accelerandos and rallentandos, choose a **Ramp tempo anchor**: fix the
+starting or ending BPM, or match the previous section's end or the next
+section's start. The other endpoint is calculated from the hit times and beat
+count, converting beat units where necessary. If the result requires the
+opposite direction or a steady tempo, confirm before changing the shape.
+Declining preserves the last playable track while retaining the draft edits.
+Matching needs an independent neighbouring click-section tempo; circular
+dependencies and out-of-range tempos are reported. Tempo changes linearly
+over time, and clicks follow the resulting curve.
 Saved older ramps keep their original timing unless regenerated from video.
 For a fixed pause, select its opening hit point and choose **Timed pause and
 count-in** under **Tempo shape**. The span stays silent until a count-in at the
@@ -98,7 +118,8 @@ beats as fit. The next span must be a click section, and at least one beat must
 fit. Choose **Count-in subdivisions per beat** on the timed-pause section
 to add two, three or four clicks per beat; the silent portion stays silent.
 Subdivision pitch and volume come from the following section's subdivision
-sound settings. A ramp immediately after a timed pause needs an explicit starting BPM.
+sound settings. A ramp immediately after a timed pause cannot match the pause's
+tempo; use a fixed endpoint or match the next section instead.
 Tempo beats use the next section's beat unit (including dotted units for
 compound meters), not irregular grouping. Change the video hit points to adjust
 the pause's duration and regenerate synchronised timings. Starting at a timed

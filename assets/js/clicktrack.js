@@ -957,7 +957,7 @@
       return;
     }
     const sb = startBars(secs);
-    $('d-secnum').textContent = 'Section ' + (st.secIdx + 1) + ' of ' + secs.length
+    $('d-secnum').textContent = (s.hitPoint ? 'Hit point ' + s.hitPoint : 'Section ' + (st.secIdx + 1) + ' of ' + secs.length)
       + (s.figure ? ' · ' + figureLabel(s.figure) : '');
     $('d-name').textContent = sectionTitle(s, st.secIdx);
     $('d-notes').textContent = s.notes || '';
@@ -1477,6 +1477,7 @@
     if (E.playing) stop(false);
     stopTester();
     const track = tracks.find((t) => String(t.id) === String(id)) || tracks[0] || null;
+    if (track !== current) $('editor-jump-section').value = '';
     if (!CFG.offline && track !== current) closePracticeVideo();
     if (current?._preview && track !== current) tracks = tracks.filter((t) => t !== current);
     current = track;
@@ -1904,7 +1905,7 @@
         + fld('Extra subdivisions velocity (0–127)', inp(i, 'subVelocity', s.subVelocity, 'type="number" min="0" max="127" step="1"'))
         + '</div></details>';
     }
-    return '<div class="sec ' + s.type + '" data-row="' + i + '"><div class="num">' + (i + 1) + '</div><div class="fields">'
+    return '<div class="sec ' + s.type + '" data-row="' + i + '"><div class="num">' + esc(s.hitPoint || String(i + 1)) + '</div><div class="fields">'
       + f + '</div>' + acts + '<div class="info" id="info-' + i + '"></div><div class="section-timing" id="timing-' + i + '"></div></div>';
   }
 
@@ -1914,6 +1915,25 @@
     const section = firstClickSection(current), input = $('track-count-in');
     input.disabled = !section;
     input.value = section?.countIn ?? '';
+  }
+
+  function renderEditorJump() {
+    const select = $('editor-jump-section'), secs = sections(), bars = startBars(secs);
+    if (select.options.length !== secs.length + 1) {
+      const selected = select.value;
+      select.replaceChildren(new Option('Choose a section', ''),
+        ...secs.map((section, index) => new Option('', String(index))));
+      select.value = Number(selected) < secs.length && selected !== '' ? selected : '';
+    }
+    secs.forEach((section, index) => {
+      const parts = [section.hitPoint ? 'Hit point ' + section.hitPoint : 'Section ' + (index + 1)];
+      if (section.figure) parts.push(figureLabel(section.figure));
+      if (bars[index] != null) parts.push('Bar ' + bars[index]);
+      parts.push(sectionTitle(section, index));
+      select.options[index + 1].textContent = parts.join(' · ');
+    });
+    select.disabled = !secs.length;
+    $('editor-jump-button').disabled = select.value === '';
   }
 
   let quickEditIndex = null;
@@ -1943,6 +1963,7 @@
     $('track-offset').disabled = !!current?.videoDraftId;
     updateInfos();
     renderTester();
+    if (!CFG.offline) renderSelectedVideoSection();
   }
 
   function updateInfos() {
@@ -1986,6 +2007,7 @@
     });
     $('track-summary').textContent = secs.length + ' section' + (secs.length === 1 ? '' : 's') + ' · ' + bars + ' bars · ≈ '
       + fmtTime(total) + (open ? ' plus pauses / repeats' : '');
+    renderEditorJump();
   }
 
   function renderEditor() {
@@ -2024,6 +2046,8 @@
       if (click) click.value = n.click;
     }
     current.sections[i] = n;
+    if (f === 'hitPoint') el.closest('[data-row]')?.querySelector('.num')?.replaceChildren(document.createTextNode(n.hitPoint || String(i + 1)));
+    if (!CFG.offline) syncSelectedVideoSection(i, el);
     if (f === 'countIn' && n === firstClickSection(current)) renderStartingCountIn();
     if (s.type === 'click' && ['bpm', 'bpmEnd', 'num', 'den', 'bars', 'beatUnit', 'calcStart', 'calcEnd'].includes(f)) {
       $('calc-result-' + i).textContent = '';
@@ -2086,7 +2110,7 @@
     reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null, localSnapshot: null, autoDraftBase: null,
   };
   let openTrackVideoEditor = null;
-  const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
+  const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'rampAnchor', 'endBpm', 'dialogue', 'figure'];
   const builderClick = { plan: null, error: '', timer: null, cursor: null, next: null, anchor: null, sources: new Set(), revision: 0 };
   const REVIEW_LEAD = 0.12;
   let builderBeatKey = '';
@@ -2149,7 +2173,8 @@
     const state = plan && videoReady() ? builderMetronomeState(plan, media.currentTime) : null;
     const section = state?.section, info = state?.info;
     const text = (id, value) => { if ($(id).textContent !== String(value)) $(id).textContent = value; };
-    text('builder-metro-section', state ? 'Section ' + (state.index + 1) + ' of ' + plan.length : 'Metronome');
+    text('builder-metro-section', state ? (section.hitPoint ? 'Hit point ' + section.hitPoint
+      : 'Section ' + (state.index + 1) + ' of ' + plan.length) : 'Metronome');
     text('builder-metro-name', state ? sectionTitle(section, state.index)
       : builderClick.error ? 'Metronome unavailable: ' + builderClick.error
         : !videoReady() ? 'Load a video and add hit points.' : 'Outside the marked sections.');
@@ -2773,21 +2798,6 @@
       + '.' + String(ms % 1000).padStart(3, '0');
   }
 
-  function fitRamp(s, duration, direction) {
-    const average = s.bars * s.num * unitSeconds(s, 60) * 60 / duration;
-    const end = 2 * average - s.bpm;
-    if ((direction === 'accel' && end <= s.bpm) || (direction === 'rall' && end >= s.bpm)) {
-      throw new Error('The average tempo ' + average.toFixed(2) + ' BPM requires '
-        + (end > s.bpm ? 'an accelerando' : end < s.bpm ? 'a rallentando' : 'a steady tempo')
-        + ' from ' + s.bpm + ' BPM. Check the starting tempo, hit points or tempo shape.');
-    }
-    if (end < 10 || end > 400) {
-      throw new Error('The average tempo ' + average.toFixed(2) + ' BPM requires an ending tempo of '
-        + end.toFixed(2) + ' BPM, outside 10–400 BPM. Check the starting tempo or hit points.');
-    }
-    return Math.round(end * 100) / 100;
-  }
-
   function planVideoTrack(markers = builder.markers, checkMedia = true) {
     const points = markers.filter((m, i) => i !== 0 || m.bar !== '');
     if (points.length < 2) throw new Error('Add a musical hit point and a closing hit point with the next score bar.');
@@ -2796,8 +2806,11 @@
       throw new Error('A hit point is beyond the end of the video. Move it before creating the track.');
     }
     if (points[0].time > 86400) throw new Error('The first musical hit point must be within the first 24 hours.');
-    const secs = [];
-    for (let i = 0; i < points.length - 1; i++) {
+    const secs = new Array(points.length - 1), resolving = new Set();
+    function calculate(i) {
+      if (secs[i]) return secs[i];
+      if (resolving.has(i)) throw new Error('These ramp anchors depend on each other. Set a fixed BPM or match an independent neighbouring section.');
+      resolving.add(i);
       const a = points[i], b = points[i + 1], startBar = Number(a.bar), endBar = Number(b.bar);
       const skip = b.skip === '' || b.skip == null ? 0 : Number(b.skip);
       const bars = endBar - startBar - skip, numerator = Number(a.num), duration = b.time - a.time;
@@ -2821,24 +2834,55 @@
           if (average < 10 || average > 400) throw new Error('The marked duration requires ' + average.toFixed(2) + ' BPM, outside the 10–400 BPM range.');
           s.bpm = Math.round(average * 100) / 100;
         } else {
-          let start = a.bpm === '' ? null : Number(a.bpm);
-          const previous = secs[i - 1]?.section;
-          if (start == null && previous?.type === 'timedPause') throw new Error('Enter a starting BPM for a ramp after a timed pause.');
-          if (start == null && previous) {
-            const from = beatUnitFrac(previous), to = beatUnitFrac(s);
-            start = (previous.bpmEnd ?? previous.bpm) * (from.n / from.d) / (to.n / to.d);
+          const anchor = a.rampAnchor || (a.bpm ? 'start' : 'previous');
+          const endAnchored = anchor === 'end' || anchor === 'next';
+          let fixed;
+          if (anchor === 'previous' || anchor === 'next') {
+            const neighbourIndex = i + (anchor === 'previous' ? -1 : 1);
+            if (neighbourIndex < 0 || neighbourIndex >= secs.length) {
+              throw new Error('Choose a fixed BPM: there is no ' + (anchor === 'previous' ? 'previous' : 'next') + ' section to match.');
+            }
+            const neighbour = calculate(neighbourIndex).section;
+            if (neighbour.type !== 'click') throw new Error('Choose a fixed starting BPM or ending BPM: a timed pause has no tempo to match.');
+            const from = beatUnitFrac(neighbour), to = beatUnitFrac(s);
+            fixed = (anchor === 'previous' ? neighbour.bpmEnd ?? neighbour.bpm : neighbour.bpm)
+              * (from.n / from.d) / (to.n / to.d);
+          } else {
+            const input = endAnchored ? a.endBpm : a.bpm;
+            if (input === '' || input == null) throw new Error('Enter a ' + (endAnchored ? 'ending' : 'starting') + ' BPM for the ramp.');
+            fixed = Number(input);
           }
-          if (start == null) throw new Error('Enter a starting BPM for the first ramp.');
-          if (!Number.isFinite(start) || start < 10 || start > 400) throw new Error('Starting BPM must be between 10 and 400.');
-          s.bpm = Math.round(start * 100) / 100;
-          s.bpmEnd = fitRamp(s, duration, a.shape);
+          if (!Number.isFinite(fixed) || fixed < 10 || fixed > 400) throw new Error('The anchored BPM must be between 10 and 400.');
+          const start = endAnchored ? 2 * average - fixed : fixed;
+          const end = endAnchored ? fixed : 2 * average - fixed;
+          if (start < 10 || start > 400 || end < 10 || end > 400) {
+            throw new Error('The hit times require a starting tempo of ' + start.toFixed(2) + ' and ending tempo of '
+              + end.toFixed(2) + ' BPM; both must be between 10 and 400.');
+          }
+          const roundedStart = Math.round(start * 100) / 100, roundedEnd = Math.round(end * 100) / 100;
+          const direction = roundedEnd > roundedStart ? 'accel' : roundedEnd < roundedStart ? 'rall' : 'steady';
+          if (direction !== a.shape) {
+            const error = new Error('The selected anchor and hit times require '
+              + (direction === 'accel' ? 'an accelerando' : direction === 'rall' ? 'a rallentando' : 'a steady tempo')
+              + ' (' + start.toFixed(2) + ' → ' + end.toFixed(2) + ' BPM).');
+            error.rampMarker = a;
+            error.rampDirection = direction;
+            throw error;
+          }
+          s.bpm = roundedStart;
+          s.bpmEnd = roundedEnd;
           s.rampMode = 'linearTime';
         }
-        secs.push({ section: s, average, hitPoint: a.label, endHitPoint: b.label, skip });
+        secs[i] = { section: s, average, hitPoint: a.label, endHitPoint: b.label, skip };
+        resolving.delete(i);
+        return secs[i];
       } catch (e) {
-        throw new Error('Hit point at ' + markerTime(a.time) + ': ' + e.message);
+        resolving.delete(i);
+        if (!e.rampMarker) e.message = 'Hit point at ' + markerTime(a.time) + ': ' + e.message;
+        throw e;
       }
     }
+    for (let i = 0; i < secs.length; i++) calculate(i);
     secs.forEach((item, i) => {
       if (item.section.type !== 'timedPause') return;
       try { item.pausePlan = timedPausePlan(item.section, secs[i + 1]?.section); }
@@ -2847,12 +2891,23 @@
     return { offset: points[0].time, secs };
   }
 
+  function planVideoTrackWithConfirmation(markers, checkMedia, allowPrompt) {
+    for (;;) {
+      try { return planVideoTrack(markers, checkMedia); }
+      catch (error) {
+        if (!allowPrompt || !error.rampMarker || !window.confirm('Hit point ' + error.rampMarker.label
+          + ': ' + error.message + '\n\nChange the tempo shape to match?')) throw error;
+        error.rampMarker.shape = error.rampDirection;
+      }
+    }
+  }
+
   function renderVideoPlan() {
     const preview = $('builder-preview'), result = $('builder-result');
     preview.replaceChildren();
     builder.planValid = false;
     try {
-      const plan = planVideoTrack();
+      const plan = planVideoTrack(builder.markers, true);
       for (const { section: s, average, hitPoint, endHitPoint, skip, pausePlan } of plan.secs) {
         const li = document.createElement('li');
         li.textContent = 'Hit point ' + hitPoint + ' → ' + endHitPoint + ' · '
@@ -2899,7 +2954,7 @@
     if (builderCreating || builder.returnTrack || !builder.youtube || !builder.dirty) return;
     const source = builder.youtube;
     let plan = null, planError = '';
-    try { plan = planVideoTrack(); }
+    try { plan = planVideoTrackWithConfirmation(builder.markers, true, true); }
     catch (error) { planError = error.message; }
     const draft = JSON.parse(JSON.stringify(draftPayload()));
     builderCreating = true;
@@ -2943,6 +2998,7 @@
       const unchanged = JSON.stringify(draft) === JSON.stringify(draftPayload());
       builder.dirty = !unchanged;
       if (!unchanged) stageBuilderDraft();
+      else { selectVideoMarker(builder.selected); renderVideoPlan(); }
       $('builder-draft-status').textContent = 'Track created and linked. Changes save automatically.';
       renderDraftControls();
     } catch (error) {
@@ -2981,7 +3037,9 @@
         if (!builder.markers.some((point) => point !== marker && point.label === label)) values.label = label;
         else if (marker.label !== label) unmatched.push(bar);
       }
-      if (values.shape === 'accel' || values.shape === 'rall') values.bpm = String(section.bpm);
+      if ((values.shape === 'accel' || values.shape === 'rall')
+        && (!marker.rampAnchor || marker.rampAnchor === 'start')) values.bpm = String(section.bpm);
+      if ((values.shape === 'accel' || values.shape === 'rall') && marker.rampAnchor === 'end') values.endBpm = String(section.bpmEnd);
       if (Object.keys(values).some((key) => marker[key] !== values[key])) updates.push({ marker, values, bar });
     }
     if (musical.length >= 2) {
@@ -2997,7 +3055,7 @@
     if (updates.length) {
       const fieldNames = {
         label: 'Hit point', num: 'Meter numerator', den: 'Meter denominator', unit: 'Beat unit',
-        dialogue: 'Cue text', figure: 'Figure', visualCue: 'Visual cue', shape: 'Tempo shape', bpm: 'Starting BPM',
+        dialogue: 'Cue text', figure: 'Figure', visualCue: 'Visual cue', shape: 'Tempo shape', bpm: 'Starting BPM', endBpm: 'Ending BPM',
       };
       const displayValue = (value) => value === '' || value == null ? '(blank)'
         : typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value);
@@ -3093,6 +3151,19 @@
         matching[0][fields[key]] = typeof value === 'boolean' ? value : String(value);
       });
     });
+    const last = track.sections.map((section, index) => ({ section, index }))
+      .filter(({ section }) => section.type !== 'pause').at(-1);
+    if (last) {
+      const bar = newBars[last.index];
+      const oldMatches = previous.filter((section, index) => section.type !== 'pause' && oldBars[index] === bar);
+      if (oldMatches.length === 1 && last.section.visualEndCue !== oldMatches[0].visualEndCue) {
+        const starts = markers.map((marker, index) => marker.bar !== '' && Number(marker.bar) === bar ? index : -1)
+          .filter((index) => index >= 0);
+        const closing = starts.length === 1 ? markers[starts[0] + 1] : null;
+        if (!closing || closing.bar === '') throw new Error('Bar ' + bar + ' has no unique closing hit point; its end cue cannot be synchronized.');
+        closing.visualCue = last.section.visualEndCue;
+      }
+    }
   }
 
   function draftMatchesTrack(track, draft) {
@@ -3109,7 +3180,9 @@
         && marker.unit === section.beatUnit && (marker.dialogue || '') === section.notes
         && (marker.figure || '') === section.figure && !!marker.visualCue === section.visualCue
         && (!section.hitPoint || marker.label === section.hitPoint) && marker.shape === shape
-        && (shape !== 'accel' && shape !== 'rall' || !marker.bpm || Number(marker.bpm) === section.bpm);
+        && (shape !== 'accel' && shape !== 'rall'
+          || (marker.rampAnchor === 'end' ? !marker.endBpm || Number(marker.endBpm) === section.bpmEnd
+            : marker.rampAnchor === 'previous' || marker.rampAnchor === 'next' || !marker.bpm || Number(marker.bpm) === section.bpm));
     });
   }
 
@@ -3123,7 +3196,7 @@
     applyTrackChangesToDraft(track, draft.markers);
     let updated = null, reason = '';
     try {
-      const plan = planVideoTrack(draft.markers, false);
+      const plan = planVideoTrackWithConfirmation(draft.markers, false, true);
       const merged = mergeVideoSections(track, plan.secs.map(({ section }) => section));
       if (merged.unmatched && !window.confirm('These sections would be removed when applying the video edits:\n\n'
         + describeRemovedSections(merged.removed) + '\n\nApply the changes?')) {
@@ -3162,7 +3235,7 @@
         builder.dirty = false;
         builder.markers = numberDraftMarkers(saved.videoDraft.markers);
         if (!$('view-video').hidden && current === track) {
-          selectVideoMarker(Math.min(builder.selected, builder.markers.length - 1));
+          if (!editingVideoMarker()) selectVideoMarker(Math.min(builder.selected, builder.markers.length - 1));
           renderVideoPlan();
         }
       }
@@ -3172,7 +3245,7 @@
   }
 
   function renderVideoMarkers() {
-    const list = $('builder-markers');
+    const list = $('builder-markers'), scrollTop = list.scrollTop;
     list.replaceChildren(...builder.markers.map((m, i) => new Option(m.label + ' · ' + markerTime(m.time)
       + (m.figure?.trim() ? ' · ' + figureLabel(m.figure.trim()) : '')
       + (m.visualCue ? ' · Visual cue' : '')
@@ -3180,6 +3253,7 @@
       + (m.bar ? ' · Bar ' + m.bar : i === 0 ? ' · Video start' : ' · Add bar number')
       + (i > 0 && i === builder.markers.length - 1 ? ' · Current closing point' : ''), i)));
     list.value = builder.selected;
+    list.scrollTop = scrollTop;
   }
 
   const markerHeading = (marker, time = marker.time) => 'Hit point ' + marker.label + ' at ' + markerTime(time);
@@ -3220,13 +3294,108 @@
     if (marker.unit && !BEAT_UNITS.some(([value]) => value === marker.unit)) {
       unitSelect.add(new Option(marker.unit, marker.unit));
     }
-    for (const field of markerFields) $('builder-' + field).value = marker[field] ?? '';
+    for (const field of markerFields) {
+      $('builder-' + field).value = field === 'rampAnchor'
+        ? marker.rampAnchor || (marker.bpm ? 'start' : 'previous') : marker[field] ?? '';
+    }
     renderSelectedSkip();
     $('builder-visual-cue').checked = marker.visualCue === true;
-    $('builder-bpm-field').hidden = !['accel', 'rall'].includes(marker.shape);
+    renderRampControls();
     if (recenter && builder.zoomStart !== null && videoReady()) zoomAroundMarker();
     if (seek && videoReady()) seekBuilderVideo(marker.time);
     renderVideoTimeline();
+    renderSelectedVideoSection();
+  }
+
+  function editingVideoMarker() {
+    const active = document.activeElement;
+    return ($('builder-marker').contains(active) || $('builder-selected-section-editor').contains(active))
+      && active.matches('input, textarea, select, [contenteditable="true"]');
+  }
+
+  function scrollToVideoMarker(index) {
+    const list = $('builder-markers'), option = list.options[index];
+    if (option && list.options.length) {
+      list.scrollTop = Math.max(0, option.offsetTop - list.options[0].offsetTop
+        - (list.clientHeight - option.offsetHeight) / 2);
+    }
+  }
+
+  function followVideoHitPoint() {
+    if ($('view-video').hidden || !videoReady()) return;
+    const media = builderMedia();
+    if (media.paused || media.seeking || media.ended) return;
+    const time = media.currentTime;
+    if ($('builder-review').checked && builder.reviewAnchor !== null && time < builder.reviewAnchor) return;
+    if (editingVideoMarker()) return;
+    if (!builder.markers.length) return;
+    let index = 0;
+    for (let i = 0; i < builder.markers.length && builder.markers[i].time <= time; i++) index = i;
+    if (index === builder.selected) return;
+    selectVideoMarker(index, false, false);
+    scrollToVideoMarker(index);
+  }
+
+  function renderSelectedVideoSection() {
+    const host = $('builder-selected-section-editor'), status = $('builder-selected-section-status');
+    host.replaceChildren();
+    const track = builder.returnTrack, marker = builder.markers[builder.selected];
+    if (!track || track !== current || !track.videoDraftId || builder.draftId !== track.videoDraftId) {
+      status.textContent = 'A linked track section will appear here after the track is created or linked.';
+      return;
+    }
+    if (!marker?.bar || !nextMusicalMarker(builder.selected)) {
+      status.textContent = 'Select the opening hit point of a section to see its track settings.';
+      return;
+    }
+    const bars = startBars(track.sections), bar = Number(marker.bar);
+    const indices = track.sections.map((section, index) => section.type !== 'pause' && bars[index] === bar ? index : -1)
+      .filter((index) => index >= 0);
+    if (indices.length !== 1 || builder.markers.filter((point) => point.bar !== '' && Number(point.bar) === bar).length !== 1) {
+      status.textContent = 'No unique saved track section matches this hit point. Save a valid plan to update the track.';
+      return;
+    }
+    const row = $('sections').querySelector('[data-row="' + indices[0] + '"]');
+    if (!row) {
+      status.textContent = 'The track section is being edited elsewhere. Close the quick editor to show it here.';
+      return;
+    }
+    const copy = row.cloneNode(true);
+    copy.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+    row.querySelectorAll('[data-f]').forEach((input) => {
+      const target = copy.querySelector('[data-f="' + input.dataset.f + '"]');
+      if (target) {
+        if (input.type === 'checkbox') target.checked = input.checked;
+        else target.value = input.value;
+      }
+    });
+    host.append(copy);
+    status.textContent = 'Changes here also appear in the full track editor. Video-derived timing is edited above using hit points.';
+  }
+
+  function syncSelectedVideoSection(index, input) {
+    const host = $('builder-selected-section-editor');
+    const fullRow = $('sections').querySelector('[data-row="' + index + '"]');
+    const selectedRow = host.querySelector('[data-row="' + index + '"]');
+    if (!fullRow || !selectedRow) return;
+    const source = selectedRow.contains(input) ? selectedRow : fullRow;
+    const target = source === fullRow ? selectedRow : fullRow;
+    source.querySelectorAll('[data-f]').forEach((field) => {
+      const other = target.querySelector('[data-f="' + field.dataset.f + '"]');
+      if (!other) return;
+      if (field.type === 'checkbox') other.checked = field.checked;
+      else other.value = field.value;
+    });
+    target.querySelector('.num').textContent = source.querySelector('.num').textContent;
+  }
+
+  function renderRampControls() {
+    const marker = builder.markers[builder.selected];
+    const ramp = ['accel', 'rall'].includes(marker.shape);
+    const anchor = marker.rampAnchor || (marker.bpm ? 'start' : 'previous');
+    $('builder-anchor-field').hidden = !ramp;
+    $('builder-bpm-field').hidden = !ramp || anchor !== 'start';
+    $('builder-end-bpm-field').hidden = !ramp || anchor !== 'end';
   }
 
   const roundMarkerTime = (time) => Math.round(time * 1000) / 1000;
@@ -3273,7 +3442,9 @@
     const priorTime = next.index > 0 ? builder.markers[next.index - 1].time : 0;
     const stopTime = Math.max(priorTime, next.marker.time - REVIEW_LEAD);
     if (time < stopTime) return;
+    if (editingVideoMarker()) document.activeElement.blur();
     selectVideoMarker(next.index);
+    scrollToVideoMarker(next.index);
     seekBuilderVideo(stopTime);
     builder.reviewAnchor = next.marker.time;
     $('builder-review-status').textContent = 'Paused just before hit point ' + next.marker.label + ' at ' + markerTime(next.marker.time)
@@ -3475,6 +3646,9 @@
   function wireVideoBuilder() {
     const video = $('builder-video'), fileInput = $('builder-file');
     wireVideoTimeline();
+    $('builder-selected-section-editor').addEventListener('input', onFieldInput);
+    $('builder-selected-section-editor').addEventListener('change', onFieldInput);
+    $('builder-selected-section-editor').addEventListener('click', onSectionAction);
     $('builder-den').replaceChildren(...DENOMS.map((n) => new Option(n, n)));
     $('builder-unit').replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
     $('btn-video-track').addEventListener('click', () => {
@@ -3764,7 +3938,7 @@
       resetVideoReview();
       cancelBuilderClicks();
     });
-    setInterval(reviewVideoPlayback, TIMER_MS);
+    setInterval(() => { reviewVideoPlayback(); followVideoHitPoint(); }, TIMER_MS);
     $('builder-title').addEventListener('input', () => { builder.dirty = true; stageBuilderDraft(); });
     $('builder-add').addEventListener('click', addVideoMarker);
     $('builder-retime').addEventListener('click', () => {
@@ -3815,8 +3989,8 @@
       $('builder-' + field).addEventListener('change', (e) => {
         builder.markers[builder.selected][field] = e.target.value;
         builder.dirty = true;
-        if (field === 'bar') renderSelectedSkip();
-        $('builder-bpm-field').hidden = !['accel', 'rall'].includes(builder.markers[builder.selected].shape);
+        if (field === 'bar') { renderSelectedSkip(); renderSelectedVideoSection(); }
+        renderRampControls();
         renderVideoMarkers();
         renderVideoTimeline();
         renderVideoPlan();
@@ -4679,6 +4853,23 @@
     $('btn-import-track').addEventListener('click', () => { closeMenu(true); $('import-file').click(); });
     $('import-file').addEventListener('change', (e) => { if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ''; });
     $('btn-delete-track').addEventListener('click', () => { closeMenu(true); deleteTrack(); });
+
+    $('editor-jump-section').addEventListener('change', () => {
+      $('editor-jump-button').disabled = $('editor-jump-section').value === '';
+      $('editor-jump-status').textContent = '';
+    });
+    $('editor-jump-button').addEventListener('click', () => {
+      const value = $('editor-jump-section').value;
+      if (value === '') return;
+      const row = $('sections').querySelector('[data-row="' + value + '"]');
+      if (!row) {
+        $('editor-jump-status').textContent = 'Close the quick editor before jumping to this section.';
+        return;
+      }
+      $('editor-jump-status').textContent = '';
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.querySelector('[data-f="name"]')?.focus({ preventScroll: true });
+    });
 
     $('track-title').addEventListener('input', (e) => {
       if (!current) return;

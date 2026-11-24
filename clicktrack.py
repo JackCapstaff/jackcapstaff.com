@@ -293,6 +293,12 @@ def _apply_video_draft(draft, data):
             "figure": _text(raw.get("figure"), 32),
             "visualCue": raw.get("visualCue") is True,
         })
+        if "rampAnchor" in raw:
+            if raw["rampAnchor"] not in ("start", "end", "previous", "next"):
+                abort(400, description="Invalid ramp tempo anchor.")
+            cleaned[-1]["rampAnchor"] = raw["rampAnchor"]
+        if "endBpm" in raw:
+            cleaned[-1]["endBpm"] = _text(raw["endBpm"], 32)
         if "skip" in raw:
             skip = raw["skip"]
             if not isinstance(skip, (int, str)) or isinstance(skip, bool) or not re.fullmatch(r"\d{1,4}", str(skip)) or int(skip) > 9998:

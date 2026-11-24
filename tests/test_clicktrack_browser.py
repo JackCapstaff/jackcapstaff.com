@@ -6,6 +6,215 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class ClickTrackBrowserTests(unittest.TestCase):
+    def test_hit_point_list_follows_playback_without_interrupting_edits(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            markers = [{**marker, "time": i * 2, "bar": str(i + 1), "label": str(i + 1)}
+                       for i in range(13)]
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "title": "Cues", "videoId": "abcdefghijk", "markers": markers,
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Following", "videoDraftId": draft["id"], "sections": [
+                    {"startBar": i + 1, "bars": 1, "bpm": 120, "hitPoint": str(i + 1)}
+                    for i in range(12)
+                ],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                page = browser.new_page()
+                page.add_init_script("""
+                  window.mockTime = 0; window.mockState = 2;
+                  window.YT = {Player: function(frame, config) {
+                    this.getDuration = () => 40;
+                    this.getCurrentTime = () => window.mockTime;
+                    this.getPlayerState = () => window.mockState;
+                    this.getPlaybackRate = () => 1;
+                    this.seekTo = time => { window.mockTime = time; };
+                    this.pauseVideo = () => { window.mockState = 2; };
+                    this.playVideo = () => { window.mockState = 1; };
+                    this.destroy = () => {};
+                    setTimeout(() => config.events.onReady({target: this}), 0);
+                  }};
+                """)
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    response = fixture.client.open(path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                page.route("http://clicktrack.test/**", route_request)
+                page.route("https://www.youtube.com/**", lambda route: route.abort())
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.select_option("#track-select", str(track["id"]))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                page.wait_for_function("!document.querySelector('#builder-play').disabled")
+                page.uncheck("#builder-review")
+                page.click("#builder-play")
+                page.evaluate("window.mockTime = 16.1")
+                page.wait_for_function("document.querySelector('#builder-markers').value === '8'")
+                self.assertGreater(page.locator("#builder-markers").evaluate("(el) => el.scrollTop"), 0)
+                self.assertIn("Hit point 9", page.locator("#builder-marker-title").text_content())
+                self.assertEqual(page.locator('#builder-selected-section-editor [data-f="hitPoint"]').input_value(), "9")
+                page.locator("#builder-dialogue").fill("Unsaved input")
+                page.evaluate("window.mockTime = 18.1")
+                page.wait_for_timeout(200)
+                self.assertEqual(page.locator("#builder-markers").input_value(), "8")
+                self.assertEqual(page.locator("#builder-dialogue").input_value(), "Unsaved input")
+                page.locator("#builder-dialogue").blur()
+                page.wait_for_function("document.querySelector('#builder-markers').value === '9'")
+                page.evaluate("window.mockTime = 4.1")
+                page.wait_for_function("document.querySelector('#builder-markers').value === '2'")
+                page.click("#builder-play")
+                page.evaluate("window.mockTime = 20.1")
+                page.wait_for_timeout(200)
+                self.assertEqual(page.locator("#builder-markers").input_value(), "2")
+                page.evaluate("window.mockTime = 4.1")
+                page.check("#builder-review")
+                page.click("#builder-play")
+                page.locator("#builder-dialogue").fill("Edit before pause")
+                page.evaluate("window.mockTime = 5.89")
+                page.wait_for_function("window.mockState === 2 && document.querySelector('#builder-markers').value === '3'")
+                self.assertIn("Paused just before hit point 4", page.locator("#builder-review-status").text_content())
+                page.select_option("#builder-markers", "2")
+                self.assertEqual(page.locator("#builder-dialogue").input_value(), "Edit before pause")
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
+    def test_video_ramp_meter_anchor_and_hit_point_labels(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "rall", "bpm": "96.51", "label": "2"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "title": "Ramp", "videoId": "abcdefghijk", "markers": [
+                    {**marker, "time": 0, "bar": "21"},
+                    {**marker, "time": 2.953, "bar": "22", "label": "2A", "shape": "steady", "bpm": ""},
+                    {**marker, "time": 4.953, "bar": "23", "label": "3", "shape": "steady", "bpm": ""},
+                ],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Ramp track", "videoDraftId": draft["id"], "sections": [
+                    {"startBar": 21, "bars": 1, "num": 4, "den": 4, "bpm": 96.51,
+                     "bpmEnd": 66.04, "rampMode": "linearTime", "hitPoint": "2"},
+                    {"startBar": 22, "bars": 1, "num": 4, "den": 4, "bpm": 120, "hitPoint": "2A"},
+                ],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                page = browser.new_page()
+                page.add_init_script("window.YT = {Player: function () { this.destroy = () => {}; }};")
+                decisions = {"accept": False, "prompts": []}
+
+                def dialog_handler(dialog):
+                    decisions["prompts"].append(dialog.message)
+                    dialog.accept() if decisions["accept"] else dialog.dismiss()
+
+                page.on("dialog", dialog_handler)
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    response = fixture.client.open(path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                def wait_saved(predicate):
+                    for _ in range(100):
+                        saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"]
+                                     if t["id"] == track["id"])
+                        if predicate(saved):
+                            return saved
+                        page.wait_for_timeout(100)
+                    self.fail("Track did not save: " + page.locator("#save-status").text_content())
+
+                page.route("http://clicktrack.test/**", route_request)
+                page.route("https://www.youtube.com/**", lambda route: route.abort())
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                self.assertEqual(page.locator("#sections .sec > .num").all_text_contents(), ["2", "2A"])
+                self.assertIn("Hit point 2A", page.locator("#editor-jump-section option").nth(2).text_content())
+                page.select_option("#editor-jump-section", "1")
+                page.click("#editor-jump-button")
+                self.assertEqual(page.evaluate("document.activeElement.dataset.i"), "1")
+                self.assertEqual(page.evaluate("document.activeElement.dataset.f"), "name")
+                self.assertTrue(page.locator("#view-perform").is_hidden())
+                self.assertEqual(page.locator("#builder-review").evaluate("(el) => el.closest('#builder-transport') !== null"), True)
+                page.select_option("#builder-rampAnchor", "end")
+                page.locator("#builder-endBpm").fill("96.51")
+                page.locator("#builder-endBpm").dispatch_event("change")
+                page.locator("#builder-num").fill("5")
+                page.locator("#builder-num").dispatch_event("change")
+                saved = wait_saved(lambda t: t["sections"][0]["num"] == 5)
+                self.assertEqual((saved["sections"][0]["bpm"], saved["sections"][0]["bpmEnd"]), (106.67, 96.51))
+                saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertEqual(saved_draft["markers"][0]["rampAnchor"], "end")
+                self.assertEqual(saved_draft["markers"][0]["endBpm"], "96.51")
+                page.select_option("#builder-rampAnchor", "start")
+                page.wait_for_function("document.querySelector('#save-status').textContent.includes('playable track was not updated')")
+                self.assertTrue(any("accelerando" in p for p in decisions["prompts"]))
+                self.assertEqual(wait_saved(lambda t: t["sections"][0]["num"] == 5)["sections"][0]["bpm"], 106.67)
+                decisions["accept"] = True
+                page.locator("#builder-num").fill("6")
+                page.locator("#builder-num").dispatch_event("change")
+                saved = wait_saved(lambda t: t["sections"][0]["num"] == 6)
+                self.assertEqual(saved["sections"][0]["bpm"], 96.51)
+                self.assertGreater(saved["sections"][0]["bpmEnd"], 96.51)
+                saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertEqual(saved_draft["markers"][0]["shape"], "accel")
+                page.locator('#sections [data-i="0"][data-f="num"]').fill("5")
+                page.locator('#sections [data-i="0"][data-f="num"]').dispatch_event("change")
+                saved = wait_saved(lambda t: t["sections"][0]["num"] == 5)
+                self.assertEqual((saved["sections"][0]["bpm"], saved["sections"][0]["bpmEnd"]), (96.51, 106.67))
+                saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertEqual(saved_draft["markers"][0]["num"], "5")
+                page.select_option("#builder-rampAnchor", "next")
+                saved = wait_saved(lambda t: t["sections"][0]["bpmEnd"] == 120)
+                self.assertEqual(saved["sections"][0]["bpm"], 83.18)
+                page.reload()
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                self.assertEqual(page.locator("#builder-rampAnchor").input_value(), "next")
+                page.click("button[data-view=perform]")
+                self.assertEqual(page.locator("#d-secnum").text_content(), "Hit point 2")
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_timed_pause_subdivisions_save_in_linked_and_quick_editors(self):
         from urllib.parse import urlsplit
         from playwright.sync_api import Error, sync_playwright
@@ -62,7 +271,9 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.wait_for_function("document.querySelector('#track-select').options.length === 1")
                 page.click("button[data-view=edit]")
                 page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
-                page.select_option('#sections [data-i="0"][data-f="pauseSubdivision"]', "3")
+                page.wait_for_function("document.querySelector('#builder-selected-section-editor [data-f=pauseSubdivision]') !== null")
+                page.select_option('#builder-selected-section-editor [data-i="0"][data-f="pauseSubdivision"]', "3")
+                self.assertEqual(page.locator('#sections [data-i="0"][data-f="pauseSubdivision"]').input_value(), "3")
                 saved = wait_for_subdivision(3)
                 self.assertEqual(saved["sections"][0]["pauseDuration"], 3)
                 page.reload()
@@ -250,6 +461,11 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 except Error:
                     self.fail("Video editor failed to open: " + page.locator("#builder-draft-status").text_content() + " errors: " + repr(errors))
                 self.assertTrue(page.locator("#builder-track-editor #sections").is_visible())
+                page.wait_for_function("document.querySelector('#builder-selected-section-editor [data-f=click]') !== null")
+                full_fields = page.locator('#sections [data-row="0"] [data-f]').evaluate_all("(els) => els.map(el => el.dataset.f)")
+                selected_fields = page.locator("#builder-selected-section-editor [data-f]").evaluate_all("(els) => els.map(el => el.dataset.f)")
+                self.assertEqual(selected_fields, full_fields)
+                self.assertTrue(page.locator('#builder-selected-section-editor [data-f="bpm"]').is_disabled())
                 page.click("#builder-video-panel > summary")
                 self.assertFalse(page.locator("#builder-markers").is_visible())
                 self.assertTrue(page.locator("#builder-track-editor #sections").is_visible())
@@ -261,6 +477,23 @@ class ClickTrackBrowserTests(unittest.TestCase):
                             return saved_track
                         page.wait_for_timeout(100)
                     self.fail("Track was not saved: " + page.locator("#save-status").text_content())
+                page.click("#builder-video-panel > summary")
+                page.locator('#builder-selected-section-editor [data-f="grouping"]').fill("2+2")
+                self.assertEqual(page.locator('#sections [data-f="grouping"]').input_value(), "2+2")
+                wait_for_track(lambda t: t["sections"][0]["grouping"] == "2+2")
+                page.locator('#sections [data-f="click"]').select_option("sub2")
+                self.assertEqual(page.locator('#builder-selected-section-editor [data-f="click"]').input_value(), "sub2")
+                wait_for_track(lambda t: t["sections"][0]["click"] == "sub2")
+                page.locator('#builder-selected-section-editor [data-f="visualEndCue"]').check()
+                saved = wait_for_track(lambda t: t["sections"][0]["visualEndCue"])
+                self.assertTrue(fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json["markers"][1]["visualCue"])
+                page.select_option("#builder-markers", "1")
+                self.assertIn("opening hit point", page.locator("#builder-selected-section-status").text_content())
+                self.assertEqual(page.locator("#builder-selected-section-editor [data-f]").count(), 0)
+                page.select_option("#builder-markers", "0")
+                page.locator('#builder-selected-section-editor [data-f="grouping"]').fill("")
+                wait_for_track(lambda t: t["sections"][0]["grouping"] == "")
+                page.click("#builder-video-panel > summary")
                 page.locator('#sections [data-f="notes"]').fill("Edited on video page")
                 saved_track = wait_for_track(lambda t: t["sections"][0]["notes"] == "Edited on video page")
                 self.assertEqual(saved_track["sections"][0]["notes"], "Edited on video page")
@@ -313,7 +546,11 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.select_option("#builder-markers", "1")
                 page.locator("#builder-bar").fill("3")
                 page.locator("#builder-bar").dispatch_event("change")
-                page.wait_for_function("document.querySelector('#save-status').textContent.includes('Section changes not applied')")
+                try:
+                    page.wait_for_function("document.querySelector('#save-status').textContent.includes('Section changes not applied')", timeout=7000)
+                except Error:
+                    self.fail("Removal confirmation not shown: " + page.locator("#save-status").text_content()
+                              + " dialogs: " + repr(decisions["questions"]))
                 unchanged = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"]
                                  if t["id"] == track["id"])
                 self.assertEqual(unchanged["sections"], saved_track["sections"])
@@ -328,6 +565,12 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 self.assertTrue(page.locator("#builder-track-editor").is_hidden())
                 page.click("button[data-view=edit]")
                 self.assertEqual(page.locator('#sections [data-f="name"]').first.input_value(), "Other section")
+                self.assertEqual(page.locator("#editor-jump-section").input_value(), "")
+                self.assertTrue(page.locator("#editor-jump-button").is_disabled())
+                self.assertIn("Other section", page.locator("#editor-jump-section option").nth(1).text_content())
+                page.select_option("#editor-jump-section", "0")
+                page.click("#editor-jump-button")
+                self.assertEqual(page.evaluate("document.activeElement.dataset.i"), "0")
                 page.click("#btn-edit-video")
                 page.wait_for_function("!document.querySelector('#view-video').hidden && document.querySelector('#builder-draft-status').textContent.includes('Open your saved')")
                 page.click("#builder-legacy-drafts > summary")
@@ -719,7 +962,9 @@ class ClickTrackBrowserTests(unittest.TestCase):
             page = browser.new_page()
             page.route("http://clicktrack.test/", lambda route: route.fulfill(status=200, content_type="text/html",
                 body='<input id="builder-click-preview" type="checkbox"><input id="builder-review" type="checkbox">'
-                     '<div id="view-video"></div><div id="builder-click-status"></div><div id="builder-review-status"></div>'))
+                     '<div id="view-video"></div><div id="builder-click-status"></div><div id="builder-review-status"></div>'
+                     '<div id="builder-marker"></div><div id="builder-selected-section-editor"></div>'
+                     '<select id="builder-markers"></select>'))
             page.goto("http://clicktrack.test/")
             page.add_script_tag(content=source)
             page.evaluate("""() => {
@@ -978,4 +1223,35 @@ class ClickTrackBrowserTests(unittest.TestCase):
               let rampRejected = false;
               try { t.videoPlan(); } catch (error) { rampRejected = error.message.includes('starting BPM'); }
               assert(rampRejected, 'ramp after pause requires explicit start');
+              const m = {num:'4',den:'4',unit:'auto',bpm:'',dialogue:'',figure:'',skip:'0'};
+              const points = [
+                {...m,time:0,bar:'1',label:'1',shape:'steady'},
+                {...m,time:2,bar:'2',label:'2',shape:'rall',rampAnchor:'end',endBpm:'96.51',num:'5'},
+                {...m,time:4.953,bar:'3',label:'2A',shape:'steady'},
+                {...m,time:6.953,bar:'4',label:'3',shape:'steady'},
+              ];
+              t.setMarkers(points);
+              let ramp = t.videoPlan().secs[1].section;
+              assert(ramp.bpm === 106.67 && ramp.bpmEnd === 96.51, 'fixed end accommodates changed meter');
+              points[1] = {...points[1], shape:'accel', rampAnchor:'next'};
+              t.setMarkers(points);
+              ramp = t.videoPlan().secs[1].section;
+              assert(ramp.bpm === 83.18 && ramp.bpmEnd === 120, 'match next section start');
+              points[1] = {...points[1], shape:'rall', rampAnchor:'previous'};
+              t.setMarkers(points);
+              ramp = t.videoPlan().secs[1].section;
+              assert(ramp.bpm === 120 && ramp.bpmEnd === 83.18, 'match previous section end');
+              points[1] = {...points[1], shape:'accel', rampAnchor:'next'};
+              points[2] = {...points[2], shape:'rall', rampAnchor:'previous'};
+              t.setMarkers(points);
+              let cycle = false;
+              try { t.videoPlan(); } catch (error) { cycle = error.message.includes('depend on each other'); }
+              assert(cycle, 'cyclic neighbouring anchors rejected');
+              t.setMarkers([
+                {...m,time:0,bar:'1',label:'1',shape:'steady',num:'6',den:'8'},
+                {...m,time:2,bar:'2',label:'2',shape:'accel',rampAnchor:'previous'},
+                {...m,time:4,bar:'3',label:'3',shape:'steady'},
+              ]);
+              ramp = t.videoPlan().secs[1].section;
+              assert(ramp.bpm === 90 && ramp.bpmEnd === 150, 'matching converts dotted beat to quarter beat');
             }""")
