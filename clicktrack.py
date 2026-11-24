@@ -5,7 +5,11 @@ Click track / programmable metronome.
   /clicktrack/api/tracks          GET list, POST create        (login required)
   /clicktrack/api/tracks/<id>     PUT update, DELETE           (login required)
   /clicktrack/api/tracks/restore-backup POST linked backup     (login required)
+  /clicktrack/api/tracks/<id>/video-editor PUT unified edit    (login required)
+  /clicktrack/api/tracks/<id>/video-link PUT link draft       (login required)
+  /clicktrack/api/tracks/from-video-draft POST linked track    (login required)
   /clicktrack/api/video-drafts  GET list, POST create         (login required)
+  /clicktrack/api/video-drafts/<id>/unlinked PUT draft edit    (login required)
   /clicktrack/api/video-drafts/<id> GET, PUT, DELETE           (login required)
 
 Tracks are saved to the signed-in user's account, with a browser-local cache.
@@ -111,6 +115,7 @@ def _clean_section(raw):
         "bpmEnd": bpm_end,
         "rampMode": "linearTime" if raw.get("rampMode") == "linearTime" else "linearBeat",
         "pauseDuration": round(_clamp_float_ms(raw.get("pauseDuration")), 3),
+        "pauseSubdivision": _clamp_int(raw.get("pauseSubdivision"), 1, 1, 4),
         "beatUnit": beat_unit,
         "num": num,
         "den": den,
@@ -185,6 +190,11 @@ def _own_track_or_404(track_id):
 @clicktrack_bp.errorhandler(400)
 def _bad_request(err):
     return jsonify({"error": getattr(err, "description", "Bad request")}), 400
+
+
+@clicktrack_bp.errorhandler(409)
+def _conflict(err):
+    return jsonify({"error": getattr(err, "description", "Conflict")}), 409
 
 
 @clicktrack_bp.route("/")
@@ -332,6 +342,119 @@ def api_restore_backup():
     return jsonify(track.to_dict()), 201
 
 
+@clicktrack_bp.put("/api/tracks/<int:track_id>/video-editor")
+@_api_login_required
+def api_save_video_editor(track_id):
+    db, ClickTrack = _models()
+    data = _json_body()
+    track = ClickTrack.query.filter_by(id=track_id, user_id=current_user.id).with_for_update().first_or_404()
+    draft_data = data.get("videoDraft")
+    if not isinstance(draft_data, dict):
+        abort(400, description="A YouTube draft is required.")
+    if "expectedDraft" not in data:
+        abort(400, description="The previous draft state is required.")
+    if "expectedTrack" not in data:
+        abort(400, description="The previous track state is required.")
+    track_data = data.get("track")
+    if track_data is not None and not isinstance(track_data, dict):
+        abort(400, description="Track must be an object or null.")
+    model = current_app.ClickTrackVideoDraft
+    try:
+        if track.to_dict() != data["expectedTrack"]:
+            abort(409, description="The track changed. Reload and compare before saving.")
+        draft = None
+        if track.video_draft_id is not None:
+            draft = model.query.filter_by(id=track.video_draft_id, user_id=current_user.id).with_for_update().first()
+            if draft is None:
+                abort(409, description="The linked video draft is no longer available. Reload before saving.")
+        if (draft.to_dict() if draft else None) != data["expectedDraft"]:
+            abort(409, description="The linked video draft changed. Reload and compare before saving.")
+        if track_data is not None:
+            _apply_payload(track, {key: value for key, value in track_data.items() if key != "videoDraftId"})
+        shared = draft is not None and ClickTrack.query.filter(
+            ClickTrack.user_id == current_user.id,
+            ClickTrack.video_draft_id == draft.id,
+            ClickTrack.id != track.id,
+        ).first() is not None
+        if draft is None or shared:
+            if model.query.filter_by(user_id=current_user.id).count() >= MAX_VIDEO_DRAFTS:
+                abort(400, description="Draft limit reached. Delete an unused draft before saving.")
+            draft = model(user_id=current_user.id)
+            db.session.add(draft)
+        _apply_video_draft(draft, draft_data)
+        db.session.flush()
+        track.video_draft_id = draft.id
+        db.session.commit()
+    except (HTTPException, SQLAlchemyError):
+        db.session.rollback()
+        raise
+    return jsonify({"track": track.to_dict(), "videoDraft": draft.to_dict()})
+
+
+@clicktrack_bp.put("/api/tracks/<int:track_id>/video-link")
+@_api_login_required
+def api_link_video_draft(track_id):
+    db, ClickTrack = _models()
+    data = _json_body()
+    expected_draft = data.get("expectedDraft")
+    if "expectedTrack" not in data or not isinstance(expected_draft, dict):
+        abort(400, description="The previous track and draft states are required.")
+    track = ClickTrack.query.filter_by(id=track_id, user_id=current_user.id).with_for_update().first_or_404()
+    try:
+        if track.to_dict() != data["expectedTrack"] or track.video_draft_id is not None:
+            abort(409, description="The track changed. Reload and compare before linking.")
+        draft = current_app.ClickTrackVideoDraft.query.filter_by(
+            id=expected_draft.get("id"), user_id=current_user.id
+        ).with_for_update().first()
+        if draft is None or draft.to_dict() != expected_draft:
+            abort(409, description="The video draft changed. Reload and compare before linking.")
+        track.video_draft_id = draft.id
+        db.session.commit()
+    except (HTTPException, SQLAlchemyError):
+        db.session.rollback()
+        raise
+    return jsonify(track.to_dict())
+
+
+@clicktrack_bp.post("/api/tracks/from-video-draft")
+@_api_login_required
+def api_create_from_video_draft():
+    db, ClickTrack = _models()
+    model = current_app.ClickTrackVideoDraft
+    data = _json_body()
+    track_data, draft_data, expected = data.get("track"), data.get("videoDraft"), data.get("expectedDraft")
+    if not isinstance(track_data, dict) or not isinstance(draft_data, dict):
+        abort(400, description="A track and YouTube draft are required.")
+    if "expectedDraft" not in data or (expected is not None and not isinstance(expected, dict)):
+        abort(400, description="The previous draft state is required.")
+    if ClickTrack.query.filter_by(user_id=current_user.id).count() >= MAX_TRACKS_PER_USER:
+        abort(400, description="Track limit reached.")
+    try:
+        draft = None
+        if expected is not None:
+            draft = model.query.filter_by(id=expected.get("id"), user_id=current_user.id).with_for_update().first()
+            if draft is None or draft.to_dict() != expected:
+                abort(409, description="The video draft changed. Reload and compare before saving.")
+            if ClickTrack.query.filter_by(user_id=current_user.id, video_draft_id=draft.id).first():
+                draft = None
+        if draft is None:
+            if model.query.filter_by(user_id=current_user.id).count() >= MAX_VIDEO_DRAFTS:
+                abort(400, description="Draft limit reached. Delete an unused draft before creating a track.")
+            draft = model(user_id=current_user.id)
+            db.session.add(draft)
+        track = ClickTrack(user_id=current_user.id)
+        _apply_payload(track, {key: value for key, value in track_data.items() if key != "videoDraftId"})
+        _apply_video_draft(draft, draft_data)
+        db.session.flush()
+        track.video_draft_id = draft.id
+        db.session.add(track)
+        db.session.commit()
+    except (HTTPException, SQLAlchemyError):
+        db.session.rollback()
+        raise
+    return jsonify({"track": track.to_dict(), "videoDraft": draft.to_dict()}), 201
+
+
 @clicktrack_bp.route("/api/video-drafts", methods=["GET", "POST"])
 @_api_login_required
 def api_video_drafts():
@@ -347,6 +470,32 @@ def api_video_drafts():
     current_app.db.session.add(draft)
     current_app.db.session.commit()
     return jsonify(draft.to_dict()), 201
+
+
+@clicktrack_bp.put("/api/video-drafts/<int:draft_id>/unlinked")
+@_api_login_required
+def api_update_unlinked_video_draft(draft_id):
+    db, ClickTrack = _models()
+    data = _json_body()
+    if "expectedDraft" not in data or not isinstance(data.get("videoDraft"), dict):
+        abort(400, description="The previous draft state and a YouTube draft are required.")
+    draft = current_app.ClickTrackVideoDraft.query.filter_by(
+        id=draft_id, user_id=current_user.id
+    ).with_for_update().first_or_404()
+    try:
+        if draft.to_dict() != data.get("expectedDraft"):
+            abort(409, description="The video draft changed. Reload and compare before saving.")
+        if ClickTrack.query.filter_by(user_id=current_user.id, video_draft_id=draft.id).first():
+            if current_app.ClickTrackVideoDraft.query.filter_by(user_id=current_user.id).count() >= MAX_VIDEO_DRAFTS:
+                abort(400, description="Draft limit reached. Delete an unused draft before saving.")
+            draft = current_app.ClickTrackVideoDraft(user_id=current_user.id)
+            db.session.add(draft)
+        _apply_video_draft(draft, data.get("videoDraft"))
+        db.session.commit()
+    except (HTTPException, SQLAlchemyError):
+        db.session.rollback()
+        raise
+    return jsonify(draft.to_dict())
 
 
 @clicktrack_bp.route("/api/video-drafts/<int:draft_id>", methods=["GET", "PUT", "DELETE"])

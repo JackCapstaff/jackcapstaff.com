@@ -1,12 +1,12 @@
 # jackcapstaff.com
 Website
 
-## Click track video drafts
+## Click tracks with video
 
 In the signed-in Click Track page, open **Track actions → New click track from
 video**. The same dropdown has the new track and JSON options, and **Pedal
 setup** when you're in Edit.
-Choose a local MP4, or paste a YouTube video link and select **Load YouTube video**.
+Paste a YouTube video link and select **Load YouTube video**.
 Use **Play video** or **Enter** to play or pause without changing hit points.
 Press **Space** or select **Add hit point** to mark the current time and pause.
 Type the **Score bar** and press **Enter** to keep it and resume playback.
@@ -23,8 +23,8 @@ pauses, playback speed, tempo changes and timed pauses, and updates when hit
 points change. Linked tracks use matching section click and sound settings;
 otherwise new-section defaults apply. Invalid hit-point plans are reported
 and cannot be previewed until corrected. The click uses the selected click
-audio output and volume. YouTube playback and seeking are approximate; use a
-local video for tighter sync. The preview turns off when leaving the editor.
+audio output and volume. YouTube playback and seeking are approximate.
+The preview turns off when leaving the editor.
 The video editor also shows the current section, bar, meter, tempo and beat
 visuals at the video position, even when click preview is off. It uses the
 performance beat-visual preference and shows the next tempo during a timed
@@ -33,9 +33,12 @@ During a timed pause and its count-in, a fermata appears beside the pendulum
 in both displays. The performance display also shows it during a pedal-held
 cue and its count-in. It disappears when normal playback begins.
 
-To revise a draft, select a hit point and play from there. **Pause at existing
-hit points** stops playback at the next marker so you can edit, move or remove
-it. Add new hit points between stops as usual. Inserting a point between
+To revise a draft, select a hit point and play from there. **Pause just before each
+hit point** stops playback at the next marker so you can edit, move or remove
+it. Untick **Pause just before each hit point** to play through them. With
+click preview enabled, the next hit point's click is held back until playback
+resumes. YouTube seeking and pause timing are approximate. Add new hit points
+between stops as usual. Inserting a point between
 16 and 17 suggests **16A** without renumbering either neighbour. To shift the
 labels of later points, tick **Renumber following hit points** before editing
 **Hit point number**. Changing **13** to **12A** then shifts **14** to **13**,
@@ -48,39 +51,41 @@ To replace a marker's time
 without changing its details, select it, seek to the new time on the timeline
 and choose **Move hit point to playhead**.
 
-Select **Save YouTube draft** to store the video reference and hit points in
-your account, then use **Saved YouTube drafts** to reopen them on another
-device. Save again after making changes. The video itself stays on YouTube,
-requires internet access and must allow embedding. Local files are not uploaded
-and their drafts stay in the current tab.
+Hit-point changes save automatically when signed in. An incomplete new
+video draft can be reopened under **Import an existing video draft**; once it
+has a valid timing plan, a linked click track is created automatically and
+appears in the track list. Open that track and select **Edit** to see its full
+track editor alongside the video and hit points. Collapse **Video and hit
+points** when you want to focus on sections. The video itself stays on YouTube,
+requires internet access and must allow embedding.
 
 For a portable backup, select the track and choose **Track actions → Export
 track backup (.json)**. If a saved YouTube draft is linked, the file includes
 both the track and the last saved draft: the video ID and all hit-point data,
 including times, bars, labels, meter, beat unit, tempo shape, dialogue, figures,
-skips and visual cues. Save any video draft changes first; export fails rather
+skips and visual cues. Wait for changes to finish saving first; export fails rather
 than silently omitting a linked draft if it cannot be loaded. A track without
 a linked draft exports as a track-only backup. The video itself is not included.
 To restore a combined backup, sign in online and choose **Load track (.json)**.
 This creates a new track and a new linked draft without changing the originals.
 Older track-only JSON files can still be imported.
 
-**Create click track** makes a separate track in the normal editor; the finished
-track does not need the video. For YouTube, this also saves and links the draft.
-Open the track's **Edit** tab and choose **Edit with video** to reopen it. For
-older tracks, open the matching saved draft and choose **Link open draft to
-track** once. Editing or saving the draft does not overwrite the finished
-track. When opening a linked draft, differences in meter, beat unit, cues and
-tempo shape can be copied from matching track sections into the draft; you are
-asked before replacing draft values. Video hit-point times determine tempo:
-manually edited tempos are recalculated from those times, and an impossible
-ramp is reported. To apply revised hit points, pick an **Existing click track**
-and choose **Save over existing track**. Matching score-bar sections retain
-their names, click and sound settings, grouping, advance and count-in; timing,
-meter and cues come from the draft. The track title and track-level notes stay.
-The confirmation warns if existing sections have no unique match and will be
-removed. Local
-video remains available to revisit only while it is still open in the tab.
+Linked track and hit-point edits save together automatically. Meter, beat unit,
+cue text, figure, hit-point label and visual cues synchronize in both directions;
+hit-point times determine tempo. Edit timing and tempo shape using the video
+hit points. Matching sections retain their names, click and sound settings,
+grouping, advance and count-in; the track title and track-level notes stay.
+If sections have no unique match, a confirmation lists the sections and their
+settings before removal. Declining preserves the playable track. Incomplete or
+invalid hit-point edits are saved separately while the last valid track remains
+playable; correct them to update it. A save error is shown, and linked unsaved
+changes are kept in the browser for retry.
+
+For older tracks, open the matching saved draft and choose **Link open draft to
+track** once. When opening a linked draft, differences in meter, beat unit,
+cues and tempo shape are displayed so you can choose the draft or track values.
+If another track shares the draft, editing creates a separate copy. Concurrent
+changes are rejected rather than silently overwritten.
 New video-generated accelerandos and rallentandos use the hit times and beat
 count to find the average tempo, then calculate the end tempo from the starting
 tempo. Tempo changes linearly over time, and clicks follow the resulting curve.
@@ -90,32 +95,27 @@ count-in** under **Tempo shape**. The span stays silent until a count-in at the
 next section's starting tempo, ending at the next hit point. It uses up to one
 bar of whole tempo beats; if a full bar does not fit, it uses as many whole
 beats as fit. The next span must be a click section, and at least one beat must
-fit. A ramp immediately after a timed pause needs an explicit starting BPM.
+fit. Choose **Count-in subdivisions per beat** on the timed-pause section
+to add two, three or four clicks per beat; the silent portion stays silent.
+Subdivision pitch and volume come from the following section's subdivision
+sound settings. A ramp immediately after a timed pause needs an explicit starting BPM.
 Tempo beats use the next section's beat unit (including dotted units for
-compound meters), not irregular grouping. Save the draft and **Save over
-existing track** to apply the change. The normal editor can adjust the pause's
-duration, but video hit-point edits are needed to regenerate synchronised
-timings. Starting at a timed pause plays its silence and built-in count-in;
+compound meters), not irregular grouping. Change the video hit points to adjust
+the pause's duration and regenerate synchronised timings. Starting at a timed
+pause plays its silence and built-in count-in;
 the separate pedal-controlled pause still waits indefinitely for a cue.
 WAV exports split at timed pauses and do not include them.
-Select a musical hit point and choose **Perform from here** to save and replace
-the linked track, discard draft edits and play the saved track, or preview the
-current draft without changing the saved track. Preview uses the draft's
-generated sections and video; **Return to video editor** restores the draft.
-Discard restores the saved YouTube draft or the last in-tab local-video save.
-The selected score bar must uniquely match a playable section.
-For tighter timing, use a local file rather than relying on YouTube seeking.
+Select a musical hit point and choose **Perform from here** to play the saved
+linked track from that point after changes finish saving. The selected score
+bar must uniquely match a playable section.
 To resync a draft, enter a signed shift in seconds under **Resync hit-point
 times**, preview it, then apply it. Musical points shift together and the
-0:00 reference stays fixed. Save the draft, then use **Save over existing
-track** if the finished track should use the shifted timings. To switch to
+0:00 reference stays fixed. Applying the shift saves it automatically. To switch to
 another YouTube link without losing the hit points, enter it and choose
-**Replace video, keep hit points**; saving updates the draft used by linked
-tracks. Alternatively, adjust **Video offset** in the regular track editor to
-shift the finished track without changing the draft.
+**Replace video, keep hit points**.
 
 Set **Starting count-in (bars)** in Edit, or when creating a track from video.
-When saving over a track, leaving the field blank keeps its current count-in.
+After creation, edit the track's count-in in the full track editor.
 For a new section or track, a blank count-in automatically uses the fewest
 whole bars lasting at least two seconds at that section's starting tempo and
 meter. Change the field to a number to set an explicit count-in, including 0
@@ -157,8 +157,7 @@ and start that section. The offline performance copy is read-only and has no qui
 Press **Escape** to close the quick editor without leaving fullscreen.
 Choose **Edit with video** in the quick editor to open the linked draft at the
 matching score-bar hit point. If there is no unique matching hit point, the
-video opens at the track's estimated section time instead. Saving a video draft
-does not update the track until you choose **Save over existing track**.
+video opens at the track's estimated section time instead.
 Perform displays rounded BPM without changing the saved tempo or click timing.
 The next-section preview compares the rounded conducting beats per minute
 directly, even when the beat unit changes. For example, crotchet = 90 to
@@ -183,7 +182,7 @@ sit side by side on wider screens. On narrow screens the beat display,
 bar, meter and tempo overlay the bottom of the picture, with a cue strip
 at the top. Untick the box to close the player without stopping the clicks.
 If no video is linked, use **Edit with video** in that panel to open and link
-a saved YouTube draft, or use a local file still open in the tab.
+a saved YouTube draft.
 The film follows click playback and holds during cue waits. Practice opens
 the YouTube link from the draft linked to the track. For a count-in, the film
 starts that many bars before the selected section’s video position, using the
@@ -199,8 +198,8 @@ Film audio is muted by default. YouTube sync is approximate; use **Resync to
 clicks** after buffering. Video can also be enabled in fullscreen; the offline
 stage view remains video-free.
 
-Tick **Streamer and punch** on the video hit points that need a visual cue,
-then create or update the click track. You can also mark section boundaries in
+Tick **Streamer and punch** on the video hit points that need a visual cue.
+You can also mark section boundaries in
 Edit. A marked opening hit can also get a streamer when rehearsing from
 0:00 if there are at least two seconds before the hit. For later hits, the
 streamer starts on the nearest preceding

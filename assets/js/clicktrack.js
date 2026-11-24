@@ -91,7 +91,7 @@
     const section = Object.assign({
       type: 'click', name: '', notes: '', bpm: 120, bpmEnd: null, beatUnit: 'auto',
       num: 4, den: 4, grouping: '', bars: 8, advance: 'auto', click: 'beats', countIn: null, startBar: null,
-      unitPitch: 0, unitVelocity: 53, subPitch: 0, subVelocity: 32,
+      unitPitch: 0, unitVelocity: 53, subPitch: 0, subVelocity: 32, pauseSubdivision: 1,
       calcStart: '', calcEnd: '',
     }, over || {});
     if (!over || !Object.prototype.hasOwnProperty.call(over, 'click')) {
@@ -112,6 +112,7 @@
     s.bpm = num(raw.bpm, 120, 10, 400);
     s.bpmEnd = raw.bpmEnd == null || raw.bpmEnd === '' ? null : num(raw.bpmEnd, null, 10, 400);
     s.pauseDuration = raw.pauseDuration == null ? 0 : clamp(Number(raw.pauseDuration) || 0, 0, 86400);
+    s.pauseSubdivision = num(raw.pauseSubdivision, 1, 1, 4, true);
     s.rampMode = raw.rampMode === 'linearTime' ? 'linearTime' : 'linearBeat';
     s.beatUnit = BEAT_UNITS.some((u) => u[0] === raw.beatUnit) || /^[1-9]\/(1|2|4|8|16|32)$/.test(raw.beatUnit || '') ? raw.beatUnit : 'auto';
     s.num = num(raw.num, 4, 1, 32, true);
@@ -617,13 +618,14 @@
   }
 
   function stepTimedPause() {
+    const pause = sections()[E.secIdx];
     const next = sections()[E.secIdx + 1];
     if (E.timedRemaining > 0) {
       E.phase = 'timedCount';
-      playClick(E.nextTime, 2, next);
-      pushVis('tick', { beatsLeft: E.timedRemaining, bpm: next.bpm });
-      E.timedRemaining--;
-      E.nextTime += E.timedBeat;
+      playClick(E.nextTime, E.sub === 0 ? 2 : 0, next);
+      if (E.sub === 0) pushVis('tick', { beatsLeft: E.timedRemaining, bpm: next.bpm });
+      E.nextTime += E.timedBeat / pause.pauseSubdivision;
+      if (++E.sub >= pause.pauseSubdivision) { E.sub = 0; E.timedRemaining--; }
       return;
     }
     const target = E.queued == null ? E.secIdx + 1 : E.queued;
@@ -868,6 +870,7 @@
   const tap = { times: [], idx: -1 };
   function tapTempo(idx) {
     if (CFG.offline) return;
+    if (current?.videoDraftId) { toast('Tempo is calculated from the video hit points.'); return; }
     if (idx == null) idx = document.body.classList.contains('editing') ? tester.idx : E.playing ? E.secIdx : selectedIdx;
     const s = sections()[idx];
     if (!s || s.type === 'pause') { toast('Pick a click section to tap a tempo into'); return; }
@@ -1333,10 +1336,13 @@
       _linkDirty: !!t._linkDirty,
       sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
       _dirty: !!t._dirty || migrated, _auto: !!t._auto, _ver: 1,
+      _server: t._server || (t.updated_at ? JSON.parse(JSON.stringify(t)) : null),
+      _draft: t._draft || null, _draftBase: t._draftBase || null,
+      _draftDirty: !!t._draftDirty,
     };
   }
 
-  const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, videoOffset: t.videoOffset, videoDraftId: t.videoDraftId, sections: t.sections, _dirty: t._dirty, _auto: t._auto, _linkDirty: t._linkDirty });
+  const serialise = (t) => ({ id: t.id, title: t.title, notes: t.notes, videoOffset: t.videoOffset, videoDraftId: t.videoDraftId, sections: t.sections, _dirty: t._dirty, _auto: t._auto, _linkDirty: t._linkDirty, _server: t._server, _draft: t._draft, _draftBase: t._draftBase, _draftDirty: t._draftDirty });
   const cacheLocal = () => saveJSON(LS_TRACKS, tracks.filter((t) => !t._preview).map(serialise));
 
   async function api(method, path, body, base = CFG.apiBase) {
@@ -1356,12 +1362,29 @@
     if (!CFG.authenticated) { t._dirty = false; cacheLocal(); return; }
     const ver = t._ver;
     const payload = { title: t.title, notes: t.notes, videoOffset: t.videoOffset, sections: t.sections };
+    if (t._linkDirty && isServerId(t.id) && t._server) {
+      if (!t._draftBase || t._draftBase.id !== t.videoDraftId) {
+        throw new Error('Reopen the saved video draft before linking it.');
+      }
+      t._server = await api('PUT', '/' + t.id + '/video-link', {
+        expectedTrack: t._server, expectedDraft: t._draftBase,
+      });
+      t._linkDirty = false;
+      cacheLocal();
+      saveAgain = true;
+      return;
+    }
+    if (t.videoDraftId && !t._linkDirty && isServerId(t.id) && t._server) {
+      await persistLinkedTrack(t, payload, ver);
+      return;
+    }
     if (t._linkDirty || (!isServerId(t.id) && t.videoDraftId)) payload.videoDraftId = t.videoDraftId;
     if (isServerId(t.id)) {
-      await api('PUT', '/' + t.id, payload);
+      t._server = await api('PUT', '/' + t.id, payload);
     } else {
       const created = await api('POST', '', payload);
       t.id = created.id;
+      t._server = created;
       if (current === t) saveJSON(LS_LAST, t.id);
       refreshTrackSelect();
     }
@@ -1457,6 +1480,7 @@
     if (!CFG.offline && track !== current) closePracticeVideo();
     if (current?._preview && track !== current) tracks = tracks.filter((t) => t !== current);
     current = track;
+    if (!CFG.offline) placeTrackEditor(!$('view-video').hidden);
     if (rehearsalListTrack !== track) rehearsalLabelsPending = loadRehearsalLabels(track);
     if (current && !current._preview) saveJSON(LS_LAST, current.id);
     if (!CFG.offline) $('preview-notice').hidden = !current?._preview;
@@ -1487,8 +1511,9 @@
     try {
       if (track.videoDraftId) {
         if (CFG.offline || !CFG.authenticated) throw new Error('Sign in online to include the linked YouTube draft.');
-        if (builder.draftId === track.videoDraftId && builder.dirty
-          && !window.confirm('The open video draft has unsaved changes. Export the last saved draft instead?')) return;
+        if (track._dirty || track._draftDirty || (builder.returnTrack === track && builder.dirty)) {
+          throw new Error('Wait for track and video changes to save before exporting.');
+        }
         const draft = await draftRequest('GET', track.videoDraftId);
         if (typeof draft.videoId !== 'string' || typeof draft.title !== 'string' || !Array.isArray(draft.markers)) {
           throw new Error('The saved YouTube draft is invalid.');
@@ -1764,7 +1789,7 @@
     $('tester-tempo').textContent = s ? s.num + '/' + s.den + ' · ' + unitLabel(s) + '=' + s.bpm : 'Add a click section to test';
     $('tester-start').disabled = !s;
     $('tester-start').textContent = tester.running ? 'Stop tester' : 'Start tester';
-    $('tester-tap').disabled = !s;
+    $('tester-tap').disabled = !s || !!current?.videoDraftId;
   }
 
   function stopTester() {
@@ -1847,8 +1872,9 @@
         + fld('Duration (seconds)', inp(i, 'pauseDuration', s.pauseDuration, 'type="number" min="0.001" max="86400" step="0.001"'))
         + fld('Bars', inp(i, 'bars', s.bars, 'type="number" min="1" max="9999" inputmode="numeric"'))
         + fld('Score bar', inp(i, 'startBar', s.startBar, 'type="number" min="1" max="99999" inputmode="numeric" placeholder="auto"'))
+        + fld('Count-in subdivisions per beat', sel(i, 'pauseSubdivision', [[1, 'Whole beats'], [2, '2 per beat'], [3, '3 per beat'], [4, '4 per beat']], s.pauseSubdivision))
         + performanceNotes(i, s)
-        + '<p class="muted small">Silence, then up to one bar of whole beats at the next section’s starting tempo. For video timing, edit the hit points in the video editor.</p>';
+        + '<p class="muted small">Silence, then up to one bar of beats at the next section’s starting tempo. Subdivisions use the next section’s subdivision sound. For video timing, edit the hit points in the video editor.</p>';
     } else {
       f += fld('Name', inp(i, 'name', s.name, 'type="text" maxlength="120" placeholder="Section ' + (i + 1) + '"'), true)
         + fld('Tempo', '<span class="tapwrap">' + inp(i, 'bpm', s.bpm, 'type="number" min="10" max="400" step="any" inputmode="decimal"')
@@ -1902,6 +1928,19 @@
       const row = $('sections').querySelector('[data-row="' + quickEditIndex + '"]');
       if (row) $('quick-edit-section').append(row);
     }
+    if (current?.videoDraftId) {
+      document.querySelectorAll('#sections [data-f], #quick-edit-section [data-f]').forEach((input) => {
+        if (['type', 'bpm', 'bpmEnd', 'bars', 'startBar', 'calcStart', 'calcEnd', 'pauseDuration'].includes(input.dataset.f)) {
+          input.disabled = true;
+          input.title = 'Edit video hit points to change video-derived timing.';
+        }
+      });
+      document.querySelectorAll('#sections [data-act], #quick-edit-section [data-act]').forEach((button) => {
+        if (button.dataset.act !== 'play') button.disabled = true;
+      });
+    }
+    $('btn-add-section').disabled = $('btn-add-pause').disabled = !!current?.videoDraftId;
+    $('track-offset').disabled = !!current?.videoDraftId;
     updateInfos();
     renderTester();
   }
@@ -2044,10 +2083,12 @@
   const builder = {
     url: null, markers: [builderMarker(0)], selected: 0, dirty: false, zoomStart: null,
     youtube: null, draftId: null, draftsBusy: false,
-    reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null, localSnapshot: null,
+    reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null, localSnapshot: null, autoDraftBase: null,
   };
+  let openTrackVideoEditor = null;
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
   const builderClick = { plan: null, error: '', timer: null, cursor: null, next: null, anchor: null, sources: new Set(), revision: 0 };
+  const REVIEW_LEAD = 0.12;
   let builderBeatKey = '';
   const builderBarStarts = new WeakMap();
 
@@ -2150,8 +2191,10 @@
       if (s.type === 'timedPause') {
         const next = secs[i + 1], plan = timedPausePlan(s, next);
         for (let beat = 0; beat < plan.count; beat++) {
-          const time = start + plan.silence + beat * plan.beat;
-          if (time >= from) yield { time, level: 2, section: next };
+          for (let sub = 0; sub < s.pauseSubdivision; sub++) {
+            const time = start + plan.silence + (beat + sub / s.pauseSubdivision) * plan.beat;
+            if (time >= from) yield { time, level: sub === 0 ? 2 : 0, section: next };
+          }
         }
         continue;
       }
@@ -2199,8 +2242,10 @@
       builderClick.next = builderClick.cursor.next();
     }
     const sync = builderClick.anchor;
+    const stopMarker = nextReviewMarker(time);
     while (!builderClick.next.done) {
       const event = builderClick.next.value, at = sync.clock + (event.time - sync.time) / rate;
+      if (stopMarker && event.time >= stopMarker.marker.time - 0.000001) break;
       if (at > now + 0.1) break;
       if (at >= now - 0.025) {
         playClick(Math.max(now, at), event.level, event.section, {
@@ -2382,6 +2427,7 @@
       builder.url = null;
     }
     builder.draftId = null;
+    builder.autoDraftBase = null;
     builder.localTrack = null;
     builder.localSnapshot = null;
     builder.zoomStart = null;
@@ -2395,6 +2441,7 @@
     const source = { id, ready: false, error: false };
     builder.youtube = source;
     builder.draftId = draft?.id ?? null;
+    builder.autoDraftBase = draft?.id && draft.videoId ? JSON.parse(JSON.stringify(draft)) : null;
     builder.markers = draft ? numberDraftMarkers(draft.markers) : [builderMarker(0)];
     $('builder-title').value = draft?.title ?? 'YouTube video ' + id;
     $('builder-youtube-url').value = 'https://youtu.be/' + id;
@@ -2653,14 +2700,19 @@
     const track = builder.returnTrack;
     $('builder-open-draft').disabled = $('builder-delete-draft').disabled = busy || !selected;
     $('builder-save-draft').disabled = busy || !builder.youtube;
-    $('builder-load-youtube').disabled = $('builder-file').disabled = busy;
+    $('builder-load-youtube').disabled = busy || !!track?.videoDraftId;
+    $('builder-count-in').disabled = !!track?.videoDraftId;
+    $('builder-preview').hidden = !!track?.videoDraftId;
+    $('builder-preview-title').textContent = track?.videoDraftId ? 'Hit-point timing' : 'Click track preview';
+    $('builder-file').disabled = busy;
     $('btn-edit-video').disabled = busy;
     $('btn-practice-edit-video').disabled = !current || busy;
     $('builder-create').disabled = busy || !videoReady() || !builder.planValid
       || (!$('builder-skip').disabled && !$('builder-skip').validity.valid);
     $('builder-target-track').disabled = busy;
     $('builder-overwrite').disabled = $('builder-create').disabled || !builderTargetTrack();
-    $('builder-back-to-edit').hidden = !track;
+    $('builder-back-to-edit').hidden = !track || !!track.videoDraftId;
+    $('builder-legacy-drafts').hidden = !!track?.videoDraftId;
     $('builder-perform').hidden = !track;
     $('builder-perform').disabled = busy;
     $('builder-link-draft').hidden = !track || !builder.draftId || track.videoDraftId === builder.draftId;
@@ -2736,11 +2788,11 @@
     return Math.round(end * 100) / 100;
   }
 
-  function planVideoTrack() {
-    const points = builder.markers.filter((m, i) => i !== 0 || m.bar !== '');
+  function planVideoTrack(markers = builder.markers, checkMedia = true) {
+    const points = markers.filter((m, i) => i !== 0 || m.bar !== '');
     if (points.length < 2) throw new Error('Add a musical hit point and a closing hit point with the next score bar.');
     if (points.length > 501) throw new Error('A track can have at most 500 sections.');
-    if (videoReady() && points[points.length - 1].time > roundMarkerTime(builderMedia().duration)) {
+    if (checkMedia && videoReady() && points[points.length - 1].time > roundMarkerTime(builderMedia().duration)) {
       throw new Error('A hit point is beyond the end of the video. Move it before creating the track.');
     }
     if (points[0].time > 86400) throw new Error('The first musical hit point must be within the first 24 hours.');
@@ -2822,6 +2874,88 @@
       updateBuilderClickPlan(null, e.message);
     }
     renderDraftControls();
+    stageBuilderDraft();
+  }
+
+  function stageBuilderDraft() {
+    const track = builder.returnTrack;
+    if (builder.dirty && builder.youtube && !track && CFG.authenticated) {
+      clearTimeout(builderCreateTimer);
+      builderCreateTimer = setTimeout(createTrackFromBuilder, 700);
+      return;
+    }
+    if (!builder.dirty || !builder.youtube || !track || !tracks.includes(track)
+      || track !== current || !track.videoDraftId || builder.draftId !== track.videoDraftId || !track._draftBase) return;
+    const draft = { id: builder.draftId, title: $('builder-title').value.trim(), videoId: builder.youtube.id, markers: builder.markers };
+    if (track._draft && JSON.stringify({ title: track._draft.title, videoId: track._draft.videoId, markers: track._draft.markers })
+      === JSON.stringify({ title: draft.title, videoId: draft.videoId, markers: draft.markers })) return;
+    track._draft = JSON.parse(JSON.stringify(draft));
+    track._draftDirty = true;
+    markDirty(track);
+  }
+
+  let builderCreateTimer = null, builderCreating = false;
+  async function createTrackFromBuilder() {
+    if (builderCreating || builder.returnTrack || !builder.youtube || !builder.dirty) return;
+    const source = builder.youtube;
+    let plan = null, planError = '';
+    try { plan = planVideoTrack(); }
+    catch (error) { planError = error.message; }
+    const draft = JSON.parse(JSON.stringify(draftPayload()));
+    builderCreating = true;
+    let completed = false;
+    try {
+      if (!plan) {
+        const savedDraft = builder.autoDraftBase
+          ? await api('PUT', '/' + builder.draftId + '/unlinked',
+            { expectedDraft: builder.autoDraftBase, videoDraft: draft }, CFG.videoDrafts)
+          : await draftRequest('POST', null, draft);
+        if (builder.youtube !== source || builder.returnTrack) return;
+        builder.draftId = savedDraft.id;
+        builder.autoDraftBase = savedDraft;
+        completed = true;
+        builder.dirty = JSON.stringify(draft) !== JSON.stringify(draftPayload());
+        $('builder-draft-status').textContent = 'Incomplete video draft saved. No playable track yet: ' + planError;
+        return;
+      }
+      const first = plan.secs.map(({ section }) => section);
+      const firstClick = first.find((section) => section.type === 'click');
+      if (firstClick && $('builder-count-in').value !== '') firstClick.countIn = $('builder-count-in').valueAsNumber;
+      const saved = await api('POST', '/from-video-draft', {
+        track: { title: draft.title || 'Click track from video', notes: '', videoOffset: plan.offset, sections: first },
+        videoDraft: draft, expectedDraft: builder.autoDraftBase,
+      });
+      completed = true;
+      const track = normTrack(saved.track);
+      tracks.push(track);
+      cacheLocal();
+      if (builder.youtube !== source || builder.returnTrack) {
+        toast('Created the track; select it from the track list.');
+        return;
+      }
+      builder.returnTrack = track;
+      selectTrack(track.id);
+      const savedDraft = saved.videoDraft;
+      track._draftBase = savedDraft;
+      track._draft = savedDraft;
+      track._migrationAccepted = true;
+      builder.draftId = savedDraft.id;
+      const unchanged = JSON.stringify(draft) === JSON.stringify(draftPayload());
+      builder.dirty = !unchanged;
+      if (!unchanged) stageBuilderDraft();
+      $('builder-draft-status').textContent = 'Track created and linked. Changes save automatically.';
+      renderDraftControls();
+    } catch (error) {
+      $('builder-draft-status').textContent = 'Could not save video changes: ' + error.message
+        + ' Make another edit to retry, or reopen the draft if it changed elsewhere.';
+    } finally {
+      builderCreating = false;
+      if (builder.dirty && builder.youtube && !builder.returnTrack
+        && (builder.youtube !== source || (completed && JSON.stringify(draft) !== JSON.stringify(draftPayload())))) {
+        clearTimeout(builderCreateTimer);
+        builderCreateTimer = setTimeout(createTrackFromBuilder, 700);
+      }
+    }
   }
 
   function inheritTrackSettings(track) {
@@ -2848,7 +2982,7 @@
         else if (marker.label !== label) unmatched.push(bar);
       }
       if (values.shape === 'accel' || values.shape === 'rall') values.bpm = String(section.bpm);
-      if (Object.keys(values).some((key) => marker[key] !== values[key])) updates.push({ marker, values });
+      if (Object.keys(values).some((key) => marker[key] !== values[key])) updates.push({ marker, values, bar });
     }
     if (musical.length >= 2) {
       const lastStart = Number(musical[musical.length - 2].bar);
@@ -2856,14 +2990,26 @@
       const closing = musical[musical.length - 1];
       if (candidates.length === 1 && musical.filter((point) => Number(point.bar) === lastStart).length === 1
         && closing.visualCue !== candidates[0].visualEndCue) {
-        updates.push({ marker: closing, values: { visualCue: candidates[0].visualEndCue } });
+        updates.push({ marker: closing, values: { visualCue: candidates[0].visualEndCue }, bar: Number(closing.bar) });
       }
     }
     let message = '';
     if (updates.length) {
+      const fieldNames = {
+        label: 'Hit point', num: 'Meter numerator', den: 'Meter denominator', unit: 'Beat unit',
+        dialogue: 'Cue text', figure: 'Figure', visualCue: 'Visual cue', shape: 'Tempo shape', bpm: 'Starting BPM',
+      };
+      const displayValue = (value) => value === '' || value == null ? '(blank)'
+        : typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value);
+      const differences = updates.map(({ marker, values, bar }) => {
+        const fields = Object.keys(values).filter((key) => marker[key] !== values[key])
+          .map((key) => '  ' + fieldNames[key] + ': draft ' + displayValue(marker[key])
+            + ' → track ' + displayValue(values[key]));
+        return 'Bar ' + bar + ' (hit point ' + marker.label + '):\n' + fields.join('\n');
+      }).join('\n\n');
       if (window.confirm('The track and video draft differ at ' + updates.length
-        + ' hit point(s). Use the track’s hit-point label, meter, beat unit, cue text and tempo shape?'
-        + ' This replaces those fields in the open draft; hit-point times stay unchanged.'
+        + ' hit point(s):\n\n' + differences
+        + '\n\nUse the track values shown? This changes the open draft, not hit-point times.'
         + ' Cancel keeps the draft values.')) {
         updates.forEach(({ marker, values }) => Object.assign(marker, values));
         builder.dirty = true;
@@ -2879,7 +3025,7 @@
   }
 
   function mergeVideoSections(track, sections) {
-    if (!track) return { sections, unmatched: 0 };
+    if (!track) return { sections, unmatched: 0, removed: [] };
     const starts = startBars(track.sections), used = new Set();
     const merged = sections.map((section, sectionIndex) => {
       const matches = track.sections.map((original, index) => ({ original, index }))
@@ -2891,13 +3037,138 @@
           + ', which does not match the new meter. Edit the grouping in the track before updating from video.');
       }
       used.add(index);
-      return { ...section, name: original.name, grouping: original.grouping,
+      return { ...section, name: original.name, grouping: original.grouping, pauseSubdivision: original.pauseSubdivision,
         advance: section.type === 'timedPause' ? 'auto' : original.advance, click: original.click, countIn: original.countIn,
         visualEndCue: sectionIndex === sections.length - 1 ? section.visualEndCue : original.visualEndCue,
         unitPitch: original.unitPitch, unitVelocity: original.unitVelocity,
         subPitch: original.subPitch, subVelocity: original.subVelocity };
     });
-    return { sections: merged, unmatched: track.sections.length - used.size };
+    const removed = track.sections.map((section, index) => ({ section, index, bar: starts[index] }))
+      .filter(({ index }) => !used.has(index));
+    return { sections: merged, unmatched: removed.length, removed };
+  }
+
+  function describeRemovedSections(removed) {
+    return removed.map(({ section, index, bar }) => {
+      const location = bar == null ? 'Cue ' + (index + 1) : 'Bar ' + bar;
+      const settings = ['type: ' + section.type];
+      if (section.name) settings.push('name: ' + section.name);
+      if (section.notes) settings.push('notes: ' + section.notes);
+      if (section.figure) settings.push('figure: ' + section.figure);
+      if (section.hitPoint) settings.push('hit point: ' + section.hitPoint);
+      if (section.type !== 'pause') {
+        settings.push('meter: ' + section.num + '/' + section.den + '; bars: ' + section.bars);
+        if (section.type === 'timedPause') settings.push('duration: ' + section.pauseDuration + 's; count-in subdivisions per beat: ' + section.pauseSubdivision);
+        else settings.push('tempo: ' + section.bpm + (section.bpmEnd == null ? '' : ' → ' + section.bpmEnd)
+          + '; beat unit: ' + section.beatUnit);
+        if (section.calcStart || section.calcEnd) settings.push('video timing: ' + (section.calcStart || '—') + ' → ' + (section.calcEnd || '—'));
+      }
+      if (section.grouping) settings.push('grouping: ' + section.grouping);
+      if (section.countIn != null) settings.push('count-in: ' + section.countIn);
+      if (section.advance === 'manual') settings.push('wait for pedal');
+      if (section.visualCue || section.visualEndCue) settings.push('visual cue');
+      settings.push('click: ' + section.click);
+      settings.push('sound: inner pitch ' + section.unitPitch + ', velocity ' + section.unitVelocity
+        + '; subdivisions pitch ' + section.subPitch + ', velocity ' + section.subVelocity);
+      return location + ' — ' + settings.join('; ');
+    }).join('\n');
+  }
+
+  function applyTrackChangesToDraft(track, markers) {
+    const previous = track._server.sections.map(normSection);
+    const oldBars = startBars(previous), newBars = startBars(track.sections);
+    const fields = { num: 'num', den: 'den', beatUnit: 'unit', notes: 'dialogue',
+      figure: 'figure', hitPoint: 'label', visualCue: 'visualCue' };
+    track.sections.forEach((section, index) => {
+      const bar = newBars[index];
+      const oldMatches = previous.filter((item, i) => oldBars[i] === bar && item.type !== 'pause');
+      if (section.type === 'pause' || oldMatches.length !== 1) return;
+      const old = oldMatches[0];
+      const changed = Object.keys(fields).filter((key) => section[key] !== old[key]);
+      if (!changed.length) return;
+      const matching = markers.filter((marker) => marker.bar !== '' && Number(marker.bar) === bar);
+      if (matching.length !== 1) throw new Error('Bar ' + bar + ' has no unique video hit point; its edits cannot be synchronized.');
+      changed.forEach((key) => {
+        const value = section[key];
+        matching[0][fields[key]] = typeof value === 'boolean' ? value : String(value);
+      });
+    });
+  }
+
+  function draftMatchesTrack(track, draft) {
+    const secs = track.sections.map(normSection), bars = startBars(secs);
+    return secs.every((section, index) => {
+      if (section.type === 'pause') return true;
+      const matches = draft.markers.filter((marker) => marker.bar !== '' && Number(marker.bar) === bars[index]);
+      if (matches.length !== 1) return false;
+      const marker = matches[0];
+      const shape = section.type === 'timedPause' ? 'timedPause'
+        : section.bpmEnd == null || section.bpmEnd === section.bpm ? 'steady'
+          : section.bpmEnd > section.bpm ? 'accel' : 'rall';
+      return String(marker.num) === String(section.num) && String(marker.den) === String(section.den)
+        && marker.unit === section.beatUnit && (marker.dialogue || '') === section.notes
+        && (marker.figure || '') === section.figure && !!marker.visualCue === section.visualCue
+        && (!section.hitPoint || marker.label === section.hitPoint) && marker.shape === shape
+        && (shape !== 'accel' && shape !== 'rall' || !marker.bpm || Number(marker.bpm) === section.bpm);
+    });
+  }
+
+  async function persistLinkedTrack(track, payload, ver) {
+    const baseTrack = JSON.parse(JSON.stringify(track._server));
+    const baseDraft = track._draftBase || await draftRequest('GET', track.videoDraftId);
+    if (!track._migrationAccepted && !draftMatchesTrack(baseTrack, baseDraft)) {
+      throw new Error('The track and video draft differ. Open Edit with video and choose which values to use before saving.');
+    }
+    const draft = JSON.parse(JSON.stringify(track._draft || baseDraft));
+    applyTrackChangesToDraft(track, draft.markers);
+    let updated = null, reason = '';
+    try {
+      const plan = planVideoTrack(draft.markers, false);
+      const merged = mergeVideoSections(track, plan.secs.map(({ section }) => section));
+      if (merged.unmatched && !window.confirm('These sections would be removed when applying the video edits:\n\n'
+        + describeRemovedSections(merged.removed) + '\n\nApply the changes?')) {
+        reason = 'Section changes not applied; the saved track remains playable.';
+      } else {
+        updated = { ...payload, videoOffset: plan.offset, sections: merged.sections };
+      }
+    } catch (error) {
+      reason = 'Video edits saved, but the playable track was not updated: ' + error.message;
+    }
+    const saved = await api('PUT', '/' + track.id + '/video-editor', {
+      expectedTrack: baseTrack, expectedDraft: baseDraft,
+      videoDraft: { title: draft.title, videoId: draft.videoId, markers: draft.markers }, track: updated,
+    });
+    track._server = saved.track;
+    track._draftBase = saved.videoDraft;
+    track.videoDraftId = saved.track.videoDraftId;
+    if (track._ver === ver) {
+      track._draft = saved.videoDraft;
+      track._draftDirty = false;
+      if (updated) {
+        track.sections = saved.track.sections.map(normSection);
+        track.videoOffset = saved.track.videoOffset;
+        track._dirty = track._linkDirty = false;
+        track._migrationAccepted = true;
+        if (current === track) {
+          renderSections(); renderSetlist(); renderIdle(); renderStageTools();
+        }
+      } else {
+        const before = JSON.stringify({ title: baseTrack.title, notes: baseTrack.notes,
+          videoOffset: baseTrack.videoOffset, sections: baseTrack.sections });
+        track._dirty = before !== JSON.stringify(payload);
+      }
+      if (builder.returnTrack === track && builder.youtube) {
+        builder.draftId = saved.videoDraft.id;
+        builder.dirty = false;
+        builder.markers = numberDraftMarkers(saved.videoDraft.markers);
+        if (!$('view-video').hidden && current === track) {
+          selectVideoMarker(Math.min(builder.selected, builder.markers.length - 1));
+          renderVideoPlan();
+        }
+      }
+    }
+    cacheLocal();
+    if (reason) throw new Error(reason);
   }
 
   function renderVideoMarkers() {
@@ -2981,6 +3252,13 @@
     $('builder-review-status').textContent = '';
   }
 
+  function nextReviewMarker(time) {
+    if (!$('builder-review').checked) return null;
+    const previous = builder.reviewAnchor ?? builder.reviewTime ?? time;
+    const index = builder.markers.findIndex((marker) => marker.time > previous + 0.000001);
+    return index < 0 ? null : { index, marker: builder.markers[index] };
+  }
+
   function reviewVideoPlayback() {
     if ($('view-video').hidden || !$('builder-review').checked || !videoReady()) return;
     const media = builderMedia();
@@ -2988,16 +3266,18 @@
     const time = media.currentTime, anchor = builder.reviewAnchor;
     // YouTube can resume slightly before the requested cue due to keyframe seeking.
     if (anchor !== null && time < anchor) return;
-    const previous = builder.reviewTime ?? anchor;
+    const next = nextReviewMarker(time);
     builder.reviewAnchor = null;
     builder.reviewTime = time;
-    if (previous === null || time <= previous) return;
-    const index = builder.markers.findIndex((marker) => marker.time > previous && marker.time <= time);
-    if (index < 0) return;
-    const marker = builder.markers[index];
-    selectVideoMarker(index, true);
-    $('builder-review-status').textContent = 'Paused at hit point ' + marker.label + ' at ' + markerTime(marker.time)
-      + (marker.bar ? ' (bar ' + marker.bar + ')' : '') + '. Edit the hit point or resume.';
+    if (!next) return;
+    const priorTime = next.index > 0 ? builder.markers[next.index - 1].time : 0;
+    const stopTime = Math.max(priorTime, next.marker.time - REVIEW_LEAD);
+    if (time < stopTime) return;
+    selectVideoMarker(next.index);
+    seekBuilderVideo(stopTime);
+    builder.reviewAnchor = next.marker.time;
+    $('builder-review-status').textContent = 'Paused just before hit point ' + next.marker.label + ' at ' + markerTime(next.marker.time)
+      + (next.marker.bar ? ' (bar ' + next.marker.bar + ')' : '') + '. Edit the hit point or resume to hear its first click.';
   }
 
   function zoomAroundMarker() {
@@ -3237,20 +3517,40 @@
         await refreshDraftList();
         if ($('view-video').hidden || builder.returnTrack !== track) return 'Open cancelled.';
         if (track.videoDraftId) {
-          if (track.videoDraftId === builder.draftId) return 'Linked video draft is open.' + inheritTrackSettings(track) + focusVideoSection(target);
+          if (track.videoDraftId === builder.draftId && builder.returnTrack === track && builder.dirty) {
+            return 'Linked video draft is open with unsaved edits.' + focusVideoSection(target);
+          }
           if (!Array.from(drafts.options).some((o) => o.value === String(track.videoDraftId))) {
             return 'The linked draft is no longer available. Open another saved draft to link it.';
           }
           const draft = await draftRequest('GET', track.videoDraftId);
           if ($('view-video').hidden || builder.returnTrack !== track || !confirmBuilderReplace()) return 'Open cancelled.';
+          if (!track._draftDirty) {
+            track._draftBase = draft;
+            track._draft = draft;
+          }
           drafts.value = draft.id;
-          openYoutube(draft.videoId, draft);
-          return 'Opened linked draft: ' + draft.title + '.' + inheritTrackSettings(track) + focusVideoSection(target);
+          const opened = track._draftDirty ? track._draft : draft;
+          openYoutube(opened.videoId, opened);
+          let message;
+          if (track._draftDirty) {
+            message = ' Unsaved video edits restored from this browser.';
+          } else {
+            let valid = true;
+            try { planVideoTrack(opened.markers, false); } catch (error) { valid = false; }
+            const differs = !draftMatchesTrack(track._server || track, draft);
+            message = valid ? inheritTrackSettings(track) : ' Incomplete video edits retained; the last playable track is unchanged.';
+            track._migrationAccepted = true;
+            if (valid && (differs || track._dirty)) markDirty(track);
+          }
+          if (track._draftDirty) builder.dirty = true;
+          return 'Opened linked draft: ' + opened.title + '.' + message + focusVideoSection(target);
         }
         if (builder.localTrack === track) return 'Local video is still open in this tab.' + inheritTrackSettings(track) + focusVideoSection(target);
         return 'Open your saved YouTube draft below, then link it to this track for next time.';
       });
     }
+    openTrackVideoEditor = editWithVideo;
     $('btn-edit-video').addEventListener('click', () => editWithVideo());
     $('btn-practice-edit-video').addEventListener('click', () => editWithVideo());
     $('quick-edit-video').addEventListener('click', () => {
@@ -3273,13 +3573,25 @@
     $('builder-link-draft').addEventListener('click', () => {
       const track = builder.returnTrack;
       if (!tracks.includes(track) || !builder.draftId || builder.draftsBusy) return;
-      if (!window.confirm('Link this video draft to “' + track.title + '”? This will not change its click sections.')) return;
+      if (!window.confirm('Link this video draft to “' + track.title
+        + '”? Its hit points will be synchronized with the track after you resolve any differences.')) return;
+      if (!builder.autoDraftBase || builder.autoDraftBase.id !== builder.draftId) {
+        draftStatus.textContent = 'Open a saved draft before linking it to this track.';
+        return;
+      }
       track.videoDraftId = builder.draftId;
       track._linkDirty = true;
+      track._draftBase = builder.autoDraftBase;
+      track._draft = builder.autoDraftBase;
+      let valid = true;
+      try { planVideoTrack(builder.markers, false); } catch (error) { valid = false; }
+      if (valid) inheritTrackSettings(track);
+      track._migrationAccepted = true;
+      if (builder.dirty) stageBuilderDraft();
       markDirty(track);
       if (track === current) rehearsalLabelsPending = loadRehearsalLabels(track);
       renderDraftControls();
-      draftStatus.textContent = 'Draft linked. Changes to the draft do not change the finished track.';
+      draftStatus.textContent = 'Linking draft and saving changes…';
     });
     function loadLink() {
       const id = youtubeId(link.value);
@@ -3294,11 +3606,12 @@
       const id = youtubeId(link.value);
       if (!id) { draftStatus.textContent = 'Enter a valid YouTube video link first.'; return; }
       if (builder.draftsBusy) return;
-      if (!window.confirm('Replace the video while keeping the hit points? Saving updates this draft for all linked tracks.')) return;
+      if (!window.confirm('Replace the video while keeping the hit points for this track?')) return;
       const draft = { id: builder.draftId, title: $('builder-title').value, markers: builder.markers };
       openYoutube(id, draft);
       builder.dirty = true;
-      draftStatus.textContent = 'Video replaced. Save the YouTube draft to keep this change.';
+      stageBuilderDraft();
+      draftStatus.textContent = 'Video replaced. Saving changes…';
     });
     let shiftPreview = null;
     function proposedShift() {
@@ -3356,7 +3669,7 @@
       $('builder-shift-apply').disabled = true;
       selectVideoMarker(0);
       renderVideoPlan();
-      $('builder-shift-status').textContent = 'Shift applied. Save the draft and update the click track separately.';
+      $('builder-shift-status').textContent = 'Shift applied.';
     });
     link.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadLink(); } });
     drafts.addEventListener('change', renderDraftControls);
@@ -3447,8 +3760,12 @@
         $('builder-click-status').textContent = 'Could not start click preview: ' + e.message;
       }
     });
-    $('builder-review').addEventListener('change', () => resetVideoReview());
-    $('builder-title').addEventListener('input', () => { builder.dirty = true; });
+    $('builder-review').addEventListener('change', () => {
+      resetVideoReview();
+      cancelBuilderClicks();
+    });
+    setInterval(reviewVideoPlayback, TIMER_MS);
+    $('builder-title').addEventListener('input', () => { builder.dirty = true; stageBuilderDraft(); });
     $('builder-add').addEventListener('click', addVideoMarker);
     $('builder-retime').addEventListener('click', () => {
       const index = builder.selected;
@@ -3560,7 +3877,8 @@
         if (existing && !window.confirm('Replace all sections and the video offset in “' + existing.title
           + '”? Matching sections keep their name, click, sound, grouping, advance and count-in settings. '
           + 'Meter, cues and timing come from the video draft.'
-          + (merged.unmatched ? ' WARNING: ' + merged.unmatched + ' existing section(s) have no unique match and will be removed, including their settings.' : '')
+          + (merged.unmatched ? '\n\nWARNING: The following existing sections have no unique match and will be removed with their settings:\n'
+            + describeRemovedSections(merged.removed) : '')
           + (!builder.youtube && existing.videoDraftId ? ' This also removes the old YouTube draft link.' : ''))) return;
         let draftId = null;
         if (builder.youtube) {
@@ -3646,6 +3964,19 @@
       }
       performBar = bar;
       performStatus.textContent = '';
+      if (builder.returnTrack?.videoDraftId) {
+        if (builder.returnTrack._dirty || builder.dirty || saving) {
+          $('builder-result').textContent = 'Wait for changes to finish saving before performing.';
+          return;
+        }
+        try { performTrack(builder.returnTrack, performBar); }
+        catch (error) { $('builder-result').textContent = 'Could not perform: ' + error.message; }
+        return;
+      }
+      if (builder.youtube) {
+        $('builder-result').textContent = 'Wait for the track to be created, or link this draft to the track before performing.';
+        return;
+      }
       performDialog.showModal();
     });
     $('builder-perform-cancel').addEventListener('click', () => performDialog.close());
@@ -3776,11 +4107,12 @@
     $('track-actions').open = false;
     cancelPendingPedal();
     if (name !== 'edit') stopTester();
-    document.body.classList.toggle('editing', name === 'edit');
+    document.body.classList.toggle('editing', name === 'edit' || (name === 'video' && builder.returnTrack === current && !!current));
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
     $('view-perform').hidden = name !== 'perform';
     $('view-edit').hidden = name !== 'edit';
     if (!CFG.offline) {
+      placeTrackEditor(name === 'video');
       $('view-video').hidden = name !== 'video';
       $('btn-video-track').setAttribute('aria-pressed', String(name === 'video'));
       if (name !== 'video') {
@@ -3797,9 +4129,19 @@
       stop(false);
       $('performance-menu').open = false;
       showPedalSetup(false);
+      if (current && builder.returnTrack === current) renderEditor();
       window.scrollTo(0, 0);
     } else if (name === 'edit') { $('performance-menu').open = false; renderEditor(); }
     else showPedalSetup(false);
+  }
+
+  function placeTrackEditor(inVideo) {
+    const show = inVideo && current && builder.returnTrack === current && !current._preview;
+    (show ? $('builder-track-editor') : $('view-edit')).append($('track-editor'));
+    $('builder-track-editor').hidden = !show;
+    $('btn-edit-video').hidden = !!show;
+    if (inVideo) document.body.classList.toggle('editing', !!show);
+    $('video-builder-title').textContent = show ? 'Edit click track with video' : 'New click track from video';
   }
 
   function renderAll() {
@@ -4291,9 +4633,25 @@
     // pointerdown gives tighter timing than click for tapping.
     $('btn-tap').addEventListener('pointerdown', (e) => { e.preventDefault(); tapTempo(); });
     $('btn-tap').addEventListener('keydown', (e) => { if (e.key === 'Enter') tapTempo(); });
-    document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
+    document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+      if (t.dataset.view === 'edit' && current?.videoDraftId && !CFG.offline) openTrackVideoEditor();
+      else switchView(t.dataset.view);
+    }));
 
-    $('track-select').addEventListener('change', (e) => { selectTrack(e.target.value); e.target.blur(); });
+    $('track-select').addEventListener('change', (e) => {
+      if (!CFG.offline && !$('view-video').hidden && builder.dirty && builder.returnTrack === current) {
+        e.target.value = String(current.id);
+        toast('Wait for video changes to save before switching tracks.');
+        return;
+      }
+      const inVideo = !CFG.offline && !$('view-video').hidden;
+      selectTrack(e.target.value);
+      if (inVideo) {
+        if (current?.videoDraftId) openTrackVideoEditor();
+        else switchView('edit');
+      }
+      e.target.blur();
+    });
     const menu = $('track-actions'), summary = menu.firstElementChild;
     const closeMenu = (restoreFocus = false) => {
       menu.open = false;

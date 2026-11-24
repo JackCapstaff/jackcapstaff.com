@@ -234,6 +234,7 @@
 
   <!-- ===================== EDIT ===================== -->
   <main id="view-edit" class="view" hidden>
+    <div id="track-editor">
     {% if not offline %}
     <div class="stage-tool-row">
       <button type="button" class="btn small" id="btn-edit-video">Edit with video</button>
@@ -285,6 +286,7 @@
       <button class="btn small primary" id="tester-start">Start tester</button>
       <button class="btn small" id="tester-tap">Tap tempo</button>
     </aside>
+    </div>
   </main>
 
   {% if not offline %}{% include 'clicktrack/video_builder.html' %}{% endif %}

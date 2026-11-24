@@ -27,6 +27,11 @@ class ClickTrackSectionTests(unittest.TestCase):
             [0, 53, 0, 32],
         )
 
+    def test_timed_pause_subdivision_defaults_and_bounds(self):
+        self.assertEqual(_clean_section({"type": "timedPause"})["pauseSubdivision"], 1)
+        self.assertEqual(_clean_section({"type": "timedPause", "pauseSubdivision": 3})["pauseSubdivision"], 3)
+        self.assertEqual(_clean_section({"type": "timedPause", "pauseSubdivision": 9})["pauseSubdivision"], 4)
+
     def test_compound_click_defaults_and_explicit_choices(self):
         for numerator in (6, 9, 12):
             with self.subTest(numerator=numerator):
@@ -363,6 +368,136 @@ class ClickTrackStorageTests(unittest.TestCase):
                 self.client.post("/clicktrack/api/tracks/restore-backup", json=backup)
         self.assertEqual(self.client.get("/clicktrack/api/tracks").json["tracks"], [])
         self.assertEqual(self.client.get("/clicktrack/api/video-drafts").json["drafts"], [])
+
+    def test_create_from_draft_reuses_unlinked_and_copies_shared(self):
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "title": "Incomplete", "videoId": "abcdefghijk", "markers": [
+                {"time": 0, "bar": "1", "num": "4", "den": "4", "unit": "auto", "shape": "steady", "label": "1"},
+            ],
+        }).json
+        url = "/clicktrack/api/tracks/from-video-draft"
+        request = {"track": self.payload, "videoDraft": {**draft, "title": "Finished"}, "expectedDraft": draft}
+        stale = self.client.post(url, json={**request, "expectedDraft": {**draft, "title": "Outdated"}})
+        self.assertEqual(stale.status_code, 409)
+        created = self.client.post(url, json=request)
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json["track"]["videoDraftId"], draft["id"])
+        updated = created.json["videoDraft"]
+        self.assertEqual(updated["title"], "Finished")
+        unlinked_copy = self.client.put(f"/clicktrack/api/video-drafts/{draft['id']}/unlinked",
+                                        json={"expectedDraft": updated, "videoDraft": draft})
+        self.assertEqual(unlinked_copy.status_code, 200)
+        self.assertNotEqual(unlinked_copy.json["id"], draft["id"])
+        self.assertEqual(self.client.get(f"/clicktrack/api/video-drafts/{draft['id']}").json, updated)
+        copied = self.client.post(url, json={**request, "expectedDraft": updated})
+        self.assertEqual(copied.status_code, 201)
+        self.assertNotEqual(copied.json["track"]["videoDraftId"], draft["id"])
+        self.assertEqual(self.client.get(f"/clicktrack/api/video-drafts/{draft['id']}").json, updated)
+
+    def test_video_link_checks_track_and_draft_without_modifying_either(self):
+        track = self.client.post("/clicktrack/api/tracks", json=self.payload).json
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "title": "Cues", "videoId": "abcdefghijk", "markers": [
+                {"time": 0, "bar": "1", "num": "4", "den": "4", "unit": "auto", "shape": "steady", "label": "1"},
+            ],
+        }).json
+        url = f"/clicktrack/api/tracks/{track['id']}/video-link"
+        request = {"expectedTrack": track, "expectedDraft": draft}
+        self.assertEqual(self.client.put(url, json={**request, "expectedDraft": {**draft, "title": "Old"}}).status_code, 409)
+        linked = self.client.put(url, json=request)
+        self.assertEqual(linked.status_code, 200)
+        self.assertEqual(linked.json["sections"], track["sections"])
+        self.assertEqual(linked.json["videoDraftId"], draft["id"])
+        self.assertEqual(self.client.get(f"/clicktrack/api/video-drafts/{draft['id']}").json, draft)
+        self.assertEqual(self.client.put(url, json=request).status_code, 409)
+
+    def test_video_editor_save_copies_shared_draft_and_updates_one_track(self):
+        marker = {"time": 0, "bar": "1", "num": "4", "den": "4", "unit": "auto",
+                  "shape": "steady", "label": "1"}
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "title": "Shared", "videoId": "abcdefghijk", "markers": [marker],
+        }).json
+        path = "/clicktrack/api/tracks"
+        first = self.client.post(path, json={**self.payload, "videoDraftId": draft["id"]}).json
+        second = self.client.post(path, json={**self.payload, "title": "Other", "videoDraftId": draft["id"]}).json
+        new_draft = {"title": "Edited", "videoId": "abcdefghijk", "markers": [
+            {**marker, "num": "3", "dialogue": "New cue"}]}
+        new_track = {**self.payload, "title": "Edited track", "sections": [
+            {**self.payload["sections"][0], "num": 3}]}
+        response = self.client.put(f"{path}/{first['id']}/video-editor", json={
+            "expectedTrack": first, "expectedDraft": draft, "videoDraft": new_draft, "track": new_track,
+        })
+        self.assertEqual(response.status_code, 200)
+        saved = response.json
+        self.assertNotEqual(saved["videoDraft"]["id"], draft["id"])
+        self.assertEqual(saved["track"]["videoDraftId"], saved["videoDraft"]["id"])
+        self.assertEqual(saved["track"]["sections"][0]["num"], 3)
+        self.assertEqual(saved["videoDraft"]["markers"][0]["dialogue"], "New cue")
+        tracks = self.client.get(path).json["tracks"]
+        self.assertEqual(next(t for t in tracks if t["id"] == second["id"]), second)
+        self.assertEqual(self.client.get(f"/clicktrack/api/video-drafts/{draft['id']}").json, draft)
+
+    def test_video_editor_saves_incomplete_draft_without_changing_playable_track(self):
+        track = self.client.post("/clicktrack/api/tracks", json=self.payload).json
+        path = f"/clicktrack/api/tracks/{track['id']}/video-editor"
+        draft = {"title": "Incomplete", "videoId": "abcdefghijk", "markers": [
+            {"time": 0, "bar": "", "num": "", "den": "4", "unit": "auto", "shape": "steady"},
+        ]}
+        response = self.client.put(path, json={
+            "expectedTrack": track, "expectedDraft": None, "videoDraft": draft, "track": None,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["track"]["sections"], track["sections"])
+        self.assertEqual(response.json["videoDraft"]["markers"][0]["num"], "")
+        self.assertEqual(response.json["track"]["videoDraftId"], response.json["videoDraft"]["id"])
+        second = self.client.put(path, json={
+            "expectedTrack": response.json["track"], "expectedDraft": response.json["videoDraft"],
+            "videoDraft": {**draft, "title": "Revised"}, "track": None,
+        })
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json["videoDraft"]["id"], response.json["videoDraft"]["id"])
+        self.assertEqual(len(self.client.get("/clicktrack/api/video-drafts").json["drafts"]), 1)
+
+    def test_video_editor_rejects_stale_and_invalid_saves_atomically(self):
+        marker = {"time": 0, "den": "4", "unit": "auto", "shape": "steady"}
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "videoId": "abcdefghijk", "markers": [marker],
+        }).json
+        track = self.client.post("/clicktrack/api/tracks", json={**self.payload, "videoDraftId": draft["id"]}).json
+        path = f"/clicktrack/api/tracks/{track['id']}/video-editor"
+        data = {"expectedTrack": track, "expectedDraft": draft, "videoDraft": draft,
+                "track": {**self.payload, "title": "Changed"}}
+        for invalid in (
+            {**data, "expectedDraft": {**draft, "title": "Old"}},
+            {**data, "expectedTrack": {**track, "title": "Old"}},
+        ):
+            response = self.client.put(path, json=invalid)
+            self.assertEqual(response.status_code, 409)
+            self.assertIn("changed", response.json["error"])
+        bad = {**data, "videoDraft": {**draft, "videoId": "invalid"}}
+        self.assertEqual(self.client.put(path, json=bad).status_code, 400)
+        self.assertEqual(self.client.get("/clicktrack/api/tracks").json["tracks"], [track])
+        self.assertEqual(self.client.get(f"/clicktrack/api/video-drafts/{draft['id']}").json, draft)
+        self.assertEqual(self.app.test_client().put(path, json=data).status_code, 401)
+
+    def test_video_editor_rolls_back_copy_when_commit_fails(self):
+        from unittest.mock import patch
+        from sqlalchemy.exc import SQLAlchemyError
+
+        marker = {"time": 0, "den": "4", "unit": "auto", "shape": "steady"}
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "videoId": "abcdefghijk", "markers": [marker],
+        }).json
+        track = self.client.post("/clicktrack/api/tracks", json={**self.payload, "videoDraftId": draft["id"]}).json
+        self.client.post("/clicktrack/api/tracks", json={**self.payload, "title": "Shared", "videoDraftId": draft["id"]})
+        data = {"expectedTrack": track, "expectedDraft": draft, "videoDraft": draft,
+                "track": {**self.payload, "title": "Changed"}}
+        with patch.object(self.db.session, "commit", side_effect=SQLAlchemyError("Database failure")):
+            with self.assertRaises(SQLAlchemyError):
+                self.client.put(f"/clicktrack/api/tracks/{track['id']}/video-editor", json=data)
+        tracks = self.client.get("/clicktrack/api/tracks").json["tracks"]
+        self.assertEqual(next(t for t in tracks if t["id"] == track["id"]), track)
+        self.assertEqual(len(self.client.get("/clicktrack/api/video-drafts").json["drafts"]), 1)
 
     def test_youtube_draft_round_trip_across_sessions(self):
         path = "/clicktrack/api/video-drafts"

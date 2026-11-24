@@ -1,10 +1,9 @@
 <main id="view-video" class="view" aria-labelledby="video-builder-title" hidden>
   <h1 id="video-builder-title">New click track from video</h1>
   <button type="button" class="btn small" id="builder-back-to-edit" hidden>Back to track editor</button>
-  <p>Choose a local video or load a YouTube link. Use the controls below the video to play, pause, or add a hit point. If focus is inside the YouTube player, use the buttons outside it instead.</p>
-  <p class="muted small">Local files are not uploaded and their drafts stay in this tab. Choose <strong>Save YouTube draft</strong> to save the link and hit points to your account. YouTube needs an internet connection and a video that allows embedding; seeking is not frame-accurate.</p>
+  <p>Load a YouTube link and use the controls below to play, pause or add a hit point. YouTube needs internet access and an embeddable video; seeking is not frame-accurate.</p>
   <div class="video-builder-meta">
-    <label>Video file <input id="builder-file" type="file" accept="video/*,.mp4,.mov,.webm,.m4v"></label>
+    <label hidden>Video file <input id="builder-file" type="file" accept="video/*,.mp4,.mov,.webm,.m4v"></label>
     <label>Track title <input id="builder-title" type="text" maxlength="255" placeholder="New click track"></label>
   </div>
   <div class="stage-tool-row">
@@ -12,14 +11,19 @@
     <button type="button" class="btn small" id="builder-load-youtube">Load YouTube video</button>
     <button type="button" class="btn small" id="builder-replace-youtube">Replace video, keep hit points</button>
   </div>
+  <details id="builder-legacy-drafts">
+    <summary>Import an existing video draft</summary>
   <div class="stage-tool-row">
     <label>Saved YouTube drafts <select id="builder-drafts"><option value="">Choose a draft</option></select></label>
     <button type="button" class="btn small" id="builder-open-draft" disabled>Open draft</button>
     <button type="button" class="btn small danger" id="builder-delete-draft" disabled>Delete selected draft</button>
     <button type="button" class="btn small" id="builder-link-draft" hidden>Link open draft to track</button>
   </div>
+  </details>
   <p id="builder-draft-status" class="muted small" role="status"></p>
   <p id="builder-media-status" role="status"></p>
+  <details id="builder-video-panel" open>
+  <summary>Video and hit points</summary>
   <fieldset>
     <legend>Resync hit-point times</legend>
     <label>Shift in seconds <input type="number" id="builder-shift" step="0.001" placeholder="e.g. 2.5 or -1.25"></label>
@@ -27,7 +31,7 @@
       <button type="button" class="btn small" id="builder-shift-preview">Preview shift</button>
       <button type="button" class="btn small" id="builder-shift-apply" disabled>Apply shift</button>
     </div>
-    <p id="builder-shift-status" class="muted small" role="status">Shifts musical hit points together; the 0:00 reference stays fixed. Save the draft and update the track separately.</p>
+    <p id="builder-shift-status" class="muted small" role="status">Shifts musical hit points together; the 0:00 reference stays fixed.</p>
   </fieldset>
   <div class="video-builder-grid">
     <section aria-label="Video player">
@@ -85,8 +89,8 @@
           <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later">+0.1 s</button>
         </div>
       </div>
-      <label><input type="checkbox" id="builder-review" checked> Pause at existing hit points</label>
-      <p class="muted small">Select a hit point to jump there, then play to review the next one. Use the timeline to find a new time, then choose <strong>Move hit point to playhead</strong> to replace its time without changing its details.</p>
+      <label><input type="checkbox" id="builder-review" checked> Pause just before each hit point</label>
+      <p class="muted small">Untick to play through hit points. When pausing, resume to hear the next hit point's first click. YouTube seeking is approximate. Select a hit point to jump there, or use the timeline and <strong>Move hit point to playhead</strong> to replace its time.</p>
       <p id="builder-review-status" class="muted small" role="status"></p>
     </section>
     <section aria-label="Hit points">
@@ -124,6 +128,11 @@
       </fieldset>
     </section>
   </div>
+  </details>
+  <section id="builder-track-editor" aria-label="Linked track editor" hidden>
+    <h2>Linked track editor</h2>
+    <p class="muted small">Changes save automatically. Edit hit points to change video-derived timing; the last playable track is kept if timing is incomplete.</p>
+  </section>
   <section class="video-builder-preview" aria-labelledby="builder-preview-title">
     <h2 id="builder-preview-title">Click track preview</h2>
     <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. Enter skipped score bars on the hit point at the start of that span; they add no time. The final hit point closes the last span. Tempo is calculated from hit-point times; a ramp can use the previous span’s ending tempo.</p>
@@ -131,11 +140,11 @@
     <ol id="builder-preview"></ol>
     <label>Starting count-in (bars)
       <input type="number" id="builder-count-in" min="0" max="8" step="1" inputmode="numeric">
-      <span class="muted small">Leave blank to keep an existing track’s count-in, or use the automatic two-second minimum on a new track.</span>
+      <span class="muted small">For a new track, leave blank for the automatic two-second minimum. After creation, use the track editor.</span>
     </label>
-    <button type="button" class="btn" id="builder-save-draft" disabled>Save YouTube draft</button>
-    <button class="btn primary" id="builder-create" disabled>Create click track</button>
-    <div class="stage-tool-row">
+    <button type="button" class="btn" id="builder-save-draft" disabled hidden>Save YouTube draft</button>
+    <button class="btn primary" id="builder-create" disabled hidden>Create click track</button>
+    <div class="stage-tool-row" hidden>
       <label>Existing click track <select id="builder-target-track">
         <option value="">Choose a track</option>
       </select></label>
