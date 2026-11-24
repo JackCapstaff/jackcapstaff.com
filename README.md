@@ -49,7 +49,8 @@ The click-track preview uses the same hit-point numbers as the list, including
 letter suffixes; each row shows the starting and closing hit points.
 To replace a marker's time
 without changing its details, select it, seek to the new time on the timeline
-and choose **Move hit point to playhead**.
+and choose **Move hit point to playhead**. Use the **−0.1 s** and **+0.1 s**
+buttons in the hit-point details to make smaller adjustments.
 
 During playback the hit-point list follows and scrolls to the current point,
 updating the selected section controls. Following waits until you finish editing
@@ -86,8 +87,9 @@ Older track-only JSON files can still be imported.
 
 Linked track and hit-point edits save together automatically. Meter, beat unit,
 cue text, figure, hit-point label and visual cues synchronize in both directions;
-hit-point times determine tempo. Edit timing and tempo shape using the video
-hit points. Matching sections retain their names, click and sound settings,
+hit-point times determine tempo. Edit timing, score bars and tempo shape using the video
+hit points. Sections are matched by hit-point time or label before score bar, so
+changing a score bar retains the section's settings. Matching sections retain their names, click and sound settings,
 grouping, advance and count-in; the track title and track-level notes stay.
 If sections have no unique match, a confirmation lists the sections and their
 settings before removal. Declining preserves the playable track. Incomplete or

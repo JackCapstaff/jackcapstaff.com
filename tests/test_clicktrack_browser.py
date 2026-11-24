@@ -6,6 +6,80 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class ClickTrackBrowserTests(unittest.TestCase):
+    def test_video_bar_change_updates_both_adjacent_sections(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "title": "Bars", "videoId": "abcdefghijk",
+                "markers": [{**marker, "time": time, "bar": str(bar), "label": str(label)}
+                            for time, bar, label in [(0, 1, 1), (4, 3, 2), (8, 5, 3)]],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Bars", "videoDraftId": draft["id"], "sections": [
+                    {"startBar": 1, "bars": 2, "bpm": 120, "hitPoint": "1",
+                     "calcStart": "0:00.000", "calcEnd": "0:04.000", "name": "First", "click": "sub2"},
+                    {"startBar": 3, "bars": 2, "bpm": 120, "hitPoint": "2",
+                     "calcStart": "0:04.000", "calcEnd": "0:08.000", "name": "Second", "countIn": 2},
+                ],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                page = browser.new_page()
+                page.add_init_script("window.YT = {Player: function () { this.destroy = () => {}; }};")
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    response = fixture.client.open(path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                page.route("http://clicktrack.test/**", route_request)
+                page.route("https://www.youtube.com/**", lambda route: route.abort())
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.select_option("#track-select", str(track["id"]))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                dialogs = []
+                page.on("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
+                page.select_option("#builder-markers", "1")
+                page.locator("#builder-bar").fill("2")
+                page.locator("#builder-bar").dispatch_event("change")
+                for _ in range(80):
+                    saved = fixture.client.get("/clicktrack/api/tracks").json["tracks"][0]
+                    if saved["sections"][1]["startBar"] == 2:
+                        break
+                    page.wait_for_timeout(100)
+                self.assertEqual([(s["startBar"], s["bars"], s["bpm"]) for s in saved["sections"]],
+                                 [(1, 1, 60), (2, 3, 180)])
+                self.assertEqual([s["name"] for s in saved["sections"]], ["First", "Second"])
+                self.assertEqual(saved["sections"][0]["click"], "sub2")
+                self.assertEqual(saved["sections"][1]["countIn"], 2)
+                self.assertFalse(dialogs)
+                self.assertEqual(page.locator('#sections [data-f="startBar"]').nth(1).input_value(), "2")
+                page.locator("#builder-bar").blur()
+                page.wait_for_function("document.querySelector('#builder-selected-section-editor [data-f=startBar]')?.value === '2'")
+                saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertEqual(saved_draft["markers"][1]["bar"], "2")
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_hit_point_list_follows_playback_without_interrupting_edits(self):
         from urllib.parse import urlsplit
         from playwright.sync_api import Error, sync_playwright
@@ -380,7 +454,15 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 self.assertEqual(track["sections"][0]["bpm"], 120)
                 self.assertEqual(len(fixture.client.get("/clicktrack/api/video-drafts").json["drafts"]), 1)
                 self.assertTrue(page.locator("#builder-track-editor #sections").is_visible())
+                self.assertEqual(page.locator("#builder-marker #builder-nudge-forward").count(), 1)
+                self.assertTrue(page.locator("#builder-nudge-forward").is_enabled())
+                page.click("#builder-nudge-forward")
+                self.assertEqual(page.locator("#builder-time").input_value(), "0:02.100")
+                page.click("#builder-nudge-back")
+                self.assertEqual(page.locator("#builder-time").input_value(), "0:02.000")
                 page.select_option("#builder-markers", "0")
+                self.assertTrue(page.locator("#builder-nudge-forward").is_disabled())
+                self.assertTrue(page.locator("#builder-nudge-back").is_disabled())
                 page.click("#builder-play")
                 page.evaluate("window.mockTime = 1.95")
                 page.wait_for_function("document.querySelector('#builder-review-status').textContent.includes('Paused just before')")
@@ -543,24 +625,36 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.on("dialog", decide)
                 page.locator("#builder-bar").fill("2")
                 page.locator("#builder-bar").dispatch_event("change")
+                for _ in range(60):
+                    saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved_track['videoDraftId']}").json
+                    if saved_draft["markers"][0]["bar"] == "2":
+                        break
+                    page.wait_for_timeout(100)
+                self.assertEqual(saved_draft["markers"][0]["bar"], "2")
+                self.assertEqual(next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"]
+                                      if t["id"] == track["id"])["sections"][0]["startBar"], 1)
                 page.select_option("#builder-markers", "1")
                 page.locator("#builder-bar").fill("3")
                 page.locator("#builder-bar").dispatch_event("change")
-                try:
-                    page.wait_for_function("document.querySelector('#save-status').textContent.includes('Section changes not applied')", timeout=7000)
-                except Error:
-                    self.fail("Removal confirmation not shown: " + page.locator("#save-status").text_content()
-                              + " dialogs: " + repr(decisions["questions"]))
-                unchanged = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"]
-                                 if t["id"] == track["id"])
-                self.assertEqual(unchanged["sections"], saved_track["sections"])
-                self.assertIn("Bar 1", decisions["questions"][-1])
-                decisions["accept"] = True
+                saved_track = wait_for_track(lambda t: t["sections"][0]["startBar"] == 2)
+                self.assertEqual(saved_track["sections"][0]["click"], "sub2")
+                self.assertEqual(saved_track["sections"][0]["notes"], "Edited on video page")
+                self.assertFalse(decisions["questions"])
+                self.assertEqual(page.locator('#sections [data-f="startBar"]').input_value(), "2")
+                page.select_option("#builder-markers", "0")
+                page.wait_for_function("document.querySelector('#builder-selected-section-editor [data-f=startBar]')?.value === '2'")
+                page.reload()
+                page.wait_for_function("document.querySelector('#track-select').options.length === 3")
+                page.select_option("#track-select", str(track["id"]))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                self.assertEqual(page.locator('#sections [data-f="startBar"]').input_value(), "2")
                 page.select_option("#builder-markers", "0")
                 page.locator("#builder-dialogue").fill("New cue after warning")
                 page.locator("#builder-dialogue").dispatch_event("change")
-                saved_track = wait_for_track(lambda t: t["sections"][0]["startBar"] == 2)
+                saved_track = wait_for_track(lambda t: t["sections"][0]["notes"] == "New cue after warning")
                 self.assertEqual(saved_track["sections"][0]["notes"], "New cue after warning")
+                decisions["accept"] = True
                 page.select_option("#track-select", str(other["id"]))
                 self.assertTrue(page.locator("#builder-track-editor").is_hidden())
                 page.click("button[data-view=edit]")
@@ -1217,6 +1311,33 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 && warning.includes('Watch conductor') && warning.includes('grouping: 2+2')
                 && warning.includes('count-in: 2') && warning.includes('click: sub2')
                 && warning.includes('velocity 17'), 'removed section settings described');
+              const oldSections = [
+                t.normal({startBar:1, hitPoint:'1', calcStart:'0:00.000', name:'First', click:'sub2'}),
+                t.normal({startBar:3, hitPoint:'2', calcStart:'0:04.000', name:'Second', countIn:2}),
+              ];
+              const changedBars = t.merge({sections:oldSections}, [
+                t.normal({startBar:3, hitPoint:'1', calcStart:'0:00.000'}),
+                t.normal({startBar:5, hitPoint:'2', calcStart:'0:04.000'}),
+              ]);
+              assert(changedBars.unmatched === 0 && changedBars.sections[0].name === 'First'
+                && changedBars.sections[0].click === 'sub2' && changedBars.sections[1].name === 'Second'
+                && changedBars.sections[1].countIn === 2, 'renumbering preserves the correct section settings');
+              const moved = t.merge({sections:oldSections}, [
+                t.normal({startBar:2, hitPoint:'1', calcStart:'0:00.500'}),
+                t.normal({startBar:3, hitPoint:'2A', calcStart:'0:04.000'}),
+              ]);
+              assert(moved.unmatched === 0 && moved.sections[0].name === 'First'
+                && moved.sections[1].name === 'Second', 'moved and renamed hit points retain settings');
+              const removed = t.merge({sections:oldSections}, [
+                t.normal({startBar:3, hitPoint:'2', calcStart:'0:04.000'}),
+              ]);
+              assert(removed.unmatched === 1 && removed.removed[0].section.name === 'First'
+                && removed.sections[0].name === 'Second', 'removed sections are still reported');
+              const ambiguous = t.merge({sections:oldSections}, [
+                t.normal({startBar:1, hitPoint:'3', calcStart:'0:01.000'}),
+              ]);
+              assert(ambiguous.unmatched === 2 && ambiguous.sections[0].name !== 'First',
+                'a new point at the same bar does not silently inherit unrelated settings');
               t.setMarkers([{...marker,time:0,bar:'175',label:'1',shape:'timedPause'},
                 {...marker,time:3.001,bar:'176',label:'2',shape:'rall'},
                 {...marker,time:4.916,bar:'177',label:'3',shape:'steady'}]);

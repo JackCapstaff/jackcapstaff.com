@@ -3085,16 +3085,33 @@
   function mergeVideoSections(track, sections) {
     if (!track) return { sections, unmatched: 0, removed: [] };
     const starts = startBars(track.sections), used = new Set();
+    const matchesBySection = new Map();
+    const matchUnique = (oldKey, newKey, eligible = () => true) => {
+      sections.forEach((section, sectionIndex) => {
+        if (matchesBySection.has(sectionIndex)) return;
+        const key = newKey(section, sectionIndex);
+        if (key == null || key === '') return;
+        const oldMatches = track.sections.map((original, index) => ({ original, index }))
+          .filter(({ original, index }) => original.type !== 'pause' && oldKey(original, index) === key);
+        const newMatches = sections.filter((item, index) => newKey(item, index) === key);
+        if (oldMatches.length !== 1 || newMatches.length !== 1 || used.has(oldMatches[0].index)
+          || !eligible(oldMatches[0].original)) return;
+        matchesBySection.set(sectionIndex, oldMatches[0]);
+        used.add(oldMatches[0].index);
+      });
+    };
+    matchUnique((section) => parseTimecode(section.calcStart), (section) => parseTimecode(section.calcStart));
+    matchUnique((section) => section.hitPoint, (section) => section.hitPoint);
+    matchUnique((section, index) => starts[index], (section) => section.startBar,
+      (section) => parseTimecode(section.calcStart) === null || !section.hitPoint);
     const merged = sections.map((section, sectionIndex) => {
-      const matches = track.sections.map((original, index) => ({ original, index }))
-        .filter(({ original, index }) => original.type !== 'pause' && starts[index] === section.startBar);
-      if (matches.length !== 1 || sections.filter((other) => other.startBar === section.startBar).length !== 1) return section;
-      const { original, index } = matches[0];
+      const match = matchesBySection.get(sectionIndex);
+      if (!match) return section;
+      const { original } = match;
       if (original.grouping && !parseGrouping(original.grouping, section.num)) {
         throw new Error('Bar ' + section.startBar + ' has grouping ' + original.grouping
           + ', which does not match the new meter. Edit the grouping in the track before updating from video.');
       }
-      used.add(index);
       return { ...section, name: original.name, grouping: original.grouping, pauseSubdivision: original.pauseSubdivision,
         advance: section.type === 'timedPause' ? 'auto' : original.advance, click: original.click, countIn: original.countIn,
         visualEndCue: sectionIndex === sections.length - 1 ? section.visualEndCue : original.visualEndCue,
@@ -3477,7 +3494,10 @@
   function renderVideoTimeline() {
     const timeline = $('builder-timeline');
     timeline.hidden = !videoReady();
-    if (timeline.hidden) return;
+    if (timeline.hidden) {
+      $('builder-nudge-back').disabled = $('builder-nudge-forward').disabled = true;
+      return;
+    }
     const duration = builderMedia().duration, [start, end] = timelineRange();
     const zoom = $('builder-zoom'), zoomed = builder.zoomStart !== null;
     zoom.hidden = duration <= 10;
@@ -3649,6 +3669,11 @@
     $('builder-selected-section-editor').addEventListener('input', onFieldInput);
     $('builder-selected-section-editor').addEventListener('change', onFieldInput);
     $('builder-selected-section-editor').addEventListener('click', onSectionAction);
+    $('builder-marker').addEventListener('focusout', () => {
+      setTimeout(() => {
+        if (!editingVideoMarker() && !$('view-video').hidden) renderSelectedVideoSection();
+      }, 0);
+    });
     $('builder-den').replaceChildren(...DENOMS.map((n) => new Option(n, n)));
     $('builder-unit').replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
     $('btn-video-track').addEventListener('click', () => {

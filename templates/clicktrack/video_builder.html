@@ -85,10 +85,6 @@
         <div class="builder-timeline-labels muted small">
           <span id="builder-timeline-start"></span><span id="builder-timeline-end"></span>
         </div>
-        <div class="stage-tool-row" role="group" aria-label="Nudge selected hit point">
-          <button type="button" class="btn small" id="builder-nudge-back" aria-label="Move selected hit point 0.1 seconds earlier">−0.1 s</button>
-          <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later">+0.1 s</button>
-        </div>
       </div>
       <p class="muted small">Untick to play through hit points. When pausing, resume to hear the next hit point's first click. YouTube seeking is approximate. Select a hit point to jump there, or use the timeline and <strong>Move hit point to playhead</strong> to replace its time.</p>
       <p id="builder-review-status" class="muted small" role="status"></p>
@@ -102,6 +98,10 @@
         <div class="video-builder-fields">
           <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
+          <div class="stage-tool-row" role="group" aria-label="Nudge selected hit point">
+            <button type="button" class="btn small" id="builder-nudge-back" aria-label="Move selected hit point 0.1 seconds earlier" disabled>−0.1 s</button>
+            <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later" disabled>+0.1 s</button>
+          </div>
           <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
           <label>Score bars skipped before the next hit <input id="builder-skip" type="number" min="0" max="9998" step="1" value="0" inputmode="numeric" aria-describedby="builder-skip-help"></label>
           <label>Rehearsal figure <input id="builder-figure" type="text" maxlength="32" placeholder="e.g. 6 or A"></label>
