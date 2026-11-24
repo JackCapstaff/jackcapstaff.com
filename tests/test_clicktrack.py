@@ -604,6 +604,27 @@ class ClickTrackStorageTests(unittest.TestCase):
             {**marker, "rampAnchor": "invalid"},
         ]}).status_code, 400)
 
+    def test_video_draft_metric_modulation_round_trip_and_validation(self):
+        path = "/clicktrack/api/video-drafts"
+        marker = {"time": 0, "bar": "1", "den": "4", "unit": "auto", "shape": "rall",
+                  "rampAnchor": "next", "modulationOld": "1/8:triplet", "modulationNew": "1/4:quintuplet"}
+        response = self.client.post(path, json={"videoId": "abcdefghijk", "markers": [marker]})
+        self.assertEqual(response.status_code, 201)
+        url = f"{path}/{response.json['id']}"
+        saved = self.client.get(url).json["markers"][0]
+        self.assertEqual((saved["modulationOld"], saved["modulationNew"]), ("1/8:triplet", "1/4:quintuplet"))
+        for value in ("1/1:straight", "1/2:dotted", "1/4:triplet", "1/8:quintuplet", "1/16:septuplet"):
+            result = self.client.put(url, json={"videoId": "abcdefghijk", "markers": [{**marker, "modulationOld": value}]})
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.json["markers"][0]["modulationOld"], value)
+        for changes in ({"modulationOld": "1/32:straight"}, {"modulationNew": "1/4:wrong"},
+                        {"modulationOld": None}, {"modulationNew": 1}):
+            self.assertEqual(self.client.put(url, json={"videoId": "abcdefghijk",
+                "markers": [{**marker, **changes}]}).status_code, 400)
+        missing = dict(marker)
+        del missing["modulationNew"]
+        self.assertEqual(self.client.put(url, json={"videoId": "abcdefghijk", "markers": [missing]}).status_code, 400)
+
     def test_rehearsal_figures_round_trip_without_changing_score_bars(self):
         path = "/clicktrack/api/tracks"
         sections = [{**self.payload["sections"][0], "figure": "  6A  ", "startBar": 42},

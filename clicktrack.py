@@ -36,6 +36,7 @@ ADVANCE_MODES = {"auto", "manual"}
 CLICK_MODES = {"beats", "units", "sub2", "sub3", "sub4", "silent"}
 VALID_DENOMINATORS = {1, 2, 4, 8, 16, 32}
 BEAT_UNIT_RE = re.compile(r"^(auto|[1-9]/(1|2|4|8|16|32))$")
+MODULATION_NOTE_RE = re.compile(r"^1/(1|2|4|8|16):(straight|dotted|triplet|quintuplet|septuplet)$")
 GROUPING_RE = re.compile(r"^\s*\d+(\s*\+\s*\d+)*\s*$")
 
 
@@ -299,6 +300,12 @@ def _apply_video_draft(draft, data):
             cleaned[-1]["rampAnchor"] = raw["rampAnchor"]
         if "endBpm" in raw:
             cleaned[-1]["endBpm"] = _text(raw["endBpm"], 32)
+        if "modulationOld" in raw or "modulationNew" in raw:
+            old, new = raw.get("modulationOld"), raw.get("modulationNew")
+            if not isinstance(old, str) or not isinstance(new, str) or not MODULATION_NOTE_RE.fullmatch(old) or not MODULATION_NOTE_RE.fullmatch(new):
+                abort(400, description="Choose valid note values on both sides of the metric modulation.")
+            cleaned[-1]["modulationOld"] = old
+            cleaned[-1]["modulationNew"] = new
         if "skip" in raw:
             skip = raw["skip"]
             if not isinstance(skip, (int, str)) or isinstance(skip, bool) or not re.fullmatch(r"\d{1,4}", str(skip)) or int(skip) > 9998:

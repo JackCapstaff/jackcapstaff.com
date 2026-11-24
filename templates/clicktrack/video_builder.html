@@ -124,8 +124,12 @@
           </select></label>
           <label id="builder-bpm-field" hidden>Starting BPM <input id="builder-bpm" type="number" min="10" max="400" step="0.01" placeholder="Use previous tempo"></label>
           <label id="builder-end-bpm-field" hidden>Ending BPM <input id="builder-endBpm" type="number" min="10" max="400" step="0.01"></label>
+          <label id="builder-modulation-toggle-field" hidden><span><input id="builder-modulation-enabled" type="checkbox"> Metric modulation to next section</span></label>
+          <label id="builder-modulation-old-field" hidden>Old note value <select id="builder-modulationOld"></select></label>
+          <label id="builder-modulation-new-field" hidden>Equals new note value <select id="builder-modulationNew"></select></label>
           <label class="builder-dialogue">On-screen dialogue / cue <textarea id="builder-dialogue" rows="2" maxlength="500"></textarea></label>
         </div>
+        <p id="builder-modulation-help" class="muted small" hidden>Old note at the ramp end equals the new note at the next section's start. Tuplets: 3 in the time of 2; 5 in 4; 7 in 4.</p>
         <p id="builder-skip-help" class="muted small">Applies to the span starting at this hit. Add the next score-bar hit point first.</p>
         <p class="muted small">For a timed pause, choose that tempo shape on the hit at the start of the pause. It stays silent, then counts into the next section using its starting tempo.</p>
         <div class="stage-tool-row">

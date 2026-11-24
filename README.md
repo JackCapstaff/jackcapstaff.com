@@ -113,6 +113,13 @@ section's start. The other endpoint is calculated from the hit times and beat
 count, converting beat units where necessary. If the result requires the
 opposite direction or a steady tempo, confirm before changing the shape.
 Declining preserves the last playable track while retaining the draft edits.
+When matching the next section, optionally enable **Metric modulation** and
+choose the old and new note values: the old note at the ramp end equals the
+new note at the following section's start. For example, old quaver = new
+crotchet with the next crotchet at 86 gives a ramp endpoint of crotchet 43.
+Straight, dotted, triplet (3:2), quintuplet (5:4) and septuplet (7:4) values
+are available from semibreves through semiquavers. The next section's tempo
+is still determined by its video timing; the modulation sets the ramp endpoint.
 Matching needs an independent neighbouring click-section tempo; circular
 dependencies and out-of-range tempos are reported. Tempo changes linearly
 over time, and clicks follow the resulting curve.

@@ -28,6 +28,19 @@
     ['auto', 'Auto'], ['1/2', 'Minim'], ['1/4', 'Crotchet ♩'], ['1/8', 'Quaver ♪'],
     ['1/16', 'Semiquaver'], ['3/4', 'Dotted minim'], ['3/8', 'Dotted crotchet ♩.'], ['3/16', 'Dotted quaver ♪.'],
   ];
+  const MODULATION_NOTES = [
+    ['1', 'Semibreve'], ['2', 'Minim'], ['4', 'Crotchet'], ['8', 'Quaver'], ['16', 'Semiquaver'],
+  ].flatMap(([den, label]) => [
+    ['straight', label], ['dotted', 'Dotted ' + label.toLowerCase()],
+    ['triplet', label + ' triplet (3:2)'], ['quintuplet', label + ' quintuplet (5:4)'],
+    ['septuplet', label + ' septuplet (7:4)'],
+  ].map(([kind, name]) => ['1/' + den + ':' + kind, name]));
+  function modulationNoteDuration(value) {
+    const option = MODULATION_NOTES.find(([key]) => key === value);
+    if (!option) throw new Error('Choose valid note values on both sides of the metric modulation.');
+    const [fraction, kind] = value.split(':'), den = Number(fraction.split('/')[1]);
+    return ({ straight: 1, dotted: 1.5, triplet: 2 / 3, quintuplet: 4 / 5, septuplet: 4 / 7 })[kind] / den;
+  }
   const UNIT_SYMBOL = {
     '1/1': 'semibreve', '1/2': 'minim', '1/4': '♩', '1/8': '♪', '1/16': 'semiquaver', '1/32': 'demisemiquaver',
     '3/2': 'dotted semibreve', '3/4': 'dotted minim', '3/8': '♩.', '3/16': '♪.', '3/32': 'dotted semiquaver',
@@ -2118,7 +2131,7 @@
 
   function exportVideoMarkersCsv() {
     const fields = ['label', 'time', 'bar', 'skip', 'num', 'den', 'unit', 'shape',
-      'bpm', 'rampAnchor', 'endBpm', 'dialogue', 'figure', 'visualCue'];
+      'bpm', 'rampAnchor', 'endBpm', 'modulationOld', 'modulationNew', 'dialogue', 'figure', 'visualCue'];
     const csvCell = (value) => {
       let text = String(value ?? '');
       if (/^[\s]*[=+\-@\t\r]/.test(text)) text = "'" + text;
@@ -2860,6 +2873,9 @@
             const from = beatUnitFrac(neighbour), to = beatUnitFrac(s);
             fixed = (anchor === 'previous' ? neighbour.bpmEnd ?? neighbour.bpm : neighbour.bpm)
               * (from.n / from.d) / (to.n / to.d);
+            if (anchor === 'next' && (a.modulationOld != null || a.modulationNew != null)) {
+              fixed *= modulationNoteDuration(a.modulationOld) / modulationNoteDuration(a.modulationNew);
+            }
           } else {
             const input = endAnchored ? a.endBpm : a.bpm;
             if (input === '' || input == null) throw new Error('Enter a ' + (endAnchored ? 'ending' : 'starting') + ' BPM for the ramp.');
@@ -2886,7 +2902,11 @@
           s.bpmEnd = roundedEnd;
           s.rampMode = 'linearTime';
         }
-        secs[i] = { section: s, average, hitPoint: a.label, endHitPoint: b.label, skip };
+        const modulation = (a.shape === 'accel' || a.shape === 'rall') && a.rampAnchor === 'next'
+          && a.modulationOld && a.modulationNew
+          ? MODULATION_NOTES.find(([value]) => value === a.modulationOld)[1] + ' = '
+            + MODULATION_NOTES.find(([value]) => value === a.modulationNew)[1] : '';
+        secs[i] = { section: s, average, hitPoint: a.label, endHitPoint: b.label, skip, modulation };
         resolving.delete(i);
         return secs[i];
       } catch (e) {
@@ -2921,7 +2941,7 @@
     builder.planValid = false;
     try {
       const plan = planVideoTrack(builder.markers, true);
-      for (const { section: s, average, hitPoint, endHitPoint, skip, pausePlan } of plan.secs) {
+      for (const { section: s, average, hitPoint, endHitPoint, skip, pausePlan, modulation } of plan.secs) {
         const li = document.createElement('li');
         li.textContent = 'Hit point ' + hitPoint + ' → ' + endHitPoint + ' · '
           + (s.figure ? figureLabel(s.figure) + ' · ' : '') + s.name + ' · ' + s.calcStart + ' → ' + s.calcEnd + ' · ' + s.bars + ' bars of '
@@ -2929,6 +2949,7 @@
             ? ' · Timed pause: ' + pausePlan.silence.toFixed(3) + 's silent, then ' + pausePlan.count + ' beats at next tempo'
             : ' · ' + unitLabel(s) + '=' + s.bpm)
           + (s.bpmEnd == null ? '' : ' → ' + s.bpmEnd + ' (average ' + average.toFixed(2) + ' BPM)')
+          + (modulation ? ' · ' + modulation : '')
           + (skip ? ' · ' + skip + ' score bar' + (skip === 1 ? '' : 's') + ' skipped before next hit' : '')
           + (s.visualCue ? ' · Visual cue at start' : '') + (s.visualEndCue ? ' · Visual cue at end' : '')
           + (s.notes ? ' · ' + s.notes : '');
@@ -3328,6 +3349,9 @@
       $('builder-' + field).value = field === 'rampAnchor'
         ? marker.rampAnchor || (marker.bpm ? 'start' : 'previous') : marker[field] ?? '';
     }
+    $('builder-modulation-enabled').checked = marker.modulationOld != null && marker.modulationNew != null;
+    $('builder-modulationOld').value = marker.modulationOld ?? '1/4:straight';
+    $('builder-modulationNew').value = marker.modulationNew ?? '1/4:straight';
     renderSelectedSkip();
     $('builder-visual-cue').checked = marker.visualCue === true;
     renderRampControls();
@@ -3437,6 +3461,10 @@
     $('builder-anchor-field').hidden = !ramp;
     $('builder-bpm-field').hidden = !ramp || anchor !== 'start';
     $('builder-end-bpm-field').hidden = !ramp || anchor !== 'end';
+    const modulation = ramp && anchor === 'next';
+    $('builder-modulation-toggle-field').hidden = !modulation;
+    $('builder-modulation-old-field').hidden = $('builder-modulation-new-field').hidden =
+      $('builder-modulation-help').hidden = !modulation || !$('builder-modulation-enabled').checked;
   }
 
   const roundMarkerTime = (time) => Math.round(time * 1000) / 1000;
@@ -3717,6 +3745,27 @@
     });
     $('builder-den').replaceChildren(...DENOMS.map((n) => new Option(n, n)));
     $('builder-unit').replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
+    for (const field of ['modulationOld', 'modulationNew']) {
+      $('builder-' + field).replaceChildren(...MODULATION_NOTES.map(([value, name]) => new Option(name, value)));
+      $('builder-' + field).addEventListener('change', (event) => {
+        builder.markers[builder.selected][field] = event.target.value;
+        builder.dirty = true;
+        renderVideoPlan();
+      });
+    }
+    $('builder-modulation-enabled').addEventListener('change', (event) => {
+      const marker = builder.markers[builder.selected];
+      if (event.target.checked) {
+        marker.modulationOld = $('builder-modulationOld').value;
+        marker.modulationNew = $('builder-modulationNew').value;
+      } else {
+        delete marker.modulationOld;
+        delete marker.modulationNew;
+      }
+      builder.dirty = true;
+      renderRampControls();
+      renderVideoPlan();
+    });
     $('btn-video-track').addEventListener('click', () => {
       builder.returnTrack = null;
       switchView('video');

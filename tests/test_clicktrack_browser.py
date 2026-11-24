@@ -277,13 +277,38 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.select_option("#builder-rampAnchor", "next")
                 saved = wait_saved(lambda t: t["sections"][0]["bpmEnd"] == 120)
                 self.assertEqual(saved["sections"][0]["bpm"], 83.18)
+                self.assertTrue(page.locator("#builder-modulation-enabled").is_visible())
+                page.check("#builder-modulation-enabled")
+                page.select_option("#builder-modulationOld", "1/8:straight")
+                saved = wait_saved(lambda t: t["sections"][0]["bpmEnd"] == 60)
+                self.assertEqual(saved["sections"][0]["bpm"], 143.18)
+                saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertEqual((saved_draft["markers"][0]["modulationOld"], saved_draft["markers"][0]["modulationNew"]),
+                                 ("1/8:straight", "1/4:straight"))
                 page.reload()
                 page.wait_for_function("document.querySelector('#track-select').options.length === 1")
                 page.click("button[data-view=edit]")
                 page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
                 self.assertEqual(page.locator("#builder-rampAnchor").input_value(), "next")
+                self.assertTrue(page.locator("#builder-modulation-enabled").is_checked())
+                self.assertEqual(page.locator("#builder-modulationOld").input_value(), "1/8:straight")
+                self.assertEqual(page.locator("#builder-modulationNew").input_value(), "1/4:straight")
+                with page.expect_download() as downloaded:
+                    page.click("#builder-export-csv")
+                import csv
+                with open(downloaded.value.path(), encoding="utf-8-sig", newline="") as stream:
+                    rows = list(csv.DictReader(stream))
+                self.assertEqual((rows[0]["modulationOld"], rows[0]["modulationNew"]),
+                                 ("1/8:straight", "1/4:straight"))
                 page.click("button[data-view=perform]")
                 self.assertEqual(page.locator("#d-secnum").text_content(), "Hit point 2")
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                page.uncheck("#builder-modulation-enabled")
+                saved = wait_saved(lambda t: t["sections"][0]["bpmEnd"] == 120)
+                restored_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertNotIn("modulationOld", restored_draft["markers"][0])
+                self.assertNotIn("modulationNew", restored_draft["markers"][0])
                 browser.close()
         finally:
             fixture.tearDown()
@@ -472,7 +497,8 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 self.assertEqual(rows[1]["bar"], "2")
                 self.assertEqual(rows[1]["dialogue"], '\'=SUM(1,2)\n"cue"')
                 self.assertEqual(set(rows[1]), {"label", "time", "bar", "skip", "num", "den", "unit", "shape",
-                                                "bpm", "rampAnchor", "endBpm", "dialogue", "figure", "visualCue"})
+                                                "bpm", "rampAnchor", "endBpm", "modulationOld", "modulationNew",
+                                                "dialogue", "figure", "visualCue"})
                 page.select_option("#builder-markers", "0")
                 self.assertTrue(page.locator("#builder-nudge-forward").is_disabled())
                 self.assertTrue(page.locator("#builder-nudge-back").is_disabled())
@@ -769,7 +795,8 @@ class ClickTrackBrowserTests(unittest.TestCase):
         try:
             marker = {"time": 0, "bar": "1", "num": "3", "den": "4", "unit": "auto",
                       "shape": "timedPause", "bpm": "94", "dialogue": "Cue", "figure": "7",
-                      "visualCue": True, "skip": "2", "label": "24A"}
+                      "visualCue": True, "skip": "2", "label": "24A",
+                      "modulationOld": "1/8:triplet", "modulationNew": "1/4:septuplet"}
             draft = fixture.client.post("/clicktrack/api/video-drafts", json={
                 "title": "Snowman cues", "videoId": "abcdefghijk", "markers": [marker],
             }).json
@@ -1401,4 +1428,41 @@ class ClickTrackBrowserTests(unittest.TestCase):
               ]);
               ramp = t.videoPlan().secs[1].section;
               assert(ramp.bpm === 90 && ramp.bpmEnd === 150, 'matching converts dotted beat to quarter beat');
+              const mod = {num:'4',den:'4',unit:'auto',bpm:'',dialogue:'',figure:'',skip:'0'};
+              const modulation = [
+                {...mod,time:0,bar:'1',label:'1',shape:'rall',rampAnchor:'next',
+                  modulationOld:'1/8:straight',modulationNew:'1/4:straight'},
+                {...mod,time:4.068,bar:'2',label:'2',shape:'steady'},
+                {...mod,time:6.859,bar:'3',label:'3',shape:'steady'},
+              ];
+              t.setMarkers(modulation);
+              let modPlan = t.videoPlan();
+              assert(Math.abs(modPlan.secs[0].section.bpm - 75) < 0.02
+                && Math.abs(modPlan.secs[0].section.bpmEnd - 43) < 0.02
+                && Math.abs(modPlan.secs[1].section.bpm - 86) < 0.02, 'quaver to crotchet example');
+              assert(modPlan.secs[0].modulation === 'Quaver = Crotchet', 'modulation shown in preview');
+              for (const [oldValue, newValue, factor] of [
+                ['1/4:triplet','1/4:straight', 2/3],
+                ['1/4:quintuplet','1/4:straight', 4/5],
+                ['1/4:septuplet','1/4:straight', 4/7],
+                ['1/8:dotted','1/4:straight', 3/4],
+                ['1/4:straight','1/8:straight', 2],
+              ]) {
+                modulation[0] = {...modulation[0], modulationOld:oldValue, modulationNew:newValue,
+                  shape:factor > 0.686 ? 'accel' : 'rall'};
+                modulation[1].time = factor > 1 ? 2 : 4.068;
+                modulation[2].time = modulation[1].time + 2.791;
+                t.setMarkers(modulation);
+                modPlan = t.videoPlan();
+                assert(Math.abs(modPlan.secs[0].section.bpmEnd - modPlan.secs[1].section.bpm * factor) < 0.011,
+                  'modulation ratio: ' + oldValue + ' = ' + newValue);
+              }
+              modulation[0] = {...modulation[0], shape:'rall', unit:'1/8',
+                modulationOld:'1/8:straight', modulationNew:'1/4:straight'};
+              modulation[1].time = 4.068;
+              modulation[2].time = 6.859;
+              t.setMarkers(modulation);
+              modPlan = t.videoPlan();
+              assert(Math.abs(modPlan.secs[0].section.bpmEnd - modPlan.secs[1].section.bpm) < 0.011,
+                'modulation converts differing section beat units');
             }""")
