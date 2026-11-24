@@ -50,6 +50,20 @@ class ClickTrackBrowserTests(unittest.TestCase):
                                 {...m,time:2,bar:'2',label:'2'}];
                               selectVideoMarker(0); setBuilderMediaControls(); renderVideoPlan();
                             },
+                            setupPause: () => {
+                              const m = {num:'3',den:'4',unit:'auto',bpm:'',dialogue:'',figure:'',skip:'0'};
+                              builder.markers = [{...m,time:0,bar:'175',label:'1',shape:'timedPause'},
+                                {...m,time:3,bar:'176',label:'2',shape:'steady'},
+                                {...m,time:4.915,bar:'177',label:'3',shape:'steady'}];
+                              selectVideoMarker(0); renderVideoPlan();
+                            },
+                            stage: (phase) => {
+                              current = {videoOffset:0, sections:[
+                                normSection({type:'timedPause',pauseDuration:3,bars:1,startBar:175}),
+                                normSection({type:'click',bpm:94,bars:1,num:3,den:4,startBar:176})
+                              ]};
+                              renderStage({secIdx:0, phase, bar:0, tick:0, sub:0, beatsLeft:2});
+                            },
                             media: previewTestMedia,
                           };
                           init();
@@ -62,16 +76,42 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.click("#track-actions summary")
                 page.click("#btn-video-track")
                 page.evaluate("window.previewTest.setup()")
+                page.wait_for_function("document.querySelector('#builder-metro-bar').textContent === '1'")
+                self.assertEqual(page.locator("#builder-metro-meter").inner_text(), "4/4")
+                self.assertEqual(page.locator("#builder-metro-tempo").inner_text(), "♩=120")
+                self.assertEqual(page.locator("#builder-metro-beats .beat.on").count(), 1)
+                page.evaluate("window.previewTest.media.currentTime = 0.6")
+                page.wait_for_function("document.querySelector('#builder-metro-beats .beat.on')?.dataset.u === '1'")
+                page.evaluate("window.previewTest.media.currentTime = 2.1")
+                page.wait_for_function("document.querySelector('#builder-metro-name').textContent.includes('Outside')")
+                page.evaluate("window.previewTest.media.currentTime = 0")
                 page.check("#builder-click-preview")
                 page.wait_for_function("document.querySelector('#builder-click-status').textContent.includes('ready')")
                 page.click("#builder-play")
                 page.wait_for_function("document.querySelector('#builder-click-status').textContent.includes('preview on')")
                 page.select_option("#builder-shape", "timedPause")
                 page.wait_for_function("document.querySelector('#builder-click-status').textContent.includes('unavailable')")
+                page.wait_for_function("document.querySelector('#builder-metro-name').textContent.includes('unavailable')")
                 page.select_option("#builder-shape", "steady")
                 page.wait_for_function("document.querySelector('#builder-click-status').textContent.includes('preview on')")
+                page.evaluate("window.previewTest.setupPause()")
+                page.wait_for_function("!document.querySelector('#builder-metro-fermata').hidden")
+                page.evaluate("window.previewTest.media.currentTime = 2")
+                page.wait_for_function("document.querySelector('#builder-metro-fermata').hidden")
+                page.evaluate("window.previewTest.media.currentTime = 0")
+                page.wait_for_function("!document.querySelector('#builder-metro-fermata').hidden")
                 page.click("button[data-view=edit]")
                 self.assertFalse(page.locator("#builder-click-preview").is_checked())
+                page.evaluate("window.previewTest.stage('timedPause')")
+                self.assertFalse(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                self.assertEqual(page.locator("#d-fermata-label").text_content(), "Timed pause · silent")
+                page.evaluate("window.previewTest.stage('timedCount')")
+                self.assertTrue(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                page.evaluate("window.previewTest.stage('pause')")
+                self.assertFalse(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                self.assertEqual(page.locator("#d-fermata-label").text_content(), "Waiting for pedal")
+                page.evaluate("window.previewTest.stage('play')")
+                self.assertTrue(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
                 self.assertEqual(errors, [])
         finally:
             fixture.tearDown()
@@ -85,7 +125,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
         self.assertIn(original, source)
         source = source.replace(original, """
           window.previewHooks = {
-            normal: normSection, events: builderClickEvents,
+            normal: normSection, events: builderClickEvents, state: builderMetronomeState,
             setup: (secs) => {
               const media = {currentTime:0, paused:false, seeking:false, readyState:4, playbackRate:1};
               const clicks = [];
@@ -122,6 +162,13 @@ class ClickTrackBrowserTests(unittest.TestCase):
               const pause = t.normal({type:'timedPause', pauseDuration:3.001, bars:1, calcStart:'0:02.000', calcEnd:'0:05.001'});
               const next = t.normal({bpm:94, bars:1, num:3, den:4, calcStart:'0:05.001', calcEnd:'0:06.916'});
               const secs = [first, pause, next];
+              assert(t.state(secs, -0.1) === null && t.state(secs, 6.916) === null, 'outside marked spans');
+              assert(t.state(secs, 0.6).tick === 1 && t.state(secs, 0.6).bar === 0, 'current beat');
+              const silence = t.state(secs, 2.1);
+              assert(silence.tick === -1 && silence.bpm === 94 && silence.status.includes('silent'), 'timed silence');
+              const count = t.state(secs, 5.001 - 120/94 + 0.001);
+              assert(count.status.includes('2 beats') && count.tick === 1, 'timed count-in');
+              assert(t.state(secs, 5.001).index === 2, 'following hit point');
               const events = Array.from(t.events(secs, 0));
               assert(events.length === 10, 'four regular, three count-in and three next beats');
               assert(near(events[4].time, 5.001 - 180/94), 'count-in timing');
@@ -133,6 +180,11 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 calcStart:'0:00.000',calcEnd:'0:03.000'});
               const rampEvents = Array.from(t.events([ramp], 0));
               assert(near(rampEvents[1].time, 2 / (120 + Math.sqrt(120**2 + (60**2-120**2)/4)) * 60), 'ramp timing');
+              const rampState = t.state([ramp], 1.5);
+              assert(rampState.bpm < 120 && rampState.bpm > 60, 'ramp tempo display');
+              const longSection = t.normal({bpm:120,bars:2,num:4,den:4,startBar:175,
+                calcStart:'0:00.000',calcEnd:'0:04.000'});
+              assert(t.state([longSection], 2.1).bar === 1, 'second bar');
               const {media, clicks} = t.setup(secs);
               t.tick();
               assert(clicks.length === 1 && near(clicks[0].time, 10), 'initial click');

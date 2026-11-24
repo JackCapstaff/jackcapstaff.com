@@ -43,6 +43,26 @@
         <p id="builder-click-status" class="muted small" role="status">Click preview is off.</p>
         <p id="builder-shortcuts" class="muted small"><kbd>Space</kbd> adds a hit point and pauses. <kbd>Enter</kbd> plays or pauses without changing any hit points. In <strong>Score bar</strong>, <kbd>Enter</kbd> keeps the bar number and resumes playback.</p>
       </fieldset>
+      <section class="builder-metronome stage" aria-label="Video metronome">
+        <div class="stage-secnum" id="builder-metro-section">Metronome</div>
+        <div class="builder-metro-name" id="builder-metro-name">Add hit points to see the metronome.</div>
+        <div class="builder-metro-notes" id="builder-metro-notes"></div>
+        <div class="stage-main">
+          <div class="stage-col"><div class="lbl">Bar</div><div class="big" id="builder-metro-bar">–</div><div class="sub" id="builder-metro-barof"></div></div>
+          <div class="stage-col"><div class="lbl">Meter</div><div class="big" id="builder-metro-meter">–</div><div class="sub" id="builder-metro-grouping"></div></div>
+          <div class="stage-col"><div class="lbl">Tempo</div><div class="big" id="builder-metro-tempo">–</div><div class="sub" id="builder-metro-tempo-sub"></div></div>
+        </div>
+        <div class="beats" id="builder-metro-beats" aria-hidden="true"></div>
+        <div class="fermata-indicator" id="builder-metro-fermata" hidden>
+          <svg viewBox="0 0 64 36" aria-hidden="true" focusable="false"><path d="M5 26 C10 1 54 1 59 26" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="27" r="4" fill="currentColor"/></svg>
+          <span>Timed pause · silent</span>
+        </div>
+        <div class="pendulum" id="builder-metro-pendulum" aria-hidden="true" hidden>
+          <div class="pendulum-rod" id="builder-metro-rod"><span class="pendulum-weight"></span></div>
+          <span class="pendulum-pivot"></span>
+        </div>
+        <div class="stage-next" id="builder-metro-status"></div>
+      </section>
       <div id="builder-timeline" hidden>
         <div class="stage-tool-row">
           <strong>Hit point timeline</strong>

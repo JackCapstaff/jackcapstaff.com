@@ -900,13 +900,8 @@
     return 0;
   }
 
-  function buildBeats(s, idx) {
-    const key = s ? [idx, s.type, s.num, s.den, s.grouping].join('|') : '';
-    if (key === beatsKey) return;
-    beatsKey = key;
-    litBeat = null;
-    const box = $('d-beats');
-    if (!s || s.type === 'pause') { box.innerHTML = ''; return; }
+  function beatMarkup(s) {
+    if (!s || s.type === 'pause') return '';
     let u = 0, html = '';
     groupsOf(s).forEach((n, gi) => {
       html += '<div class="beat-group">';
@@ -916,7 +911,15 @@
       }
       html += '</div>';
     });
-    box.innerHTML = html;
+    return html;
+  }
+
+  function buildBeats(s, idx) {
+    const key = s ? [idx, s.type, s.num, s.den, s.grouping].join('|') : '';
+    if (key === beatsKey) return;
+    beatsKey = key;
+    litBeat = null;
+    $('d-beats').innerHTML = beatMarkup(s);
   }
 
   function lightBeat(tick) {
@@ -931,6 +934,9 @@
     const stage = $('stage');
     stage.classList.toggle('paused', st.phase === 'pause');
     stage.classList.toggle('countin', st.phase === 'countin');
+    const fermata = $('d-fermata');
+    fermata.hidden = !s || !['pause', 'timedPause'].includes(st.phase);
+    $('d-fermata-label').textContent = st.phase === 'pause' ? 'Waiting for pedal' : 'Timed pause · silent';
     if (!s) {
       $('d-secnum').textContent = '';
       $('d-name').textContent = current ? 'No sections yet — add some in Edit' : 'Loading…';
@@ -1235,6 +1241,7 @@
 
   function frame() {
     if (!CFG.offline && !builder.youtube && !$('view-video').hidden && !$('builder-video').paused) reviewVideoPlayback();
+    if (!CFG.offline && !$('view-video').hidden) renderBuilderMetronome();
     if (E.playing && !E.suspended && ctx && visQ.length) {
       const now = ctx.currentTime;
       let latest = null, flash = false, ended = false, invalid = false;
@@ -1968,7 +1975,94 @@
     reviewTime: null, reviewAnchor: null, returnTrack: null, localTrack: null, localSnapshot: null,
   };
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'dialogue', 'figure'];
-  const builderClick = { plan: null, timer: null, cursor: null, next: null, anchor: null, sources: new Set(), revision: 0 };
+  const builderClick = { plan: null, error: '', timer: null, cursor: null, next: null, anchor: null, sources: new Set(), revision: 0 };
+  let builderBeatKey = '';
+  const builderBarStarts = new WeakMap();
+
+  function builderMetronomeState(secs, time) {
+    const index = secs.findIndex((s) => time >= parseTimecode(s.calcStart) && time < parseTimecode(s.calcEnd));
+    if (index < 0) return null;
+    const s = secs[index], start = parseTimecode(s.calcStart);
+    if (s.type === 'timedPause') {
+      const next = secs[index + 1], plan = timedPausePlan(s, next), elapsed = time - start;
+      const beat = elapsed < plan.silence ? -1 : Math.min(plan.count - 1, Math.floor((elapsed - plan.silence) / plan.beat));
+      const left = beat < 0 ? 0 : plan.count - beat;
+      const groups = groupsOf(next), group = beat < 0 ? -1 : (groups.length - left % groups.length) % groups.length;
+      const tick = group < 0 ? -1 : groups.slice(0, group).reduce((a, b) => a + b, 0);
+      const progress = beat < 0 ? 0 : clamp((elapsed - plan.silence - beat * plan.beat) / plan.beat, 0, 1);
+      return { index, section: s, info: next, bar: 0, tick,
+        status: beat < 0 ? 'Timed pause · silent' : 'Count-in · ' + left + ' beats to next section',
+        bpm: next.bpm, swing: beat < 0 ? null : (beat % 2 ? -34 : 34) * Math.cos(Math.PI * progress) };
+    }
+    let starts = builderBarStarts.get(s);
+    if (!starts) {
+      starts = [start];
+      for (let bar = 0; bar < s.bars; bar++) starts.push(starts[bar] + barSeconds(s, bar));
+      builderBarStarts.set(s, starts);
+    }
+    let lo = 0, hi = s.bars;
+    while (lo + 1 < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (starts[mid] <= time + 1e-8) lo = mid; else hi = mid;
+    }
+    let tickTime = starts[lo], tick = 0, tickEnd = tickTime;
+    const subN = subdivOf(s);
+    for (let t = 0; t < s.num; t++) {
+      let end = tickTime;
+      for (let sub = 0; sub < subN; sub++) end += stepSeconds(s, (lo + (t + sub / subN) / s.num) / s.bars, subN);
+      tick = t;
+      tickEnd = end;
+      if (time < end - 1e-8 || t === s.num - 1) break;
+      tickTime = end;
+    }
+    const group = groupIndexOf(s, tick), groups = groupsOf(s);
+    const firstTick = groups.slice(0, group).reduce((a, b) => a + b, 0);
+    let groupStart = starts[lo], groupEnd = groupStart;
+    for (let t = 0; t < firstTick + groups[group]; t++) {
+      for (let sub = 0; sub < subN; sub++) {
+        groupEnd += stepSeconds(s, (lo + (t + sub / subN) / s.num) / s.bars, subN);
+      }
+      if (t + 1 === firstTick) groupStart = groupEnd;
+    }
+    const progress = clamp((time - groupStart) / (groupEnd - groupStart), 0, 1);
+    const tempoProgress = clamp((lo + (tick + clamp((time - tickTime) / Math.max(1e-8, tickEnd - tickTime), 0, 1)) / s.num) / s.bars, 0, 1);
+    return { index, section: s, info: s, bar: lo, tick, bpm: bpmAt(s, tempoProgress),
+      status: 'Hit point ' + (s.hitPoint || '–') + (s.figure ? ' · ' + figureLabel(s.figure) : ''),
+      swing: (lo * groups.length + group) % 2 ? -34 * Math.cos(Math.PI * progress) : 34 * Math.cos(Math.PI * progress) };
+  }
+
+  function renderBuilderMetronome() {
+    const plan = builderClick.plan, media = builderMedia();
+    const state = plan && videoReady() ? builderMetronomeState(plan, media.currentTime) : null;
+    const section = state?.section, info = state?.info;
+    const text = (id, value) => { if ($(id).textContent !== String(value)) $(id).textContent = value; };
+    text('builder-metro-section', state ? 'Section ' + (state.index + 1) + ' of ' + plan.length : 'Metronome');
+    text('builder-metro-name', state ? sectionTitle(section, state.index)
+      : builderClick.error ? 'Metronome unavailable: ' + builderClick.error
+        : !videoReady() ? 'Load a video and add hit points.' : 'Outside the marked sections.');
+    text('builder-metro-notes', section?.notes || '');
+    text('builder-metro-bar', state ? (section.startBar || 1) + state.bar : '–');
+    text('builder-metro-barof', state ? section.type === 'timedPause' ? 'timed pause'
+      : (state.bar + 1) + ' of ' + section.bars : '');
+    text('builder-metro-meter', info ? info.num + '/' + info.den : '–');
+    const groups = info ? groupsOf(info) : [];
+    text('builder-metro-grouping', info ? (section.type === 'timedPause' ? 'next · ' : '')
+      + (groups.length !== info.num ? groups.join('+') : '') : '');
+    text('builder-metro-tempo', info ? unitLabel(info) + '=' + Math.round(state.bpm) : '–');
+    text('builder-metro-tempo-sub', info?.bpmEnd != null
+      ? Math.round(info.bpm) + ' → ' + Math.round(info.bpmEnd) + (info.bpmEnd > info.bpm ? ' accel.' : ' rit.')
+      : section?.type === 'timedPause' ? 'next section' : '');
+    text('builder-metro-status', state?.status || '');
+    $('builder-metro-fermata').hidden = !(section?.type === 'timedPause' && state.tick < 0);
+    const box = $('builder-metro-beats'), key = info ? [info.num, info.den, info.grouping].join('|') : '';
+    if (builderBeatKey !== key) { builderBeatKey = key; box.innerHTML = beatMarkup(info); }
+    box.hidden = prefs.beatVisual === 'pendulum';
+    $('builder-metro-pendulum').hidden = prefs.beatVisual === 'circles';
+    const active = box.querySelector('.beat.on');
+    const desired = state?.tick >= 0 ? box.querySelector('[data-u="' + state.tick + '"]') : null;
+    if (active !== desired) { active?.classList.remove('on'); desired?.classList.add('on'); }
+    $('builder-metro-rod').style.transform = 'rotate(' + (state?.swing ?? 0).toFixed(2) + 'deg)';
+  }
 
   function cancelBuilderClicks() {
     builderClick.sources.forEach((source) => source.stop());
@@ -2051,18 +2145,19 @@
   }
 
   function updateBuilderClickPlan(plan, error) {
-    if (!$('builder-click-preview').checked) return;
     cancelBuilderClicks();
     builderClick.plan = null;
+    builderClick.error = error || '';
     if (!plan) {
-      $('builder-click-status').textContent = 'Click preview unavailable: ' + error;
+      if ($('builder-click-preview').checked) $('builder-click-status').textContent = 'Click preview unavailable: ' + error;
       return;
     }
     try {
       builderClick.plan = mergeVideoSections(builder.returnTrack, plan.secs.map(({ section }) => section)).sections;
-      builderClickTick();
+      if ($('builder-click-preview').checked) builderClickTick();
     } catch (e) {
-      $('builder-click-status').textContent = 'Click preview unavailable: ' + e.message;
+      builderClick.error = e.message;
+      if ($('builder-click-preview').checked) $('builder-click-status').textContent = 'Click preview unavailable: ' + e.message;
     }
   }
 
@@ -2071,7 +2166,6 @@
     $('builder-click-preview').checked = false;
     clearInterval(builderClick.timer);
     builderClick.timer = null;
-    builderClick.plan = null;
     cancelBuilderClicks();
     $('builder-click-status').textContent = 'Click preview is off.';
   }

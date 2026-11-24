@@ -98,6 +98,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .beat.unit { width: clamp(14px, 2.6vw, 26px); height: clamp(14px, 2.6vw, 26px); }
 .beat.on { background: var(--beat-on); transform: scale(1.15); }
 .beat.down.on { background: var(--down-on); }
+.fermata-indicator { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--beat-on); font-weight: 700; }
+.fermata-indicator svg { width: 52px; height: 30px; flex: none; }
 .pendulum { position: relative; width: 130px; height: 75px; margin: 8px auto; overflow: hidden; }
 .pendulum-rod {
   position: absolute; bottom: 4px; left: calc(50% - 3px); width: 6px; height: 67px;
@@ -276,6 +278,15 @@ body.performance-mode .rehearsal-panel {
 }
 #builder-transport { min-width: 0; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 12px; }
 #builder-shortcuts { margin: 8px 0 0; }
+.builder-metronome { padding: 12px; margin-bottom: 12px; }
+.builder-metro-name { font-size: 20px; font-weight: 700; overflow-wrap: anywhere; }
+.builder-metro-notes { color: var(--beat-on); white-space: pre-wrap; overflow-wrap: anywhere; }
+.builder-metronome .stage-main { margin: 8px 0 4px; gap: 4px; }
+.builder-metronome .stage-col .big { font-size: clamp(24px, 4vw, 42px); }
+.builder-metronome .stage-col .sub { font-size: 13px; }
+.builder-metronome .beats { margin: 4px 0; min-height: 36px; gap: 4px; }
+.builder-metronome .beat { width: 24px; height: 24px; }
+.builder-metronome .beat.unit { width: 14px; height: 14px; }
 #builder-timeline { margin: 0 0 12px; }
 .builder-timeline-track { padding: 0 16px; }
 #builder-timeline-rail { position: relative; height: 64px; cursor: crosshair; }

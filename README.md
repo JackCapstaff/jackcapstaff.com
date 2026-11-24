@@ -25,6 +25,13 @@ otherwise new-section defaults apply. Invalid hit-point plans are reported
 and cannot be previewed until corrected. The click uses the selected click
 audio output and volume. YouTube playback and seeking are approximate; use a
 local video for tighter sync. The preview turns off when leaving the editor.
+The video editor also shows the current section, bar, meter, tempo and beat
+visuals at the video position, even when click preview is off. It uses the
+performance beat-visual preference and shows the next tempo during a timed
+pause; seeking or changing the draft updates the display.
+During the silent part of a timed pause, a fermata appears in both displays;
+the performance display also shows it for a pedal-controlled cue. It disappears
+when the count-in or next section begins.
 
 To revise a draft, select a hit point and play from there. **Pause at existing
 hit points** stops playback at the next marker so you can edit, move or remove
