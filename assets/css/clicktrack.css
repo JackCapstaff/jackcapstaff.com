@@ -216,6 +216,9 @@ body.performance-mode .rehearsal-panel {
 .video-builder-meta, .video-builder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 12px; }
 .video-builder-fields { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); margin-bottom: 12px; }
 #view-video label { display: grid; gap: 4px; }
+#builder-selected-section-editor .sec { grid-template-columns: minmax(0, 1fr); margin: 0; padding: 0; border: 0; background: transparent; }
+#builder-selected-section-editor .sec .info, #builder-selected-section-editor .section-timing { grid-column: 1; }
+#builder-back-to-top { position: fixed; right: 12px; bottom: calc(90px + env(safe-area-inset-bottom)); z-index: 24; }
 #builder-video { display: block; width: 100%; max-height: 55vh; background: #000; margin-bottom: 8px; }
 #builder-youtube iframe { display: block; width: 100%; aspect-ratio: 16 / 9; min-height: 200px; border: 0; margin-bottom: 8px; }
 .practice-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }

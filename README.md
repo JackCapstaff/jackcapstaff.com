@@ -65,9 +65,14 @@ appears in the track list. Open that track and select **Edit** to see its full
 track editor alongside the video and hit points. Collapse **Video and hit
 points** when you want to focus on sections. The video itself stays on YouTube,
 requires internet access and must allow embedding.
+Use **Export hit points (.csv)** in the video editor to download all current
+hit-point fields, including unsaved edits. Times are in seconds; fields beginning
+with spreadsheet formula characters are prefixed with an apostrophe for safety.
 Selecting an opening hit point also shows its matching track section directly
-under its hit-point controls. Its fields mirror the full track editor; timing
-derived from the video remains editable through the hit-point controls.
+within its hit-point controls. Shared settings appear once, alongside the
+additional track settings; timing derived from the video remains editable
+through the hit-point controls. **Jump to full track section** scrolls to the
+matching section, and **Back to video** returns to the video area.
 Closing points and points without a unique saved section do not have section
 settings until a valid plan creates or matches them.
 In the full track editor, choose a section under **Jump to section** and press

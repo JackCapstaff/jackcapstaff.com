@@ -460,6 +460,19 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 self.assertEqual(page.locator("#builder-time").input_value(), "0:02.100")
                 page.click("#builder-nudge-back")
                 self.assertEqual(page.locator("#builder-time").input_value(), "0:02.000")
+                page.locator("#builder-dialogue").fill('=SUM(1,2)\n"cue"')
+                page.locator("#builder-dialogue").dispatch_event("change")
+                with page.expect_download() as downloaded:
+                    page.click("#builder-export-csv")
+                import csv
+                with open(downloaded.value.path(), encoding="utf-8-sig", newline="") as stream:
+                    rows = list(csv.DictReader(stream))
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(rows[1]["time"], "2")
+                self.assertEqual(rows[1]["bar"], "2")
+                self.assertEqual(rows[1]["dialogue"], '\'=SUM(1,2)\n"cue"')
+                self.assertEqual(set(rows[1]), {"label", "time", "bar", "skip", "num", "den", "unit", "shape",
+                                                "bpm", "rampAnchor", "endBpm", "dialogue", "figure", "visualCue"})
                 page.select_option("#builder-markers", "0")
                 self.assertTrue(page.locator("#builder-nudge-forward").is_disabled())
                 self.assertTrue(page.locator("#builder-nudge-back").is_disabled())
@@ -547,7 +560,18 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 full_fields = page.locator('#sections [data-row="0"] [data-f]').evaluate_all("(els) => els.map(el => el.dataset.f)")
                 selected_fields = page.locator("#builder-selected-section-editor [data-f]").evaluate_all("(els) => els.map(el => el.dataset.f)")
                 self.assertEqual(selected_fields, full_fields)
+                self.assertEqual(page.locator("#builder-marker #builder-selected-section-editor").count(), 1)
+                for field in ("type", "hitPoint", "figure", "visualCue", "beatUnit", "num", "den", "startBar", "notes"):
+                    self.assertTrue(page.locator(f'#builder-selected-section-editor [data-f="{field}"]').is_hidden(), field)
+                self.assertTrue(page.locator("#builder-figure").is_visible())
+                self.assertTrue(page.locator('#builder-selected-section-editor [data-f="grouping"]').is_visible())
                 self.assertTrue(page.locator('#builder-selected-section-editor [data-f="bpm"]').is_disabled())
+                page.click("#builder-jump-section")
+                self.assertEqual(page.evaluate("document.activeElement.dataset.f"), "name")
+                self.assertEqual(page.evaluate("document.activeElement.closest('[data-row]').dataset.row"), "0")
+                page.click("#builder-back-to-top")
+                self.assertEqual(page.evaluate("document.activeElement.parentElement.id"), "builder-video-panel")
+                self.assertEqual(page.evaluate("document.activeElement.tagName"), "SUMMARY")
                 page.click("#builder-video-panel > summary")
                 self.assertFalse(page.locator("#builder-markers").is_visible())
                 self.assertTrue(page.locator("#builder-track-editor #sections").is_visible())
@@ -572,6 +596,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.select_option("#builder-markers", "1")
                 self.assertIn("opening hit point", page.locator("#builder-selected-section-status").text_content())
                 self.assertEqual(page.locator("#builder-selected-section-editor [data-f]").count(), 0)
+                self.assertTrue(page.locator("#builder-jump-section").is_disabled())
                 page.select_option("#builder-markers", "0")
                 page.locator('#builder-selected-section-editor [data-f="grouping"]').fill("")
                 wait_for_track(lambda t: t["sections"][0]["grouping"] == "")
@@ -630,7 +655,8 @@ class ClickTrackBrowserTests(unittest.TestCase):
                     if saved_draft["markers"][0]["bar"] == "2":
                         break
                     page.wait_for_timeout(100)
-                self.assertEqual(saved_draft["markers"][0]["bar"], "2")
+                self.assertEqual(saved_draft["markers"][0]["bar"], "2",
+                                 "Save status: " + page.locator("#save-status").text_content() + " errors: " + repr(errors))
                 self.assertEqual(next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"]
                                       if t["id"] == track["id"])["sections"][0]["startBar"], 1)
                 page.select_option("#builder-markers", "1")

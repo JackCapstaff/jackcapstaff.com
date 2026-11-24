@@ -91,6 +91,7 @@
     </section>
     <section aria-label="Hit points">
       <label>Hit points <select id="builder-markers" size="5"></select></label>
+      <button type="button" class="btn small" id="builder-export-csv">Export hit points (.csv)</button>
       <fieldset id="builder-marker">
         <legend id="builder-marker-title">Hit point details</legend>
         <label><span><input id="builder-renumber-following" type="checkbox" aria-describedby="builder-renumber-help"> Renumber following hit points</span></label>
@@ -131,16 +132,15 @@
           <button class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           <button class="btn small danger" id="builder-remove">Remove hit point</button>
           <button type="button" class="btn small" id="builder-perform" hidden>Perform from here</button>
+          <button type="button" class="btn small" id="builder-jump-section" disabled>Jump to full track section</button>
         </div>
-      </fieldset>
-      <section id="builder-selected-section" aria-label="Selected hit point track section">
-        <h2>Track section for this hit point</h2>
         <p id="builder-selected-section-status" class="muted small" role="status"></p>
         <div id="builder-selected-section-editor"></div>
-      </section>
+      </fieldset>
     </section>
   </div>
   </details>
+  <button type="button" class="btn small" id="builder-back-to-top">Back to video</button>
   <section id="builder-track-editor" aria-label="Linked track editor" hidden>
     <h2>Linked track editor</h2>
     <p class="muted small">Changes save automatically. Edit hit points to change video-derived timing; the last playable track is kept if timing is incomplete.</p>

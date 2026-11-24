@@ -2116,6 +2116,19 @@
   let builderBeatKey = '';
   const builderBarStarts = new WeakMap();
 
+  function exportVideoMarkersCsv() {
+    const fields = ['label', 'time', 'bar', 'skip', 'num', 'den', 'unit', 'shape',
+      'bpm', 'rampAnchor', 'endBpm', 'dialogue', 'figure', 'visualCue'];
+    const csvCell = (value) => {
+      let text = String(value ?? '');
+      if (/^[\s]*[=+\-@\t\r]/.test(text)) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+    const rows = [fields, ...builder.markers.map((marker) => fields.map((field) => marker[field]))];
+    download(new Blob(['\ufeff' + rows.map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n'],
+      { type: 'text/csv;charset=utf-8' }), slug($('builder-title').value.trim() || 'hit-points') + '-hit-points.csv');
+  }
+
   function builderMetronomeState(secs, time) {
     const index = secs.findIndex((s) => time >= parseTimecode(s.calcStart) && time < parseTimecode(s.calcEnd));
     if (index < 0) return null;
@@ -3356,6 +3369,9 @@
   function renderSelectedVideoSection() {
     const host = $('builder-selected-section-editor'), status = $('builder-selected-section-status');
     host.replaceChildren();
+    const jump = $('builder-jump-section');
+    jump.disabled = true;
+    delete jump.dataset.index;
     const track = builder.returnTrack, marker = builder.markers[builder.selected];
     if (!track || track !== current || !track.videoDraftId || builder.draftId !== track.videoDraftId) {
       status.textContent = 'A linked track section will appear here after the track is created or linked.';
@@ -3386,8 +3402,16 @@
         else target.value = input.value;
       }
     });
+    for (const field of ['type', 'hitPoint', 'figure', 'visualCue', 'beatUnit', 'num', 'den', 'startBar', 'notes']) {
+      const input = copy.querySelector('[data-f="' + field + '"]');
+      if (input) input.closest('label').hidden = true;
+    }
+    copy.querySelector('.num').hidden = true;
+    copy.querySelector('.acts').hidden = true;
     host.append(copy);
-    status.textContent = 'Changes here also appear in the full track editor. Video-derived timing is edited above using hit points.';
+    jump.dataset.index = indices[0];
+    jump.disabled = false;
+    status.textContent = 'Additional track settings for this hit point. Changes also appear in the full track editor.';
   }
 
   function syncSelectedVideoSection(index, input) {
@@ -3666,9 +3690,26 @@
   function wireVideoBuilder() {
     const video = $('builder-video'), fileInput = $('builder-file');
     wireVideoTimeline();
+    $('builder-export-csv').addEventListener('click', exportVideoMarkersCsv);
     $('builder-selected-section-editor').addEventListener('input', onFieldInput);
     $('builder-selected-section-editor').addEventListener('change', onFieldInput);
     $('builder-selected-section-editor').addEventListener('click', onSectionAction);
+    $('builder-jump-section').addEventListener('click', () => {
+      const index = $('builder-jump-section').dataset.index;
+      const row = index === undefined ? null : $('sections').querySelector('[data-row="' + index + '"]');
+      if (!row) {
+        $('builder-selected-section-status').textContent = 'The track section is not available. Close the quick editor and try again.';
+        return;
+      }
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.querySelector('[data-f="name"]')?.focus({ preventScroll: true });
+    });
+    $('builder-back-to-top').addEventListener('click', () => {
+      $('builder-video-panel').open = true;
+      const summary = $('builder-video-panel').querySelector('summary');
+      summary.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      summary.focus({ preventScroll: true });
+    });
     $('builder-marker').addEventListener('focusout', () => {
       setTimeout(() => {
         if (!editingVideoMarker() && !$('view-video').hidden) renderSelectedVideoSection();
