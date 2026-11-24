@@ -6,6 +6,85 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class ClickTrackBrowserTests(unittest.TestCase):
+    def test_combined_backup_export_and_restore(self):
+        import json
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"time": 0, "bar": "1", "num": "3", "den": "4", "unit": "auto",
+                      "shape": "timedPause", "bpm": "94", "dialogue": "Cue", "figure": "7",
+                      "visualCue": True, "skip": "2", "label": "24A"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "title": "Snowman cues", "videoId": "abcdefghijk", "markers": [marker],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                **fixture.payload, "videoDraftId": draft["id"], "videoOffset": 12.5,
+                "sections": [{**fixture.payload["sections"][0], "compoundClickDefaulted": True}],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                page = browser.new_page(accept_downloads=True)
+                fail_draft = {"enabled": False}
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    if fail_draft["enabled"] and parsed.path == f"/clicktrack/api/video-drafts/{draft['id']}":
+                        route.fulfill(status=503, content_type="application/json", body='{"error":"Unavailable"}')
+                        return
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    response = fixture.client.open(path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                page.route("http://clicktrack.test/**", route_request)
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.click("#track-actions summary")
+                with page.expect_download() as downloaded:
+                    page.click("#btn-export-track")
+                data = json.loads(Path(downloaded.value.path()).read_text(encoding="utf-8"))
+                self.assertEqual(data["version"], 2)
+                self.assertEqual(data["sections"], track["sections"])
+                self.assertEqual(data["videoOffset"], 12.5)
+                self.assertEqual(data["videoDraft"], {key: draft[key] for key in ("title", "videoId", "markers")})
+                page.locator("#import-file").set_input_files({
+                    "name": "backup.json", "mimeType": "application/json", "buffer": json.dumps(data).encode(),
+                })
+                page.wait_for_function("document.querySelector('#toast').textContent.includes('Restored a new track')")
+                tracks = fixture.client.get("/clicktrack/api/tracks").json["tracks"]
+                restored = next(item for item in tracks if item["id"] != track["id"])
+                self.assertEqual(restored["sections"], track["sections"])
+                self.assertNotEqual(restored["videoDraftId"], draft["id"])
+                restored_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{restored['videoDraftId']}").json
+                self.assertEqual({key: restored_draft[key] for key in ("title", "videoId", "markers")}, data["videoDraft"])
+                page.select_option("#track-select", str(track["id"]))
+                fail_draft["enabled"] = True
+                page.click("#track-actions summary")
+                page.click("#btn-export-track")
+                page.wait_for_function("document.querySelector('#toast').textContent.includes('Could not export backup')")
+                self.assertIn("Unavailable", page.locator("#toast").text_content())
+                page.locator("#import-file").set_input_files({
+                    "name": "old.json", "mimeType": "application/json",
+                    "buffer": json.dumps({"format": "jackcapstaff-clicktrack", "version": 1,
+                                          "title": "Legacy", "sections": track["sections"]}).encode(),
+                })
+                page.wait_for_function("document.querySelector('#toast').textContent.includes('Imported 1 track')")
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_video_editor_preview_control(self):
         from urllib.parse import urlsplit
         from playwright.sync_api import Error, sync_playwright
@@ -64,6 +143,25 @@ class ClickTrackBrowserTests(unittest.TestCase):
                               ]};
                               renderStage({secIdx:0, phase, bar:0, tick:0, sub:0, beatsLeft:2});
                             },
+                            figures: (secs) => {
+                              current = {videoOffset:0, sections:secs.map(normSection)};
+                              renderRehearsalList();
+                            },
+                            cueCountIn: () => {
+                              current = {videoOffset:0, sections:[
+                                normSection({type:'pause'}),
+                                normSection({type:'click',countIn:1})
+                              ]};
+                              ctx = {currentTime:10};
+                              E.nextTime = 10; E.phase = 'pause'; E.phaseStart = 10;
+                              visQ.length = 0;
+                              leaveCue(1);
+                              playClick = () => {};
+                              step();
+                              renderStage(visQ[0]);
+                            },
+                            nextCueTick: () => { step(); renderStage(visQ[visQ.length - 1]); },
+                            visual: value => { prefs.beatVisual = value; renderBeatVisual(); renderBuilderMetronome(); },
                             media: previewTestMedia,
                           };
                           init();
@@ -97,21 +195,93 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.evaluate("window.previewTest.setupPause()")
                 page.wait_for_function("!document.querySelector('#builder-metro-fermata').hidden")
                 page.evaluate("window.previewTest.media.currentTime = 2")
+                page.wait_for_function("document.querySelector('#builder-metro-fermata-label').textContent === 'Count-in after pause'")
+                self.assertFalse(page.locator("#builder-metro-fermata").is_hidden())
+                for visual in ("circles", "pendulum", "both"):
+                    page.evaluate("(visual) => window.previewTest.visual(visual)", visual)
+                    self.assertTrue(page.locator("#builder-metro-fermata").is_visible())
+                    if visual != "circles":
+                        pendulum = page.locator("#builder-metro-pendulum").bounding_box()
+                        fermata = page.locator("#builder-metro-fermata").bounding_box()
+                        self.assertLessEqual(pendulum["x"] + pendulum["width"], fermata["x"])
+                page.evaluate("window.previewTest.media.currentTime = 3.1")
                 page.wait_for_function("document.querySelector('#builder-metro-fermata').hidden")
                 page.evaluate("window.previewTest.media.currentTime = 0")
                 page.wait_for_function("!document.querySelector('#builder-metro-fermata').hidden")
                 page.click("button[data-view=edit]")
                 self.assertFalse(page.locator("#builder-click-preview").is_checked())
+                page.click("button[data-view=perform]")
                 page.evaluate("window.previewTest.stage('timedPause')")
                 self.assertFalse(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
                 self.assertEqual(page.locator("#d-fermata-label").text_content(), "Timed pause · silent")
                 page.evaluate("window.previewTest.stage('timedCount')")
-                self.assertTrue(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                self.assertFalse(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                self.assertEqual(page.locator("#d-fermata-label").text_content(), "Count-in after pause")
+                for visual in ("circles", "pendulum", "both"):
+                    page.evaluate("(visual) => window.previewTest.visual(visual)", visual)
+                    for width in (1200, 390):
+                        page.set_viewport_size({"width": width, "height": 800})
+                        self.assertTrue(page.locator("#d-fermata").is_visible())
+                        fermata = page.locator("#d-fermata").bounding_box()
+                        countin = page.locator("#d-countin").bounding_box()
+                        self.assertGreaterEqual(countin["y"], fermata["y"] + fermata["height"])
+                        if visual != "circles":
+                            pendulum = page.locator("#d-pendulum").bounding_box()
+                            self.assertLessEqual(pendulum["x"] + pendulum["width"], fermata["x"])
+                        page.evaluate("""() => {
+                          document.body.classList.add('performance-mode');
+                          document.querySelector('.perform-layout').classList.add('with-video');
+                        }""")
+                        self.assertEqual(page.locator("#d-countin").evaluate("(el) => getComputedStyle(el).position"), "static")
+                        page.evaluate("""() => {
+                          document.body.classList.remove('performance-mode');
+                          document.querySelector('.perform-layout').classList.remove('with-video');
+                        }""")
                 page.evaluate("window.previewTest.stage('pause')")
                 self.assertFalse(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
                 self.assertEqual(page.locator("#d-fermata-label").text_content(), "Waiting for pedal")
                 page.evaluate("window.previewTest.stage('play')")
                 self.assertTrue(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                page.evaluate("window.previewTest.cueCountIn()")
+                self.assertFalse(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                self.assertEqual(page.locator("#d-fermata-label").text_content(), "Count-in after pause")
+                for _ in range(4):
+                    page.evaluate("window.previewTest.nextCueTick()")
+                self.assertTrue(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                page.evaluate("window.previewTest.stage('countin')")
+                self.assertTrue(page.locator("#d-fermata").evaluate("(el) => el.hidden"))
+                page.evaluate("""() => window.previewTest.figures([
+                  {startBar: 90, bars: 1, hitPoint: '1'},
+                  {startBar: 100, bars: 1, hitPoint: '2', figure: '6'},
+                  {startBar: 102, bars: 1, hitPoint: '3'},
+                  {startBar: 105, bars: 1, hitPoint: '4'},
+                  {startBar: 107, bars: 1, hitPoint: '5', figure: '7'},
+                  {startBar: 110, bars: 1, hitPoint: '6'},
+                  {type:'pause', name:'Cue'},
+                ])""")
+                rows = page.locator("#rehearsal-list .rehearsal-point")
+                self.assertEqual(rows.nth(0).locator(".rehearsal-columns > span").nth(1).text_content(), "6 − 10")
+                self.assertEqual(rows.nth(2).locator(".rehearsal-columns > span").nth(1).text_content(), "6 + 2")
+                self.assertEqual(rows.nth(3).locator(".rehearsal-columns > span").nth(1).text_content(), "7 − 2")
+                self.assertIn("2 bars before Figure 7", rows.nth(3).get_attribute("aria-label"))
+                self.assertEqual(rows.nth(5).locator(".rehearsal-columns > span").nth(1).text_content(), "7 + 3")
+                self.assertEqual(rows.nth(6).locator(".rehearsal-columns > span").nth(1).text_content(), "—")
+                page.evaluate("""() => window.previewTest.figures([
+                  {startBar: 1, bars: 2, figure: 'A'},
+                  {startBar: 5, bars: 1},
+                  {startBar: 9, bars: 1, figure: 'B'},
+                  {startBar: 9, bars: 1},
+                  {startBar: 9, bars: 1, figure: 'C'},
+                  {startBar: 8, bars: 1},
+                  {type:'pause', figure:'Cue figure'},
+                ])""")
+                self.assertEqual(rows.nth(1).locator(".rehearsal-columns > span").nth(1).text_content(), "A + 4")
+                self.assertIn("4 bars after Figure A", rows.nth(1).get_attribute("aria-label"))
+                self.assertEqual(rows.nth(3).locator(".rehearsal-columns > span").nth(1).text_content(), "B")
+                self.assertEqual(rows.nth(5).locator(".rehearsal-columns > span").nth(1).text_content(), "A + 7")
+                self.assertEqual(rows.nth(6).locator(".rehearsal-columns > span").nth(1).text_content(), "Cue figure")
+                page.evaluate("window.previewTest.figures([{startBar:1,bars:1}])")
+                self.assertEqual(rows.nth(0).locator(".rehearsal-columns > span").nth(1).text_content(), "—")
                 self.assertEqual(errors, [])
         finally:
             fixture.tearDown()

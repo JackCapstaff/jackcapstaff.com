@@ -29,9 +29,9 @@ The video editor also shows the current section, bar, meter, tempo and beat
 visuals at the video position, even when click preview is off. It uses the
 performance beat-visual preference and shows the next tempo during a timed
 pause; seeking or changing the draft updates the display.
-During the silent part of a timed pause, a fermata appears in both displays;
-the performance display also shows it for a pedal-controlled cue. It disappears
-when the count-in or next section begins.
+During a timed pause and its count-in, a fermata appears beside the pendulum
+in both displays. The performance display also shows it during a pedal-held
+cue and its count-in. It disappears when normal playback begins.
 
 To revise a draft, select a hit point and play from there. **Pause at existing
 hit points** stops playback at the next marker so you can edit, move or remove
@@ -53,6 +53,17 @@ your account, then use **Saved YouTube drafts** to reopen them on another
 device. Save again after making changes. The video itself stays on YouTube,
 requires internet access and must allow embedding. Local files are not uploaded
 and their drafts stay in the current tab.
+
+For a portable backup, select the track and choose **Track actions → Export
+track backup (.json)**. If a saved YouTube draft is linked, the file includes
+both the track and the last saved draft: the video ID and all hit-point data,
+including times, bars, labels, meter, beat unit, tempo shape, dialogue, figures,
+skips and visual cues. Save any video draft changes first; export fails rather
+than silently omitting a linked draft if it cannot be loaded. A track without
+a linked draft exports as a track-only backup. The video itself is not included.
+To restore a combined backup, sign in online and choose **Load track (.json)**.
+This creates a new track and a new linked draft without changing the originals.
+Older track-only JSON files can still be imported.
 
 **Create click track** makes a separate track in the normal editor; the finished
 track does not need the video. For YouTube, this also saves and links the draft.
@@ -155,7 +166,11 @@ dotted crotchet = 60 shows **Slower (-30 BPM)**, with a beat-unit change.
 
 Enter an optional **Rehearsal figure** (for example `6` or `A`) on a section in
 Edit, or on the opening video hit point for that section. Figures appear in the
-**Rehearsal points** list alongside their score bars.
+**Rehearsal points** list alongside their score bars. Between figures the list
+shows the nearest figure in bold with a signed score-bar offset: `7 − 3`
+means three bars before figure 7, and `6 + 2` means two bars after figure 6.
+Equal distances use the preceding figure. Skipped score bars are counted by
+their printed bar numbers; cue-only sections without score bars have no offset.
 
 Compound meters such as 6/8 and 9/8 default to **Every meter unit**, so all
 quavers sound. Existing compound sections previously set to **Beats only**

@@ -4,6 +4,7 @@ Click track / programmable metronome.
   /clicktrack/                    performance + editor page (login required)
   /clicktrack/api/tracks          GET list, POST create        (login required)
   /clicktrack/api/tracks/<id>     PUT update, DELETE           (login required)
+  /clicktrack/api/tracks/restore-backup POST linked backup     (login required)
   /clicktrack/api/video-drafts  GET list, POST create         (login required)
   /clicktrack/api/video-drafts/<id> GET, PUT, DELETE           (login required)
 
@@ -16,6 +17,8 @@ from pathlib import Path
 
 from flask import Blueprint, abort, current_app, jsonify, make_response, render_template, request, send_from_directory
 from flask_login import current_user, login_required
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.exceptions import HTTPException
 
 clicktrack_bp = Blueprint("clicktrack", __name__, url_prefix="/clicktrack")
 
@@ -297,6 +300,36 @@ def _apply_video_draft(draft, data):
     draft.video_id = video_id
     draft.title = _text(data.get("title"), 255) or "YouTube video " + video_id
     draft.markers = cleaned
+
+
+@clicktrack_bp.post("/api/tracks/restore-backup")
+@_api_login_required
+def api_restore_backup():
+    db, ClickTrack = _models()
+    data = _json_body()
+    if data.get("format") != "jackcapstaff-clicktrack" or data.get("version") != 2:
+        abort(400, description="Unsupported linked backup format.")
+    draft_data = data.get("videoDraft")
+    if not isinstance(draft_data, dict):
+        abort(400, description="The backup must contain a YouTube draft.")
+    if ClickTrack.query.filter_by(user_id=current_user.id).count() >= MAX_TRACKS_PER_USER:
+        abort(400, description="Track limit reached.")
+    if current_app.ClickTrackVideoDraft.query.filter_by(user_id=current_user.id).count() >= MAX_VIDEO_DRAFTS:
+        abort(400, description="Draft limit reached. Delete an unused draft before restoring another.")
+    track = ClickTrack(user_id=current_user.id)
+    draft = current_app.ClickTrackVideoDraft(user_id=current_user.id)
+    try:
+        _apply_payload(track, {key: value for key, value in data.items() if key != "videoDraftId"})
+        _apply_video_draft(draft, draft_data)
+        db.session.add(draft)
+        db.session.flush()
+        track.video_draft_id = draft.id
+        db.session.add(track)
+        db.session.commit()
+    except (HTTPException, SQLAlchemyError):
+        db.session.rollback()
+        raise
+    return jsonify(track.to_dict()), 201
 
 
 @clicktrack_bp.route("/api/video-drafts", methods=["GET", "POST"])

@@ -313,6 +313,57 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertIsNone(reloaded["videoDraftId"])
         self.assertEqual(reloaded["sections"], track["sections"])
 
+    def test_restore_combined_backup_creates_independent_linked_pair(self):
+        marker = {"time": 0, "bar": "175", "num": "3", "den": "4", "unit": "auto",
+                  "shape": "timedPause", "bpm": "94", "dialogue": "Cue", "figure": "7",
+                  "visualCue": True, "skip": "2", "label": "24A"}
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "title": "Original draft", "videoId": "abcdefghijk", "markers": [marker],
+        }).json
+        original = self.client.post("/clicktrack/api/tracks", json={
+            **self.payload, "videoDraftId": draft["id"], "videoOffset": 12.5,
+        }).json
+        backup = {"format": "jackcapstaff-clicktrack", "version": 2, **original,
+                  "videoDraft": {key: draft[key] for key in ("title", "videoId", "markers")}}
+        restored = self.client.post("/clicktrack/api/tracks/restore-backup", json=backup)
+        self.assertEqual(restored.status_code, 201)
+        self.assertNotEqual(restored.json["id"], original["id"])
+        self.assertNotEqual(restored.json["videoDraftId"], draft["id"])
+        self.assertEqual(restored.json["sections"], original["sections"])
+        self.assertEqual(restored.json["videoOffset"], 12.5)
+        restored_draft = self.client.get(f"/clicktrack/api/video-drafts/{restored.json['videoDraftId']}").json
+        self.assertEqual({key: restored_draft[key] for key in ("title", "videoId", "markers")}, backup["videoDraft"])
+        self.assertEqual(self.client.get(f"/clicktrack/api/video-drafts/{draft['id']}").json, draft)
+
+    def test_restore_invalid_backup_creates_nothing(self):
+        marker = {"time": 0, "den": "4", "unit": "auto", "shape": "steady"}
+        backup = {"format": "jackcapstaff-clicktrack", "version": 2, **self.payload,
+                  "videoDraft": {"title": "Draft", "videoId": "abcdefghijk", "markers": [marker]}}
+        for invalid in (
+            {**backup, "videoDraft": {**backup["videoDraft"], "videoId": "invalid"}},
+            {**backup, "sections": [{"type": "timedPause", "pauseDuration": 0}]},
+            {**backup, "version": 3},
+            {**backup, "videoDraft": None},
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(self.client.post("/clicktrack/api/tracks/restore-backup", json=invalid).status_code, 400)
+                self.assertEqual(self.client.get("/clicktrack/api/tracks").json["tracks"], [])
+                self.assertEqual(self.client.get("/clicktrack/api/video-drafts").json["drafts"], [])
+        self.assertEqual(self.app.test_client().post("/clicktrack/api/tracks/restore-backup", json=backup).status_code, 401)
+
+    def test_restore_rolls_back_if_commit_fails(self):
+        from unittest.mock import patch
+        from sqlalchemy.exc import SQLAlchemyError
+
+        marker = {"time": 0, "den": "4", "unit": "auto", "shape": "steady"}
+        backup = {"format": "jackcapstaff-clicktrack", "version": 2, **self.payload,
+                  "videoDraft": {"videoId": "abcdefghijk", "markers": [marker]}}
+        with patch.object(self.db.session, "commit", side_effect=SQLAlchemyError("Database failure")):
+            with self.assertRaises(SQLAlchemyError):
+                self.client.post("/clicktrack/api/tracks/restore-backup", json=backup)
+        self.assertEqual(self.client.get("/clicktrack/api/tracks").json["tracks"], [])
+        self.assertEqual(self.client.get("/clicktrack/api/video-drafts").json["drafts"], [])
+
     def test_youtube_draft_round_trip_across_sessions(self):
         path = "/clicktrack/api/video-drafts"
         marker = {"time": 0, "bar": "", "num": "4", "den": "4", "unit": "auto",

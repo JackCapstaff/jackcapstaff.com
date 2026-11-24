@@ -487,7 +487,7 @@
 
   // ----------------------------------------------------------------- engine
   // bar/tick/sub describe the next step to schedule.
-  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0, filmCountIn: false, swingSide: 1, startBarOffset: 0, countBpm: 120, timedRemaining: 0, timedBeat: 0 };
+  const E = { playing: false, suspended: false, secIdx: 0, phase: 'stopped', bar: 0, tick: 0, sub: 0, nextTime: 0, queued: null, countIn: 0, phaseStart: 0, filmCountIn: false, countInFromPause: false, swingSide: 1, startBarOffset: 0, countBpm: 120, timedRemaining: 0, timedBeat: 0 };
   const clock = { start: 0, elapsed: 0, videoStart: 0 };
   let transportBusy = false;
   const visQ = [];
@@ -542,6 +542,7 @@
       type, time: E.nextTime, secIdx: E.secIdx, phase: E.phase, bar: E.bar, tick: E.tick, sub: E.sub, queued: E.queued, countIn: E.countIn,
       phaseStart: E.phaseStart,
       filmCountIn: E.filmCountIn,
+      countInFromPause: E.countInFromPause,
       startBarOffset: E.startBarOffset,
     }, extra || {}));
   }
@@ -552,6 +553,7 @@
     E.bar = 0; E.tick = 0; E.sub = 0; E.countIn = 0;
     E.startBarOffset = 0;
     E.filmCountIn = false;
+    E.countInFromPause = false;
     if (idx < 0 || idx >= secs.length) { E.phase = 'end'; pushVis('end'); return; }
     E.secIdx = idx;
     const s = secs[idx];
@@ -837,6 +839,7 @@
     E.queued = null;
     E.nextTime = Math.max(ctx.currentTime + 0.06, E.nextTime);
     enterSection(idx, false);
+    E.countInFromPause = E.phase === 'countin';
   }
 
   function jumpTo(idx) {
@@ -935,8 +938,11 @@
     stage.classList.toggle('paused', st.phase === 'pause');
     stage.classList.toggle('countin', st.phase === 'countin');
     const fermata = $('d-fermata');
-    fermata.hidden = !s || !['pause', 'timedPause'].includes(st.phase);
-    $('d-fermata-label').textContent = st.phase === 'pause' ? 'Waiting for pedal' : 'Timed pause · silent';
+    const fermataCounting = st.phase === 'timedCount' || (st.phase === 'countin' && st.countInFromPause);
+    fermata.hidden = !s || !(['pause', 'timedPause'].includes(st.phase) || fermataCounting);
+    stage.classList.toggle('show-fermata', !fermata.hidden);
+    $('d-fermata-label').textContent = fermataCounting ? 'Count-in after pause'
+      : st.phase === 'pause' ? 'Waiting for pedal' : 'Timed pause · silent';
     if (!s) {
       $('d-secnum').textContent = '';
       $('d-name').textContent = current ? 'No sections yet — add some in Edit' : 'Loading…';
@@ -1138,6 +1144,26 @@
     }
   }
 
+  function nearestRehearsalFigure(secs, bars, index) {
+    const section = secs[index], bar = bars[index];
+    if (section.figure) return { figure: section.figure, offset: 0 };
+    if (bar == null) return null;
+    let best = null;
+    secs.forEach((candidate, i) => {
+      if (!candidate.figure || bars[i] == null) return;
+      const offset = bar - bars[i];
+      if ((i < index && offset < 0) || (i > index && offset > 0)) return;
+      if (!best || Math.abs(offset) < Math.abs(best.offset)
+        || (Math.abs(offset) === Math.abs(best.offset) && (
+          (i < index && best.index > index)
+          || ((i < index) === (best.index < index) && Math.abs(i - index) < Math.abs(best.index - index))
+        ))) {
+        best = { figure: candidate.figure, offset, index: i };
+      }
+    });
+    return best;
+  }
+
   function renderRehearsalList() {
     const list = $('rehearsal-list'), secs = sections();
     const bars = startBars(sections());
@@ -1176,12 +1202,24 @@
       const hit = section.hitPoint || (bars[i] != null && bars.filter((bar) => bar === bars[i]).length === 1
         ? rehearsalLabels.get(bars[i]) : '') || '';
       const location = bars[i] == null ? 'Cue' : String(bars[i]);
-      const label = (hit ? 'Hit point ' + hit + ' · ' : '') + (section.figure ? figureLabel(section.figure) + ' · ' : '')
+      const nearest = nearestRehearsalFigure(secs, bars, i);
+      const offsetText = nearest && nearest.offset ? Math.abs(nearest.offset) + ' bar'
+        + (Math.abs(nearest.offset) === 1 ? '' : 's') + (nearest.offset < 0 ? ' before ' : ' after ') + figureLabel(nearest.figure)
+        : nearest ? figureLabel(nearest.figure) : '';
+      const label = (hit ? 'Hit point ' + hit + ' · ' : '') + (offsetText ? offsetText + ' · ' : '')
         + (bars[i] == null ? 'Cue' : 'Bar ' + location) + ' · ' + sectionTitle(section, i);
       const cells = button.firstElementChild.children;
-      [hit || '—', section.figure || '—', location].forEach((value, column) => {
-        if (cells[column].textContent !== value) cells[column].textContent = value;
-      });
+      if (cells[0].textContent !== (hit || '—')) cells[0].textContent = hit || '—';
+      if (cells[2].textContent !== location) cells[2].textContent = location;
+      const figureCell = cells[1], figure = nearest?.figure || '—';
+      const offset = nearest?.offset ? (nearest.offset > 0 ? ' + ' : ' − ') + Math.abs(nearest.offset) : '';
+      if (figureCell.dataset.figure !== figure || figureCell.dataset.offset !== offset) {
+        const bold = document.createElement('strong'), suffix = document.createElement('span');
+        bold.className = 'rehearsal-figure'; bold.textContent = figure;
+        suffix.className = 'rehearsal-offset'; suffix.textContent = offset;
+        figureCell.replaceChildren(bold, suffix);
+        figureCell.dataset.figure = figure; figureCell.dataset.offset = offset;
+      }
       button.setAttribute('aria-label', label);
       button.disabled = false;
       row.classList.toggle('current', i === index);
@@ -1441,10 +1479,28 @@
 
   function slug(s) { return String(s || 'click-track').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'click-track'; }
 
-  function exportTrack() {
+  async function exportTrack() {
     if (!current) return;
-    const data = { format: 'jackcapstaff-clicktrack', version: 1, title: current.title, notes: current.notes, videoOffset: current.videoOffset, sections: current.sections };
-    download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), slug(current.title) + '.clicktrack.json');
+    const track = current;
+    if (track._preview) { toast('Save the video draft and track before exporting a backup.'); return; }
+    const data = JSON.parse(JSON.stringify({ format: 'jackcapstaff-clicktrack', version: 1, title: track.title, notes: track.notes, videoOffset: track.videoOffset, sections: track.sections }));
+    try {
+      if (track.videoDraftId) {
+        if (CFG.offline || !CFG.authenticated) throw new Error('Sign in online to include the linked YouTube draft.');
+        if (builder.draftId === track.videoDraftId && builder.dirty
+          && !window.confirm('The open video draft has unsaved changes. Export the last saved draft instead?')) return;
+        const draft = await draftRequest('GET', track.videoDraftId);
+        if (typeof draft.videoId !== 'string' || typeof draft.title !== 'string' || !Array.isArray(draft.markers)) {
+          throw new Error('The saved YouTube draft is invalid.');
+        }
+        data.version = 2;
+        data.videoDraft = { title: draft.title, videoId: draft.videoId, markers: draft.markers };
+      }
+      download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), slug(data.title) + '.clicktrack.json');
+      toast(data.videoDraft ? 'Backup exported with the saved YouTube draft.' : 'Track-only backup exported; no YouTube draft is linked.');
+    } catch (e) {
+      toast('Could not export backup: ' + e.message);
+    }
   }
 
   function download(blob, filename) {
@@ -1636,26 +1692,42 @@
     }
   }
 
-  function importFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        const list = Array.isArray(data) ? data : Array.isArray(data.tracks) ? data.tracks : [data];
-        const made = list.filter((x) => x && Array.isArray(x.sections)).map((x) => {
-          const t = makeTrack(x.title || file.name.replace(/\.json$/i, ''), x.sections, x.notes);
-          t.videoOffset = num(x.videoOffset, 0, 0, 86400);
-          return t;
-        });
-        if (!made.length) throw new Error('no sections found');
-        made.forEach((t) => { tracks.push(t); markDirty(t); });
-        selectTrack(made[0].id);
-        toast('Imported ' + made.length + ' track' + (made.length === 1 ? '' : 's'));
-      } catch (e) {
-        toast('Could not import: ' + e.message);
+  async function importFile(file) {
+    try {
+      const data = JSON.parse(await file.text());
+      const hasDraft = (item) => item && Object.prototype.hasOwnProperty.call(item, 'videoDraft');
+      if (data && !Array.isArray(data) && data.format === 'jackcapstaff-clicktrack' && data.version > 2) {
+        throw new Error('This backup version is not supported.');
       }
-    };
-    reader.readAsText(file);
+      if (data && !Array.isArray(data) && (data.version === 2 || hasDraft(data))) {
+        if (data.format !== 'jackcapstaff-clicktrack' || data.version !== 2 || !data.videoDraft) {
+          throw new Error('Invalid track and YouTube draft backup.');
+        }
+        if (CFG.offline || !CFG.authenticated) throw new Error('Sign in online to restore the track and YouTube draft together.');
+        const restored = await api('POST', '/restore-backup', data);
+        const track = normTrack(restored);
+        tracks.push(track);
+        cacheLocal();
+        selectTrack(track.id);
+        toast('Restored a new track and linked YouTube draft.');
+        return;
+      }
+      const list = Array.isArray(data) ? data : Array.isArray(data.tracks) ? data.tracks : [data];
+      if (list.some((item) => item && (item.version === 2 || hasDraft(item)))) {
+        throw new Error('Import a track and YouTube draft backup as a single file.');
+      }
+      const made = list.filter((x) => x && Array.isArray(x.sections)).map((x) => {
+        const t = makeTrack(x.title || file.name.replace(/\.json$/i, ''), x.sections, x.notes);
+        t.videoOffset = num(x.videoOffset, 0, 0, 86400);
+        return t;
+      });
+      if (!made.length) throw new Error('no sections found');
+      made.forEach((t) => { tracks.push(t); markDirty(t); });
+      selectTrack(made[0].id);
+      toast('Imported ' + made.length + ' track' + (made.length === 1 ? '' : 's'));
+    } catch (e) {
+      toast('Could not import: ' + e.message);
+    }
   }
 
   async function deleteTrack() {
@@ -2053,7 +2125,8 @@
       ? Math.round(info.bpm) + ' → ' + Math.round(info.bpmEnd) + (info.bpmEnd > info.bpm ? ' accel.' : ' rit.')
       : section?.type === 'timedPause' ? 'next section' : '');
     text('builder-metro-status', state?.status || '');
-    $('builder-metro-fermata').hidden = !(section?.type === 'timedPause' && state.tick < 0);
+    $('builder-metro-fermata').hidden = section?.type !== 'timedPause';
+    text('builder-metro-fermata-label', state?.tick >= 0 ? 'Count-in after pause' : 'Timed pause · silent');
     const box = $('builder-metro-beats'), key = info ? [info.num, info.den, info.grouping].join('|') : '';
     if (builderBeatKey !== key) { builderBeatKey = key; box.innerHTML = beatMarkup(info); }
     box.hidden = prefs.beatVisual === 'pendulum';

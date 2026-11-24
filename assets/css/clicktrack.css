@@ -98,7 +98,9 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .beat.unit { width: clamp(14px, 2.6vw, 26px); height: clamp(14px, 2.6vw, 26px); }
 .beat.on { background: var(--beat-on); transform: scale(1.15); }
 .beat.down.on { background: var(--down-on); }
-.fermata-indicator { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--beat-on); font-weight: 700; }
+.metronome-visuals { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.metronome-visuals .pendulum { flex: none; margin: 8px 0; }
+.fermata-indicator { display: flex; align-items: center; justify-content: center; min-width: 0; gap: 10px; color: var(--beat-on); font-weight: 700; }
 .fermata-indicator svg { width: 52px; height: 30px; flex: none; }
 .pendulum { position: relative; width: 130px; height: 75px; margin: 8px auto; overflow: hidden; }
 .pendulum-rod {
@@ -160,6 +162,8 @@ body.performance-mode .rehearsal-panel {
 .rehearsal-header.with-edit { padding-right: 67px; }
 .rehearsal-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
 .rehearsal-columns span { min-width: 0; overflow-wrap: anywhere; }
+.rehearsal-figure { font-size: 1.15em; font-weight: 800; }
+.rehearsal-offset { font-size: .85em; font-weight: 600; white-space: nowrap; }
 .rehearsal-list { display: grid; gap: 4px; max-height: 65vh; max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain; }
 .rehearsal-row { display: flex; gap: 4px; border: 2px solid transparent; border-radius: 10px; }
 .rehearsal-row.current { border-color: var(--green); background: var(--panel2); }
@@ -260,7 +264,7 @@ body.performance-mode .rehearsal-panel {
   .with-video .beat-group { gap: 3px; padding: 0 2px; }
   .with-video .beat { width: 13px; height: 13px; }
   .with-video .beat.unit { width: 7px; height: 7px; }
-  .with-video .pendulum { width: 90px; height: 48px; margin: 2px auto; }
+  .with-video .pendulum { width: 90px; height: 48px; margin: 2px 0; }
   .with-video .pendulum-rod { height: 42px; }
   .with-video .stage-next, .with-video .stage-feedback { font-size: 12px; margin-top: 2px; }
   .with-video .stage-countin { border-radius: 0; background: rgb(0 0 0 / 80%); }
@@ -276,6 +280,12 @@ body.performance-mode .rehearsal-panel {
   .with-video .transport .btn { flex: 0 1 auto; min-height: 44px; padding: 6px 10px; font-size: 14px; }
   .with-video .practice-actions { grid-area: actions; }
 }
+.stage.show-fermata .stage-countin,
+body.performance-mode .with-video .stage.show-fermata .stage-countin {
+  position: static; margin: 4px 0; padding: 0; background: transparent;
+}
+.stage.show-fermata .stage-countin .n { font-size: clamp(32px, 5vw, 60px); }
+.stage.show-fermata .stage-countin .t { font-size: 13px; }
 #builder-transport { min-width: 0; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 12px; }
 #builder-shortcuts { margin: 8px 0 0; }
 .builder-metronome { padding: 12px; margin-bottom: 12px; }
