@@ -204,6 +204,14 @@ def clicktrack_index():
     return render_template("clicktrack/index.html")
 
 
+@clicktrack_bp.get("/presentation/")
+@login_required
+def presentation():
+    response = make_response(render_template("clicktrack/presentation.html"))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @clicktrack_bp.get("/offline/")
 def offline_performance():
     assets = Path(current_app.static_folder)

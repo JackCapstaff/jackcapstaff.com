@@ -6,6 +6,118 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class ClickTrackBrowserTests(unittest.TestCase):
+    def test_presentation_window_and_performance_layout(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "title": "Presentation", "videoId": "abcdefghijk",
+                "markers": [{**marker, "time": 0, "bar": "1", "label": "1"},
+                            {**marker, "time": 8, "bar": "5", "label": "2"}],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Presentation", "videoDraftId": draft["id"],
+                "sections": [{"startBar": 1, "bars": 4, "bpm": 120, "hitPoint": "1"}],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                context = browser.new_context(viewport={"width": 1280, "height": 720})
+                context.add_init_script("""
+                  window.mockPlayers = [];
+                  window.YT = {Player: function(frame, config) {
+                    this.time = 0; this.state = 2; this.muted = true; this.seeks = [];
+                    this.getDuration = () => 20;
+                    this.getCurrentTime = () => this.time;
+                    this.getPlayerState = () => this.state;
+                    this.getPlaybackRate = () => 1;
+                    this.seekTo = time => { this.time = time; this.seeks.push(time); };
+                    this.pauseVideo = () => { this.state = 2; };
+                    this.playVideo = () => { this.state = 1; };
+                    this.mute = () => { this.muted = true; };
+                    this.unMute = () => { this.muted = false; };
+                    this.destroy = () => {};
+                    window.mockPlayers.push(this);
+                    setTimeout(() => config.events.onReady({target: this}), 0);
+                  }};
+                """)
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    response = fixture.client.open(path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                context.route("http://clicktrack.test/**", route_request)
+                context.route("https://www.youtube-nocookie.com/**", lambda route: route.abort())
+                page = context.new_page()
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.select_option("#track-select", str(track["id"]))
+                page.wait_for_function("!document.querySelector('#presentation-open').disabled")
+                for width, height in ((1280, 720), (375, 812)):
+                    page.set_viewport_size({"width": width, "height": height})
+                    for fullscreen in (False, True):
+                        page.evaluate("(on) => document.body.classList.toggle('performance-mode', on)", fullscreen)
+                        page.evaluate("document.getElementById('rehearsal-panel').open = false")
+                        self.assertTrue(page.locator("#rehearsal-panel > summary").is_visible())
+                        self.assertEqual(page.locator("#rehearsal-panel").evaluate("(el) => getComputedStyle(el).position"), "fixed")
+                        page.locator("#rehearsal-panel > summary").click()
+                        page.wait_for_function("document.getElementById('rehearsal-panel').open")
+                        self.assertTrue(page.locator("#rehearsal-bar").is_visible(),
+                                        f"width={width} fullscreen={fullscreen} " + page.locator("#rehearsal-panel").evaluate("(el) => el.outerHTML.slice(0,200)"))
+                        page.wait_for_timeout(200)
+                        page.locator("#rehearsal-panel > summary").click()
+                        page.wait_for_function("!document.getElementById('rehearsal-panel').open")
+                        sizes = page.evaluate("""() => ['d-bar','d-meter'].map(id =>
+                          parseFloat(getComputedStyle(document.getElementById(id)).fontSize))""")
+                        self.assertGreater(sizes[0], sizes[1])
+                page.evaluate("document.body.classList.remove('performance-mode')")
+                page.set_viewport_size({"width": 1280, "height": 720})
+                with page.expect_popup() as popup_info:
+                    page.click("#presentation-open")
+                popup = popup_info.value
+                page.wait_for_function("document.querySelector('#presentation-status').textContent.includes('Presentation ready')")
+                self.assertEqual(popup.locator("#presentation-player iframe").count(), 1)
+                self.assertEqual(popup.locator("#practice-visual-cues").count(), 0)
+                page.check("#practice-sound")
+                page.wait_for_function("window.mockPlayers[0].muted === false")
+                page.select_option("#presentation-audio", "audience")
+                page.wait_for_function("window.mockPlayers[0].muted === true")
+                popup.wait_for_function("window.mockPlayers[0].muted === false")
+                page.click("#btn-play")
+                popup.wait_for_function("window.mockPlayers[0].state === 1")
+                page.click("#btn-play")
+                popup.wait_for_function("window.mockPlayers[0].state === 2")
+                page.click("#practice-resync")
+                popup.wait_for_function("window.mockPlayers[0].seeks.length >= 2")
+                popup.close()
+                page.wait_for_function("document.querySelector('#presentation-status').textContent.includes('closed')")
+                page.wait_for_function("window.mockPlayers[0].muted === false")
+                with page.expect_popup() as popup_info:
+                    page.click("#presentation-open")
+                popup = popup_info.value
+                page.wait_for_function("document.querySelector('#presentation-status').textContent.includes('Presentation ready')")
+                page.uncheck("#practice-enable")
+                popup.wait_for_event("close")
+                context.close()
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_video_bar_change_updates_both_adjacent_sections(self):
         from urllib.parse import urlsplit
         from playwright.sync_api import Error, sync_playwright
@@ -117,6 +229,8 @@ class ClickTrackBrowserTests(unittest.TestCase):
                     this.seekTo = time => { window.mockTime = time; };
                     this.pauseVideo = () => { window.mockState = 2; };
                     this.playVideo = () => { window.mockState = 1; };
+                    this.mute = () => {};
+                    this.unMute = () => {};
                     this.destroy = () => {};
                     setTimeout(() => config.events.onReady({target: this}), 0);
                   }};

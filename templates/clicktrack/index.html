@@ -169,9 +169,12 @@
             <button type="button" class="btn small" id="practice-resync" disabled>Resync to clicks</button>
             <label><input type="checkbox" id="practice-sound"> Play film audio</label>
             <label><input type="checkbox" id="practice-show-cues" checked> Show streamers and punches</label>
+            <button type="button" class="btn small" id="presentation-open" disabled>Open presentation window</button>
+            <label>Film audio output <select id="presentation-audio"><option value="conductor">Conductor window</option><option value="audience">Presentation window</option></select></label>
           </div>
           <p class="muted small">Start video from beginning rolls the film from 0:00 and counts down every beat that fits before the first musical cue. Regular Start uses the selected section’s saved count-in. YouTube sync is approximate. Film audio uses your system output.</p>
           <p id="practice-status" class="muted small" role="status"></p>
+          <p id="presentation-status" class="muted small" role="status"></p>
         </div>
       </div>
     </section>
@@ -179,7 +182,7 @@
     </div>
 
     <details id="rehearsal-panel" class="rehearsal-panel">
-      <summary>Rehearsal points</summary>
+      <summary>Find section / rehearsal points</summary>
       <button type="button" class="btn small" id="rehearsal-play">Start</button>
       <form id="rehearsal-bar-form" class="stage-tool-row">
         <label>Start from score bar <input id="rehearsal-bar" type="number" min="1" max="99999" step="1" inputmode="numeric" required></label>
@@ -307,7 +310,8 @@
       authenticated: {{ 'true' if not offline and current_user.is_authenticated else 'false' }},
       userKey: {{ (('u' ~ current_user.id) if not offline and current_user.is_authenticated else 'anon') | tojson }},
       apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }},
-      {% if not offline %}videoDrafts: {{ url_for('clicktrack.api_video_drafts') | tojson }},{% endif %}
+      {% if not offline %}videoDrafts: {{ url_for('clicktrack.api_video_drafts') | tojson }},
+      presentation: {{ url_for('clicktrack.presentation') | tojson }},{% endif %}
       offlinePage: {{ url_for('clicktrack.offline_performance') | tojson }},
       offlineWorker: {{ url_for('clicktrack.offline_worker') | tojson }}
     };

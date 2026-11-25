@@ -33,6 +33,20 @@ During a timed pause and its count-in, a fermata appears beside the pendulum
 in both displays. The performance display also shows it during a pedal-held
 cue and its count-in. It disappears when normal playback begins.
 
+The **Find section / rehearsal points** panel stays available in both normal
+and fullscreen performance views. Use it to pause and restart
+at a section or score bar.
+
+For an audience display, enable video in Perform and choose **Open presentation
+window**. Move that window to the audience display and make it fullscreen using
+the browser's fullscreen controls. It shows only the video, without streamers
+or punches; playback follows the conductor window. Choose **Conductor window**
+or **Presentation window** for film audio and enable **Play film audio**.
+Allow pop-ups and, if prompted, allow playback in the presentation window.
+YouTube seeking and synchronization are approximate; check both windows before
+performing. Closing the presentation window returns film audio to the conductor
+window. The presentation closes when you leave Perform or disable video.
+
 To revise a draft, select a hit point and play from there. **Pause just before each
 hit point** stops playback at the next marker so you can edit, move or remove
 it. Untick **Pause just before each hit point** to play through them. With

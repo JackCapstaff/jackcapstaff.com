@@ -2565,6 +2565,84 @@
   }
 
   let practice = null;
+  const presentation = { window: null, connected: false, ready: false, timer: null, connectTimer: null };
+
+  function applyPracticeSound() {
+    const audience = $('presentation-audio').value === 'audience' && presentation.ready
+      && presentation.window && !presentation.window.closed;
+    practice?.media?.mute(!$('practice-sound').checked || audience);
+  }
+
+  function sendPresentationState() {
+    const target = presentation.window, source = practice;
+    if (!target || target.closed) {
+      if (target) {
+        presentation.window = null;
+        presentation.connected = presentation.ready = false;
+        clearInterval(presentation.timer);
+        clearTimeout(presentation.connectTimer);
+        presentation.timer = null;
+        applyPracticeSound();
+        $('presentation-status').textContent = 'Presentation window closed. Film audio uses the conductor window.';
+      }
+      return;
+    }
+    if (!presentation.connected || !source?.media || !source.presentationSource) return;
+    target.postMessage({ channel: 'clicktrack-presentation', type: 'state', source: source.presentationSource,
+      time: source.videoTime ?? 0, key: source.syncKey ?? 'stopped',
+      playing: !!source.playing && !E.suspended && E.playing,
+      muted: !presentation.ready || !$('practice-sound').checked || $('presentation-audio').value !== 'audience',
+    }, window.location.origin);
+  }
+
+  function closePresentation(restoreAudio = true) {
+    const target = presentation.window;
+    if (target && !target.closed) target.postMessage({ channel: 'clicktrack-presentation', type: 'close' }, window.location.origin);
+    presentation.window = null;
+    presentation.connected = presentation.ready = false;
+    clearInterval(presentation.timer);
+    clearTimeout(presentation.connectTimer);
+    presentation.timer = null;
+    if (restoreAudio) applyPracticeSound();
+    $('presentation-status').textContent = '';
+  }
+
+  function openPresentation() {
+    if (!practice?.media || !practice.presentationSource) return;
+    if (presentation.window && !presentation.window.closed) { presentation.window.focus(); return; }
+    const target = window.open(CFG.presentation, 'clicktrack-presentation', 'popup,width=960,height=600');
+    if (!target) { $('presentation-status').textContent = 'The presentation window was blocked. Allow pop-ups and try again.'; return; }
+    presentation.window = target;
+    presentation.connected = presentation.ready = false;
+    $('presentation-status').textContent = 'Opening presentation window…';
+    clearInterval(presentation.timer);
+    presentation.timer = setInterval(sendPresentationState, 250);
+    presentation.connectTimer = setTimeout(() => {
+      if (presentation.window === target && !presentation.connected) {
+        $('presentation-status').textContent = 'Presentation window did not connect. Close it and try again.';
+      }
+    }, 15000);
+  }
+
+  function onPresentationMessage(event) {
+    if (event.origin !== window.location.origin || event.source !== presentation.window
+      || event.data?.channel !== 'clicktrack-presentation') return;
+    if (event.data.type === 'connected') {
+      presentation.connected = true;
+      clearTimeout(presentation.connectTimer);
+      sendPresentationState();
+    } else if (event.data.type === 'ready') {
+      presentation.ready = true;
+      applyPracticeSound();
+      $('presentation-status').textContent = 'Presentation ready. Video synchronization is approximate.';
+      sendPresentationState();
+    } else if (event.data.type === 'error') {
+      presentation.ready = false;
+      applyPracticeSound();
+      $('presentation-status').textContent = 'Presentation: ' + event.data.message;
+      sendPresentationState();
+    }
+  }
 
   function clearPracticeCues() {
     cueRoute++;
@@ -2608,6 +2686,7 @@
   }
 
   function closePracticeVideo() {
+    closePresentation(false);
     const source = practice;
     practice = null;
     if (source) {
@@ -2621,6 +2700,7 @@
     $('practice-visual-cues').hidden = true;
     $('practice-resync').disabled = true;
     $('practice-from-start').disabled = true;
+    $('presentation-open').disabled = true;
   }
 
   function showPracticeVideo() {
@@ -2697,7 +2777,8 @@
       if (practice !== source) return;
       clearTimeout(source.timeout);
       source.media = media;
-      media.mute(!$('practice-sound').checked);
+      applyPracticeSound();
+      $('presentation-open').disabled = false;
       $('practice-resync').disabled = false;
       $('practice-from-start').disabled = !sections().length;
       status.textContent = 'Ready. Use the click track’s Start / Pause controls.';
@@ -2709,6 +2790,7 @@
       const local = !track.videoDraftId && (builder.localTrack === track || track._previewLocal) && builder.url;
       $('practice-picture').classList.toggle('local-video', !!local);
       if (local) {
+        source.presentationSource = { kind: 'local', url: builder.url, key: builder.url };
         const video = document.createElement('video');
         video.playsInline = true;
         video.preload = 'metadata';
@@ -2727,6 +2809,7 @@
       if (!track.videoDraftId && !track._previewVideoId) throw new Error('No video is linked to this track.');
       const draft = track._previewVideoId ? { videoId: track._previewVideoId } : await draftRequest('GET', track.videoDraftId);
       if (practice !== source) return;
+      source.presentationSource = { kind: 'youtube', id: draft.videoId, key: draft.videoId };
       const yt = await loadYoutubeApi();
       if (practice !== source) return;
       const frame = youtubeFrame(host, draft.videoId, 'YouTube practice video');
@@ -4691,7 +4774,11 @@
         $('perform-layout').classList.toggle('with-video', available);
         if (available) openPracticeVideo();
       });
-      $('practice-sound').addEventListener('change', (e) => practice?.media?.mute(!e.target.checked));
+      $('practice-sound').addEventListener('change', () => { applyPracticeSound(); sendPresentationState(); });
+      $('presentation-audio').addEventListener('change', () => { applyPracticeSound(); sendPresentationState(); });
+      $('presentation-open').addEventListener('click', openPresentation);
+      window.addEventListener('message', onPresentationMessage);
+      window.addEventListener('beforeunload', () => closePresentation(false));
       $('practice-resync').addEventListener('click', () => syncPracticeVideo(true));
       $('practice-from-start').addEventListener('click', () => {
         if (!practice?.media) return;
