@@ -5,6 +5,29 @@ from clicktrack import _clean_section
 
 
 class ClickTrackSectionTests(unittest.TestCase):
+    def test_existing_database_receives_private_publication_default(self):
+        import ast
+        from types import SimpleNamespace
+        from sqlalchemy import create_engine, inspect, text
+
+        source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+        function = next(node for node in ast.parse(source).body
+                        if isinstance(node, ast.FunctionDef) and node.name == "ensure_optional_columns")
+        engine = create_engine("sqlite:///:memory:")
+        try:
+            with engine.begin() as connection:
+                connection.execute(text("CREATE TABLE click_track (id INTEGER PRIMARY KEY, title TEXT)"))
+                connection.execute(text("INSERT INTO click_track (title) VALUES ('Existing private track')"))
+                connection.execute(text("CREATE TABLE page_content (id INTEGER PRIMARY KEY)"))
+            namespace = {"db": SimpleNamespace(engine=engine), "inspect": inspect, "text": text}
+            exec(compile(ast.Module(body=[function], type_ignores=[]), "schema-upgrade", "exec"), namespace)
+            namespace["ensure_optional_columns"]()
+            namespace["ensure_optional_columns"]()
+            with engine.connect() as connection:
+                self.assertEqual(connection.execute(text("SELECT is_public FROM click_track")).scalar_one(), 0)
+        finally:
+            engine.dispose()
+
     def test_timed_pause_round_trips_millisecond_duration(self):
         section = _clean_section({"type": "timedPause", "pauseDuration": 2.123, "bars": 1, "startBar": 175})
         self.assertEqual(section["type"], "timedPause")
@@ -117,7 +140,9 @@ class ClickTrackStorageTests(unittest.TestCase):
         cls.models = init_models(cls.db)
         cls.app.db = cls.db
         cls.app.ClickTrack = cls.models["ClickTrack"]
+        cls.app.User = cls.models["User"]
         cls.app.ClickTrackVideoDraft = cls.models["ClickTrackVideoDraft"]
+        cls.app.ClickTrackPresentation = cls.models["ClickTrackPresentation"]
         login = LoginManager(cls.app)
 
         cls.app.add_url_rule("/", endpoint="index", view_func=lambda: "")
@@ -131,7 +156,7 @@ class ClickTrackStorageTests(unittest.TestCase):
     def setUp(self):
         with self.app.app_context():
             self.db.create_all()
-            user = self.models["User"](username="test", email="test@example.invalid", password_hash="unused")
+            user = self.models["User"](username="test", email="test@example.invalid", password_hash="unused", role="admin")
             self.db.session.add(user)
             self.db.session.commit()
             user_id = user.id
@@ -149,6 +174,155 @@ class ClickTrackStorageTests(unittest.TestCase):
         with self.app.app_context():
             self.db.session.remove()
             self.db.drop_all()
+
+    def test_only_admins_edit_and_only_published_tracks_are_performable(self):
+        private = self.client.post("/clicktrack/api/tracks", json={**self.payload, "title": "Private"}).json
+        published = self.client.post("/clicktrack/api/tracks", json={**self.payload, "title": "Published", "isPublic": True}).json
+        self.assertFalse(published["isPublic"])
+        marker = {"time": 0, "bar": "1", "num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+        draft = self.client.post("/clicktrack/api/video-drafts", json={"videoId": "abcdefghijk", "markers": [marker]}).json
+        private_draft = self.client.post("/clicktrack/api/video-drafts", json={"videoId": "zyxwvutsrqp", "markers": [marker]}).json
+        published = self.client.put(f"/clicktrack/api/tracks/{published['id']}", json={
+            **self.payload, "title": "Published", "videoDraftId": draft["id"],
+        }).json
+        publication = f"/clicktrack/api/tracks/{published['id']}/publication"
+        self.assertEqual(self.client.put(publication, json={"isPublic": "true"}).status_code, 400)
+        published = self.client.put(publication, json={"isPublic": True}).json
+        self.assertTrue(published["isPublic"])
+        for role in ("viewer", "editor"):
+            with self.subTest(role=role):
+                with self.app.app_context():
+                    user = self.models["User"](username=role, email=f"{role}@example.invalid", password_hash="unused", role=role)
+                    self.db.session.add(user)
+                    self.db.session.commit()
+                    user_id = user.id
+                    legacy = self.models["ClickTrack"](user_id=user_id, title="Legacy personal", is_public=True, sections=[])
+                    self.db.session.add(legacy)
+                    self.db.session.commit()
+                performer = self.app.test_client()
+                with performer.session_transaction() as session:
+                    session["_user_id"] = str(user_id)
+                self.assertEqual(performer.get("/clicktrack/").status_code, 200)
+                self.assertIn(b"canEdit: false", performer.get("/clicktrack/").data)
+                self.assertEqual(performer.get("/clicktrack/api/tracks").json["tracks"], [published])
+                self.assertEqual(performer.get(f"/clicktrack/api/video-drafts/{draft['id']}").status_code, 200)
+                self.assertEqual(performer.get(f"/clicktrack/api/video-drafts/{private_draft['id']}").status_code, 404)
+                self.assertEqual(performer.get("/clicktrack/api/video-drafts").status_code, 403)
+                for method, path in (
+                    ("post", "/clicktrack/api/tracks"),
+                    ("put", f"/clicktrack/api/tracks/{published['id']}"),
+                    ("delete", f"/clicktrack/api/tracks/{published['id']}"),
+                    ("put", f"/clicktrack/api/tracks/{published['id']}/video-editor"),
+                    ("put", f"/clicktrack/api/tracks/{published['id']}/video-link"),
+                    ("put", publication),
+                    ("post", "/clicktrack/api/tracks/from-video-draft"),
+                    ("post", "/clicktrack/api/tracks/restore-backup"),
+                    ("post", "/clicktrack/api/video-drafts"),
+                    ("put", f"/clicktrack/api/video-drafts/{draft['id']}"),
+                    ("delete", f"/clicktrack/api/video-drafts/{draft['id']}"),
+                    ("put", f"/clicktrack/api/video-drafts/{draft['id']}/unlinked"),
+                ):
+                    self.assertEqual(getattr(performer, method)(path, json=self.payload).status_code, 403, path)
+                state = {"videoId": "abcdefghijk", "time": 0, "playing": False, "blank": True}
+                self.assertEqual(performer.post("/clicktrack/api/presentations", json=state).status_code, 201)
+                self.assertEqual(performer.post("/clicktrack/api/presentations", json={**state, "videoId": "zyxwvutsrqp"}).status_code, 400)
+        self.assertIn(private, self.client.get("/clicktrack/api/tracks").json["tracks"])
+        self.assertEqual(self.client.put(publication, json={"isPublic": False}).status_code, 200)
+        self.assertEqual(performer.get("/clicktrack/api/tracks").json["tracks"], [])
+        self.assertEqual(performer.get(f"/clicktrack/api/video-drafts/{draft['id']}").status_code, 404)
+        self.assertEqual(performer.post("/clicktrack/api/presentations", json=state).status_code, 400)
+        self.assertEqual(self.app.test_client().get("/clicktrack/api/tracks").status_code, 401)
+
+    def test_public_presentation_is_anonymous_read_only_and_revocable(self):
+        from unittest.mock import patch
+        import time
+
+        now = time.time()
+        marker = {"time": 0, "bar": "1", "num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "title": "Private cue sheet", "videoId": "abcdefghijk", "markers": [marker],
+        })
+        self.assertEqual(draft.status_code, 201)
+        state = {"videoId": "abcdefghijk", "time": 12.5, "playing": True, "blank": False,
+                 "notes": "must not be published"}
+        with patch("clicktrack.time.time", return_value=now):
+            created = self.client.post("/clicktrack/api/presentations", json=state)
+        self.assertEqual(created.status_code, 201, created.json)
+        live = created.json
+        public = self.app.test_client()
+        with patch("clicktrack.time.time", return_value=now + 1):
+            page = public.get(live["url"])
+            response = public.get(live["url"] + "state")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"CLICKTRACK_PUBLIC_STATE_URL", page.data)
+        self.assertNotIn(b"Private cue sheet", page.data)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(page.headers["Referrer-Policy"], "no-referrer")
+        self.assertEqual(page.headers["X-Robots-Tag"], "noindex, nofollow")
+        self.assertEqual(response.json, {
+            "source": {"kind": "youtube", "id": "abcdefghijk", "key": "abcdefghijk"},
+            "time": 13.5, "playing": True, "blank": False, "waiting": False,
+        })
+        path = f"/clicktrack/api/presentations/{live['id']}"
+        self.assertEqual(public.post("/clicktrack/api/presentations", json=state).status_code, 401)
+        self.assertEqual(public.put(path, json=state).status_code, 401)
+        self.assertEqual(public.delete(path).status_code, 401)
+        self.assertEqual(public.put(live["url"] + "state", json=state).status_code, 405)
+        with self.app.app_context():
+            other = self.models["User"](username="other", email="other@example.invalid", password_hash="unused")
+            self.db.session.add(other)
+            self.db.session.commit()
+            other_id = other.id
+        with public.session_transaction() as session:
+            session["_user_id"] = str(other_id)
+        self.assertEqual(public.put(path, json=state).status_code, 404)
+        self.assertEqual(public.delete(path).status_code, 404)
+        with patch("clicktrack.time.time", return_value=now + 2):
+            self.assertEqual(self.client.put(path, json={**state, "time": 20, "playing": False}).status_code, 200)
+        with patch("clicktrack.time.time", return_value=now + 4):
+            self.assertEqual(public.get(live["url"] + "state").json["time"], 20)
+        with patch("clicktrack.time.time", return_value=now + 3):
+            self.client.put(path, json={**state, "time": 0, "blank": True})
+        with patch("clicktrack.time.time", return_value=now + 4):
+            blank = public.get(live["url"] + "state").json
+        self.assertTrue(blank["blank"])
+        self.assertFalse(blank["playing"])
+        self.assertEqual(blank["time"], 0)
+        with patch("clicktrack.time.time", return_value=now + 9):
+            stale = public.get(live["url"] + "state").json
+        self.assertTrue(stale["waiting"])
+        self.assertTrue(stale["blank"])
+        self.assertFalse(stale["playing"])
+        self.assertEqual(self.client.delete(path).status_code, 200)
+        self.assertEqual(public.get(live["url"]).status_code, 404)
+        self.assertEqual(public.get(live["url"] + "state").status_code, 404)
+
+    def test_public_presentation_validates_state_and_expires(self):
+        from unittest.mock import patch
+        import time
+
+        now = time.time()
+        self.client.post("/clicktrack/api/video-drafts", json={
+            "videoId": "abcdefghijk", "markers": [{"time": 0, "bar": "1", "num": "4", "den": "4", "unit": "auto", "shape": "steady"}],
+        })
+        state = {"videoId": "abcdefghijk", "time": 1, "playing": False, "blank": False}
+        for invalid in (
+            {"videoId": "not-a-video"}, {"videoId": "zyxwvutsrqp"}, {"time": True},
+            {"time": -1}, {"time": 86401}, {"time": float("nan")}, {"time": float("inf")},
+            {"playing": "yes"}, {"blank": 0},
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(self.client.post("/clicktrack/api/presentations", json={**state, **invalid}).status_code, 400)
+        with patch("clicktrack.time.time", return_value=now):
+            live = self.client.post("/clicktrack/api/presentations", json=state).json
+        public = self.app.test_client()
+        with patch("clicktrack.time.time", return_value=now + 43201):
+            self.assertEqual(public.get(live["url"]).status_code, 404)
+            self.assertEqual(public.get(live["url"] + "state").status_code, 404)
+            self.assertEqual(self.client.put(f"/clicktrack/api/presentations/{live['id']}", json=state).status_code, 410)
+            fresh = self.client.post("/clicktrack/api/presentations", json=state)
+        self.assertEqual(fresh.status_code, 201)
+        self.assertNotEqual(fresh.json["url"], live["url"])
 
     def test_offset_and_calculator_persist(self):
         response = self.client.post("/clicktrack/api/tracks", json={**self.payload, "videoOffset": 25.5})
@@ -672,7 +846,7 @@ class ClickTrackStorageTests(unittest.TestCase):
         other = self.app.test_client()
         self.assertEqual(other.get(path).status_code, 401)
         with self.app.app_context():
-            user = self.models["User"](username="other", email="other@example.invalid", password_hash="unused")
+            user = self.models["User"](username="other", email="other@example.invalid", password_hash="unused", role="admin")
             self.db.session.add(user)
             self.db.session.commit()
             user_id = user.id

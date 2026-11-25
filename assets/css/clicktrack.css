@@ -423,3 +423,15 @@ body.performance-mode .with-video .stage.show-fermata .stage-countin {
   .section-timing { grid-column: 1; }
   .ct-account { width: 100%; justify-content: space-between; }
 }
+.read-only [data-view="edit"],
+.read-only #view-edit,
+.read-only #view-video,
+.read-only #btn-new-track,
+.read-only #btn-video-track,
+.read-only #btn-import-track,
+.read-only #btn-dup-track,
+.read-only #btn-delete-track,
+.read-only #btn-quick-edit,
+.read-only #btn-practice-edit-video,
+.read-only #btn-tap,
+.read-only .rehearsal-edit { display: none !important; }

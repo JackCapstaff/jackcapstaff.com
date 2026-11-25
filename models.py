@@ -396,6 +396,7 @@ def init_models(db):
         sections_json = db.Column(db.Text, default='[]')
         video_offset = db.Column(db.Float, nullable=False, default=0, server_default='0')
         video_draft_id = db.Column(db.Integer, db.ForeignKey('click_track_video_draft.id', ondelete='SET NULL'))
+        is_public = db.Column(db.Boolean, nullable=False, default=False, server_default='false')
         created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
         updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -427,6 +428,7 @@ def init_models(db):
                 'sections': self.sections,
                 'videoOffset': self.video_offset or 0,
                 'videoDraftId': self.video_draft_id,
+                'isPublic': self.is_public,
                 'updated_at': self.updated_at.isoformat() + 'Z' if self.updated_at else None,
             }
 
@@ -441,6 +443,15 @@ def init_models(db):
 
         def to_dict(self):
             return {'id': self.id, 'title': self.title, 'videoId': self.video_id, 'markers': self.markers}
+
+    class ClickTrackPresentation(db.Model):
+        __table_args__ = {'sqlite_autoincrement': True}
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+        token = db.Column(db.String(64), nullable=False, unique=True, index=True)
+        state = db.Column(db.JSON, nullable=False)
+        updated_at = db.Column(db.Float, nullable=False)
+        expires_at = db.Column(db.Float, nullable=False, index=True)
 
     return {
         'SiteSetting': SiteSetting,
@@ -458,4 +469,5 @@ def init_models(db):
         'Recipe': Recipe,
         'ClickTrack': ClickTrack,
         'ClickTrackVideoDraft': ClickTrackVideoDraft,
+        'ClickTrackPresentation': ClickTrackPresentation,
     }

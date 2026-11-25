@@ -3,6 +3,7 @@
   'use strict';
 
   const CFG = window.CLICKTRACK_CONFIG || {};
+  const canEdit = CFG.canEdit !== false && !CFG.offline;
   const $ = (id) => document.getElementById(id);
   const LS_PREFS = 'clicktrack.prefs';
   const LS_TRACKS = 'clicktrack.tracks.' + (CFG.userKey || 'anon');
@@ -882,7 +883,7 @@
   // Averages the last few taps; a gap over 2s starts a fresh measurement.
   const tap = { times: [], idx: -1 };
   function tapTempo(idx) {
-    if (CFG.offline) return;
+    if (!canEdit) return;
     if (current?.videoDraftId) { toast('Tempo is calculated from the video hit points.'); return; }
     if (idx == null) idx = document.body.classList.contains('editing') ? tester.idx : E.playing ? E.secIdx : selectedIdx;
     const s = sections()[idx];
@@ -961,7 +962,7 @@
       : st.phase === 'pause' ? 'Waiting for pedal' : 'Timed pause · silent';
     if (!s) {
       $('d-secnum').textContent = '';
-      $('d-name').textContent = current ? 'No sections yet — add some in Edit' : 'Loading…';
+      $('d-name').textContent = current ? 'No sections yet — add some in Edit' : canEdit ? 'Loading…' : 'No public tracks available';
       ['d-notes', 'd-barof', 'd-grouping', 'd-tempo-sub'].forEach((id) => { $(id).textContent = ''; });
       ['d-bar', 'd-meter', 'd-tempo'].forEach((id) => { $(id).textContent = '–'; });
       $('d-countin').hidden = true;
@@ -1109,6 +1110,7 @@
   }
 
   function renderTransport() {
+    $('btn-play').disabled = !sections().length;
     $('btn-play').textContent = !E.playing ? '▶ Start' : E.suspended ? '▶ Resume' : 'Pause';
     $('rehearsal-play').textContent = !E.playing ? 'Start' : E.suspended ? 'Resume' : 'Pause';
     $('rehearsal-play').disabled = !sections().length;
@@ -1187,7 +1189,7 @@
     const index = E.playing ? shown?.secIdx ?? selectedIdx : selectedIdx;
     const changed = rehearsalListTrack !== current || rehearsalListIndex !== index;
     $('rehearsal-instructions').textContent = active
-      ? 'Select a section to jump at the next barline.' + (CFG.offline ? '' : ' Editing a section stops playback.')
+      ? 'Select a section to jump at the next barline.' + (canEdit ? ' Editing a section stops playback.' : '')
       : 'Select a section to choose a count-in and restart.';
     if (rehearsalListTrack !== current || list.children.length !== secs.length) {
       list.replaceChildren(...secs.map((section, i) => {
@@ -1202,7 +1204,7 @@
         for (let column = 0; column < 3; column++) cells.append(document.createElement('span'));
         button.append(cells);
         row.append(button);
-        if (!CFG.offline) {
+        if (canEdit) {
           const edit = document.createElement('button');
           edit.type = 'button';
           edit.className = 'btn small rehearsal-edit';
@@ -1346,6 +1348,7 @@
       notes: String(t.notes || '').slice(0, 2000),
       videoOffset: clamp(Number(t.videoOffset) || 0, -86400, 86400),
       videoDraftId: Number.isInteger(t.videoDraftId) && t.videoDraftId > 0 ? t.videoDraftId : null,
+      isPublic: t.isPublic === true,
       _linkDirty: !!t._linkDirty,
       sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
       _dirty: !!t._dirty || migrated, _auto: !!t._auto, _ver: 1,
@@ -1407,7 +1410,7 @@
 
   let saveTimer = null, saving = false, saveAgain = false;
   function markDirty(t) {
-    if (CFG.offline) return;
+    if (!canEdit) return;
     t = t || current;
     if (!t) return;
     if (t._preview) { setStatus('Preview only — changes are not saved'); return; }
@@ -1440,6 +1443,17 @@
   });
 
   async function loadTracks() {
+    if (!canEdit) {
+      try {
+        const data = await api('GET');
+        tracks = data.tracks.map((track) => ({ ...normTrack(track), _dirty: false }));
+        setStatus(tracks.length ? 'Performance only' : 'No public tracks available');
+      } catch (error) {
+        tracks = [];
+        setStatus('Could not load public tracks: ' + error.message);
+      }
+      return;
+    }
     const cached = (loadJSON(LS_TRACKS, []) || []).map(normTrack);
     if (CFG.authenticated) {
       try {
@@ -1470,7 +1484,7 @@
   async function offerAnonImport() {
     const anon = (loadJSON(LS_ANON, []) || []).map(normTrack).filter((t) => !t._auto);
     if (!anon.length) return;
-    if (window.confirm('Copy ' + anon.length + ' click track' + (anon.length === 1 ? '' : 's') + ' saved in this browser to your account?')) {
+    if (window.confirm('Copy ' + anon.length + ' performance track' + (anon.length === 1 ? '' : 's') + ' saved in this browser to your account?')) {
       anon.forEach((t) => { t.id = newLocalId(); t._dirty = true; tracks.push(t); });
     }
     try { localStorage.removeItem(LS_ANON); } catch (e) { /* ignore */ }
@@ -1510,6 +1524,7 @@
   }
 
   function addTrack(t) {
+    if (!canEdit) return;
     tracks.push(t);
     markDirty(t);
     selectTrack(t.id);
@@ -1732,6 +1747,7 @@
   }
 
   async function importFile(file) {
+    if (!canEdit) return;
     try {
       const data = JSON.parse(await file.text());
       const hasDraft = (item) => item && Object.prototype.hasOwnProperty.call(item, 'videoDraft');
@@ -2026,6 +2042,13 @@
   function renderEditor() {
     if (!current) return;
     $('track-title').value = current.title;
+    if (!CFG.offline) {
+      $('track-public').checked = current.isPublic === true;
+      $('track-public').disabled = !canEdit;
+      $('track-public-status').textContent = current.isPublic
+        ? 'Public: signed-in users can select and perform this track, but cannot edit it.'
+        : 'Private: only your administrator account can access this track.';
+    }
     $('track-notes').value = current.notes;
     $('track-offset').value = timecode(current.videoOffset);
     renderSections();
@@ -2033,6 +2056,7 @@
 
   const RAW_FIELDS = ['name', 'notes', 'grouping', 'calcStart', 'calcEnd', 'figure', 'hitPoint'];
   function onFieldInput(e) {
+    if (!canEdit) return;
     const el = e.target, f = el.dataset.f;
     if (!f || !current) return;
     if (e.type === 'input' && el.tagName === 'SELECT') return;   // handled on change
@@ -2074,6 +2098,7 @@
   }
 
   function onSectionAction(e) {
+    if (!canEdit) return;
     const b = e.target.closest('[data-act]');
     if (!b || !current) return;
     const i = +b.dataset.i, secs = current.sections, act = b.dataset.act;
@@ -2704,6 +2729,83 @@
 
   let practice = null;
   const presentation = { window: null, connected: false, ready: false, timer: null, connectTimer: null };
+  const publicPresentation = { id: null, timer: null, busy: false, creating: false };
+
+  function publicVideoState() {
+    const source = practice;
+    if (!source?.media || source.presentationSource?.kind !== 'youtube') {
+      throw new Error('Public sharing requires a saved YouTube video.');
+    }
+    syncPracticeVideo();
+    return {
+      videoId: source.presentationSource.id, time: source.videoTime ?? 0,
+      playing: !!source.playing && !E.suspended && E.playing,
+      blank: source.beforeVideo === true,
+    };
+  }
+
+  function renderPublicSharing() {
+    const active = publicPresentation.id != null;
+    $('presentation-share').disabled = active || publicPresentation.creating
+      || !practice?.media || practice.presentationSource?.kind !== 'youtube' || !current?.videoDraftId;
+    $('presentation-share-stop').hidden = !active;
+    $('presentation-share-link').hidden = !active;
+    $('presentation-share-copy').hidden = !active;
+  }
+
+  async function publishPublicPresentation() {
+    if (publicPresentation.id == null || publicPresentation.busy || !practice?.media) return;
+    const id = publicPresentation.id;
+    publicPresentation.busy = true;
+    try {
+      await api('PUT', '/' + id, publicVideoState(), CFG.publicPresentations);
+      if (publicPresentation.id === id) $('presentation-share-status').textContent = 'Public sharing is live. Anyone with the link can follow; timing is approximate. Link expires after 12 hours.';
+    } catch (error) {
+      if (publicPresentation.id === id) $('presentation-share-status').textContent = 'Public sharing interrupted: ' + error.message + ' Audience playback stops if updates are lost.';
+    } finally {
+      publicPresentation.busy = false;
+    }
+  }
+
+  async function stopPublicPresentation() {
+    const id = publicPresentation.id;
+    if (id == null) return;
+    clearInterval(publicPresentation.timer);
+    publicPresentation.timer = null;
+    publicPresentation.id = null;
+    renderPublicSharing();
+    try {
+      await api('DELETE', '/' + id, null, CFG.publicPresentations);
+      $('presentation-share-status').textContent = 'Public sharing stopped. The old link no longer works.';
+    } catch (error) {
+      $('presentation-share-status').textContent = 'Could not revoke public link: ' + error.message + ' Live updates have stopped; audience playback will stop within a few seconds. The link expires after 12 hours.';
+      toast('Could not revoke public presentation link: ' + error.message);
+    }
+  }
+
+  async function createPublicPresentation() {
+    if (publicPresentation.id != null || publicPresentation.creating) return;
+    const source = practice;
+    publicPresentation.creating = true;
+    renderPublicSharing();
+    try {
+      const live = await api('POST', '', publicVideoState(), CFG.publicPresentations);
+      if (practice !== source) {
+        await api('DELETE', '/' + live.id, null, CFG.publicPresentations);
+        $('presentation-share-status').textContent = 'Public sharing cancelled because the practice video changed. Create a new link when the video is ready.';
+        return;
+      }
+      publicPresentation.id = live.id;
+      $('presentation-share-link').href = new URL(live.url, window.location.origin).href;
+      $('presentation-share-status').textContent = 'Public live link created. Share the link with your audience; no login is needed.';
+      publicPresentation.timer = setInterval(publishPublicPresentation, 750);
+    } catch (error) {
+      $('presentation-share-status').textContent = 'Could not create public link: ' + error.message;
+    } finally {
+      publicPresentation.creating = false;
+      renderPublicSharing();
+    }
+  }
 
   function applyPracticeSound() {
     const audience = $('presentation-audio').value === 'audience' && presentation.ready
@@ -2825,6 +2927,7 @@
   }
 
   function closePracticeVideo() {
+    if (publicPresentation.id != null) stopPublicPresentation();
     closePresentation(false);
     const source = practice;
     practice = null;
@@ -2841,6 +2944,7 @@
     $('practice-resync').disabled = true;
     $('practice-from-start').disabled = true;
     $('presentation-open').disabled = true;
+    renderPublicSharing();
   }
 
   function showPracticeVideo() {
@@ -2947,7 +3051,7 @@
     if (position.entry.startEstimated) {
       $('practice-status').textContent = 'Seek uses estimated timing after an earlier cue wait or repeat.';
     } else {
-      $('practice-status').textContent = 'Video and click track repositioned together.';
+      $('practice-status').textContent = 'Video and performance track repositioned together.';
     }
   }
 
@@ -3070,11 +3174,12 @@
       if (practice !== source) return;
       clearTimeout(source.timeout);
       source.media = media;
+      renderPublicSharing();
       applyPracticeSound();
       $('presentation-open').disabled = false;
       $('practice-resync').disabled = false;
       $('practice-from-start').disabled = !sections().length;
-      status.textContent = 'Ready. Use the click track’s Start / Pause controls.';
+      status.textContent = 'Ready. Use Performance Studio’s Start / Pause controls.';
       syncPracticeVideo(true);
       renderPracticeCues();
       source.observeTimer = setInterval(() => observePracticeVideo(source), 100);
@@ -3138,7 +3243,7 @@
     $('builder-load-youtube').disabled = busy || !!track?.videoDraftId;
     $('builder-count-in').disabled = !!track?.videoDraftId;
     $('builder-preview').hidden = !!track?.videoDraftId;
-    $('builder-preview-title').textContent = track?.videoDraftId ? 'Hit-point timing' : 'Click track preview';
+    $('builder-preview-title').textContent = track?.videoDraftId ? 'Hit-point timing' : 'Performance track preview';
     $('builder-file').disabled = busy;
     $('btn-edit-video').disabled = busy;
     $('btn-practice-edit-video').disabled = !current || busy;
@@ -3395,7 +3500,7 @@
       const firstClick = first.find((section) => section.type === 'click');
       if (firstClick && $('builder-count-in').value !== '') firstClick.countIn = $('builder-count-in').valueAsNumber;
       const saved = await api('POST', '/from-video-draft', {
-        track: { title: draft.title || 'Click track from video', notes: '', videoOffset: plan.offset, sections: first },
+        track: { title: draft.title || 'Performance track from video', notes: '', videoOffset: plan.offset, sections: first },
         videoDraft: draft, expectedDraft: builder.autoDraftBase,
       });
       completed = true;
@@ -3944,6 +4049,14 @@
   }
 
   function markerLimits(index) {
+    if ($('builder-time-mode').value === 'ripple') {
+      const marker = builder.markers[index];
+      const previous = builder.markers.slice(0, index).filter((point) => point.time !== 0 || point.bar !== '').at(-1);
+      const min = previous ? roundMarkerTime(previous.time + 0.001) : -86400;
+      const last = builder.markers.filter((point) => point.time !== 0 || point.bar !== '').at(-1);
+      const max = roundMarkerTime(Math.min(86400, builderMedia().duration) - (last.time - marker.time));
+      return min <= max ? [min, max] : null;
+    }
     const min = index ? roundMarkerTime(builder.markers[index - 1].time + 0.001) : -86400;
     const end = roundMarkerTime(builderMedia().duration);
     const max = builder.markers[index + 1] ? Math.min(end, roundMarkerTime(builder.markers[index + 1].time - 0.001)) : end;
@@ -3988,8 +4101,51 @@
     updateVideoPlayhead();
   }
 
+  function retimedMarkers(times) {
+    const points = builder.markers;
+    const musical = points.filter((marker) => marker.time !== 0 || marker.bar !== '');
+    if (!musical.length) throw new Error('Add musical hit points before adjusting their timing.');
+    const shifted = musical.map((marker, index) => ({ ...marker, time: roundMarkerTime(times(marker, index)) }));
+    if (shifted.some((marker) => marker.time < -86400 || marker.time > 86400
+      || (videoReady() && marker.time > roundMarkerTime(builderMedia().duration)))) {
+      throw new Error('The shift would put a hit point beyond the video or the 24-hour limit.');
+    }
+    if (shifted.some((marker, index) => index > 0 && marker.time <= shifted[index - 1].time)) {
+      throw new Error('Hit points must remain in their original order with unique times.');
+    }
+    if (!shifted.some((marker) => marker.time === 0)) {
+      const oldReference = points.find((marker) => marker.time === 0 && marker.bar === '');
+      const reference = oldReference ? { ...oldReference } : builderMarker(0);
+      const used = new Set(shifted.map((marker) => marker.label));
+      if (used.has(reference.label)) reference.label = nextMarkerNumber(used, 0);
+      shifted.push(reference);
+      shifted.sort((a, b) => a.time - b.time);
+    }
+    if (shifted.length > 502) throw new Error('The shifted draft would exceed the 502 hit point limit.');
+    return shifted;
+  }
+
   function moveVideoMarker(index, time, recenter) {
     const marker = builder.markers[index];
+    if ($('builder-time-mode').value === 'ripple' && time !== marker.time) {
+      try {
+        const delta = roundMarkerTime(time - marker.time);
+        const shifted = retimedMarkers((point) => point.time >= marker.time ? point.time + delta : point.time);
+        planVideoTrack(shifted);
+        builder.markers = shifted;
+        builder.dirty = true;
+        selectVideoMarker(shifted.findIndex((point) => point.label === marker.label), true, recenter);
+        renderVideoPlan();
+        $('builder-review-status').textContent = 'Hit point and all later musical hit points moved '
+          + Math.abs(delta) + ' seconds ' + (delta > 0 ? 'later' : 'earlier') + '; spacing preserved.';
+        return true;
+      } catch (error) {
+        selectVideoMarker(index, false, recenter);
+        $('builder-review-status').textContent = 'Could not ripple hit points: ' + error.message;
+        toast('Could not ripple hit points: ' + error.message);
+        return false;
+      }
+    }
     if (time !== marker.time) {
       marker.time = time;
       builder.markers.sort((a, b) => a.time - b.time);
@@ -3997,6 +4153,7 @@
     }
     selectVideoMarker(builder.markers.indexOf(marker), true, recenter);
     renderVideoPlan();
+    return true;
   }
 
   function nudgeVideoMarker(index, delta) {
@@ -4345,29 +4502,6 @@
       }
     });
     let shiftPreview = null, scalePreview = null;
-    function retimedMarkers(times) {
-      const points = builder.markers;
-      const musical = points.filter((marker) => marker.time !== 0 || marker.bar !== '');
-      if (!musical.length) throw new Error('Add musical hit points before adjusting their timing.');
-      const shifted = musical.map((marker, index) => ({ ...marker, time: roundMarkerTime(times(marker, index)) }));
-      if (shifted.some((marker) => marker.time < -86400 || marker.time > 86400
-        || (videoReady() && marker.time > roundMarkerTime(builderMedia().duration)))) {
-        throw new Error('The shift would put a hit point beyond the video or the 24-hour limit.');
-      }
-      if (shifted.some((marker, index) => index > 0 && marker.time <= shifted[index - 1].time)) {
-        throw new Error('Hit points must remain in their original order with unique times.');
-      }
-      if (!shifted.some((marker) => marker.time === 0)) {
-        const oldReference = points.find((marker) => marker.time === 0 && marker.bar === '');
-        const reference = oldReference ? { ...oldReference } : builderMarker(0);
-        const used = new Set(shifted.map((marker) => marker.label));
-        if (used.has(reference.label)) reference.label = nextMarkerNumber(used, 0);
-        shifted.push(reference);
-        shifted.sort((a, b) => a.time - b.time);
-      }
-      if (shifted.length > 502) throw new Error('The shifted draft would exceed the 502 hit point limit.');
-      return shifted;
-    }
     function shiftedMarkers(shift) {
       return retimedMarkers((marker) => marker.time + shift);
     }
@@ -4546,7 +4680,7 @@
     }));
     $('builder-delete-draft').addEventListener('click', () => {
       const id = Number(drafts.value);
-      if (!id || !window.confirm('Delete this saved YouTube draft? Finished click tracks will not be deleted.')) return;
+      if (!id || !window.confirm('Delete this saved YouTube draft? Finished performance tracks will not be deleted.')) return;
       runDraftAction(async () => {
         await draftRequest('DELETE', id);
         tracks.filter((t) => t.videoDraftId === id).forEach((t) => { t.videoDraftId = null; });
@@ -4626,6 +4760,7 @@
     setInterval(() => { reviewVideoPlayback(); followVideoHitPoint(); }, TIMER_MS);
     $('builder-title').addEventListener('input', () => { builder.dirty = true; stageBuilderDraft(); });
     $('builder-add').addEventListener('click', addVideoMarker);
+    $('builder-time-mode').addEventListener('change', renderVideoTimeline);
     $('builder-retime').addEventListener('click', () => {
       const index = builder.selected;
       if (builder.markers[index].time === 0 || !videoReady()) return;
@@ -4635,7 +4770,8 @@
         return;
       }
       const changed = builder.markers[index].time !== time;
-      moveVideoMarker(index, time, true);
+      if (!moveVideoMarker(index, time, true)) return;
+      if ($('builder-time-mode').value === 'ripple' && changed) return;
       $('builder-review-status').textContent = changed ? 'Hit point moved to ' + markerTime(time) + '.'
         : 'Seek to a different time first, or drag the hit point on the timeline.';
     });
@@ -4712,7 +4848,7 @@
       const marker = builder.markers[builder.selected];
       const parsed = parseTimecode(e.target.value), time = parsed == null ? null : roundMarkerTime(parsed);
       if (!videoReady() || marker.time === 0 || time == null || time < -86400 || time > roundMarkerTime(builderMedia().duration)
-        || builder.markers.some((m) => m !== marker && m.time === time)) {
+        || ($('builder-time-mode').value !== 'ripple' && builder.markers.some((m) => m !== marker && m.time === time))) {
         e.target.value = markerTime(marker.time);
         toast('Enter a unique time from -24 hours up to the end of the video.');
         return;
@@ -4758,7 +4894,7 @@
         const sections = merged.sections;
         const firstClick = sections.find((section) => section.type === 'click');
         if (firstClick) firstClick.countIn = startingCountIn;
-        const track = existing || makeTrack($('builder-title').value.trim() || 'Click track from video', sections);
+        const track = existing || makeTrack($('builder-title').value.trim() || 'Performance track from video', sections);
         track.videoOffset = offset;
         if (existing) track.sections = sections.map(normSection);
         if (!builder.youtube) {
@@ -4778,7 +4914,7 @@
         refreshBuilderTargets(track.id);
         if (!builder.youtube) builder.dirty = false;
         if (!stayInBuilder && !$('view-video').hidden) switchView('edit');
-        toast(existing ? 'Updated “' + track.title + '” from video hit points' : 'Created click track from video hit points');
+        toast(existing ? 'Updated “' + track.title + '” from video hit points' : 'Created performance track from video hit points');
         return track;
       } catch (e) {
         $('builder-result').textContent = 'Could not ' + action + ': ' + e.message;
@@ -4966,6 +5102,7 @@
   }
 
   function switchView(name) {
+    if (!canEdit && name !== 'perform') return;
     $('track-actions').open = false;
     cancelPendingPedal();
     if (name !== 'edit') stopTester();
@@ -4985,7 +5122,7 @@
       if (name !== 'perform') closePracticeVideo();
       else { renderPracticeAvailability(); showPracticeVideo(); }
     }
-    $('btn-pedal-setup').hidden = name !== 'edit';
+    $('btn-pedal-setup').hidden = canEdit && name !== 'edit';
     $('btn-editor-fullscreen').hidden = name !== 'edit';
     if (name === 'video') {
       stop(false);
@@ -5003,7 +5140,7 @@
     $('builder-track-editor').hidden = !show;
     $('btn-edit-video').hidden = !!show;
     if (inVideo) document.body.classList.toggle('editing', !!show);
-    $('video-builder-title').textContent = show ? 'Edit click track with video' : 'New click track from video';
+    $('video-builder-title').textContent = show ? 'Edit performance track with video' : 'New performance track from video';
   }
 
   function renderAll() {
@@ -5253,8 +5390,30 @@
 
   function wire() {
     wireAudioOutputs();
-    if (!CFG.offline) wireVideoBuilder();
+    if (canEdit) wireVideoBuilder();
     if (!CFG.offline) {
+      $('track-public').addEventListener('change', async (event) => {
+        if (!canEdit || !current) return;
+        const track = current, input = event.target, publicValue = input.checked;
+        if (saving || track._dirty || !isServerId(track.id)) {
+          input.checked = track.isPublic === true;
+          $('track-public-status').textContent = 'Wait for track and video changes to finish saving before changing visibility.';
+          return;
+        }
+        input.disabled = true;
+        try {
+          const saved = await api('PUT', '/' + track.id + '/publication', { isPublic: publicValue });
+          track.isPublic = saved.isPublic;
+          track._server = saved;
+          cacheLocal();
+          if (current === track) renderEditor();
+        } catch (error) {
+          input.checked = track.isPublic === true;
+          $('track-public-status').textContent = 'Could not change track visibility: ' + error.message;
+        } finally {
+          input.disabled = false;
+        }
+      });
       $('practice-enable').addEventListener('change', (e) => {
         videoEnabled = e.target.checked;
         if (!videoEnabled) { closePracticeVideo(); return; }
@@ -5267,6 +5426,16 @@
       $('practice-sound').addEventListener('change', () => { applyPracticeSound(); sendPresentationState(); });
       $('presentation-audio').addEventListener('change', () => { applyPracticeSound(); sendPresentationState(); });
       $('presentation-open').addEventListener('click', openPresentation);
+      $('presentation-share').addEventListener('click', createPublicPresentation);
+      $('presentation-share-stop').addEventListener('click', stopPublicPresentation);
+      $('presentation-share-copy').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText($('presentation-share-link').href);
+          $('presentation-share-status').textContent = 'Public presentation link copied.';
+        } catch (error) {
+          $('presentation-share-status').textContent = 'Could not copy link: ' + error.message + ' Copy the Open public presentation link instead.';
+        }
+      });
       window.addEventListener('message', onPresentationMessage);
       window.addEventListener('beforeunload', () => closePresentation(false));
       $('practice-resync').addEventListener('click', () => syncPracticeVideo(true));
@@ -5307,7 +5476,7 @@
     $('btn-exit-stage').addEventListener('click', toggleFullscreen);
     $('rehearsal-play').addEventListener('click', () => { cancelPendingPedal(); togglePlay(); });
     function openQuickEdit(index) {
-      if (CFG.offline || !current || !sections()[index]) return;
+      if (!canEdit || !current || !sections()[index]) return;
       if (transportBusy || outputBusy) { toast('Wait for the audio operation to finish, then retry.'); return; }
       cancelPendingPedal();
       if (E.playing) stop(false);
@@ -5528,7 +5697,7 @@
     });
     // No window.prompt here: some browsers (in-app / embedded) block it, which made New appear to do nothing.
     $('btn-new-track').addEventListener('click', () => {
-      addTrack(makeTrack('New click track', [{}]));
+      addTrack(makeTrack('New performance track', [{}]));
       switchView('edit');
       const t = $('track-title');
       t.focus(); t.select();

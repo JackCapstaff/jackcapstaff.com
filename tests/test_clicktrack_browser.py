@@ -6,6 +6,260 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class ClickTrackBrowserTests(unittest.TestCase):
+    def test_admin_publishes_track_for_read_only_performer(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "videoId": "abcdefghijk", "markers": [
+                    {**marker, "time": 0, "bar": "1", "label": "1"},
+                    {**marker, "time": 20, "bar": "11", "label": "2"},
+                ],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Public performance", "videoDraftId": draft["id"],
+                "sections": [{"startBar": 1, "bars": 10, "bpm": 120, "hitPoint": "1", "countIn": 0}],
+            }).json
+            with fixture.app.app_context():
+                user = fixture.models["User"](username="performer", email="performer@example.invalid", password_hash="unused")
+                fixture.db.session.add(user)
+                fixture.db.session.commit()
+                user_id = user.id
+            performer_client = fixture.app.test_client()
+            with performer_client.session_transaction() as session:
+                session["_user_id"] = str(user_id)
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                admin_context = browser.new_context(viewport={"width": 1440, "height": 1100})
+                performer_context = browser.new_context(viewport={"width": 1440, "height": 1100})
+                mock_player = """
+                  window.mockPlayers = [];
+                  window.YT = {Player: function(frame, config) {
+                    this.time = 0; this.state = 2; this.at = performance.now();
+                    this.getDuration = () => 30;
+                    this.getCurrentTime = () => this.time + (this.state === 1 ? (performance.now() - this.at) / 1000 : 0);
+                    this.getPlayerState = () => this.state; this.getPlaybackRate = () => 1;
+                    this.seekTo = time => { this.time = time; this.at = performance.now(); };
+                    this.pauseVideo = () => { this.time = this.getCurrentTime(); this.state = 2; this.at = performance.now(); };
+                    this.playVideo = () => { if (this.state !== 1) { this.state = 1; this.at = performance.now(); } };
+                    this.mute = () => {}; this.unMute = () => {}; this.destroy = () => {};
+                    window.mockPlayers.push(this);
+                    setTimeout(() => config.events.onReady({target: this}), 0);
+                  }};
+                """
+                errors, denied = [], []
+
+                def route_request(route, client):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    response = client.open(parsed.path, method=request.method, data=request.post_data,
+                                           content_type=request.headers.get("content-type"))
+                    if client is performer_client and "/api/" in parsed.path and response.status_code >= 400:
+                        denied.append((parsed.path, response.status_code))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                for context in (admin_context, performer_context):
+                    context.add_init_script(mock_player)
+                    context.route("https://www.youtube-nocookie.com/**", lambda route: route.fulfill(
+                        status=200, content_type="text/html", body="<html></html>"))
+                admin_context.route("http://clicktrack.test/**", lambda route: route_request(route, fixture.client))
+                performer_context.route("http://clicktrack.test/**", lambda route: route_request(route, performer_client))
+                admin = admin_context.new_page()
+                admin.on("pageerror", lambda error: errors.append(str(error)))
+                admin.goto("http://clicktrack.test/clicktrack/")
+                self.assertEqual(admin.title(), "Performance Studio · Jack Capstaff")
+                self.assertEqual(admin.locator(".ct-brand").text_content(), "Performance Studio")
+                admin.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                admin.click("button[data-view=edit]")
+                self.assertEqual(admin.locator("#video-builder-title").text_content(), "Edit performance track with video")
+                admin.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                admin.check("#track-public")
+                admin.wait_for_function("document.querySelector('#track-public-status').textContent.startsWith('Public:')")
+                self.assertTrue(fixture.client.get("/clicktrack/api/tracks").json["tracks"][0]["isPublic"])
+                performer = performer_context.new_page()
+                performer.on("pageerror", lambda error: errors.append(str(error)))
+                performer.add_init_script(
+                    f"localStorage.setItem('clicktrack.tracks.u{user_id}', JSON.stringify(["
+                    "{id: 'local-stale', title: 'Old cached private track', _dirty: true, sections: [{}]}]));"
+                )
+                performer.goto("http://clicktrack.test/clicktrack/")
+                performer.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                performer.wait_for_function("document.querySelector('#practice-status').textContent.includes('Ready')")
+                self.assertEqual(performer.locator("#track-select").input_value(), str(track["id"]))
+                for selector in ('[data-view="edit"]', "#btn-quick-edit", "#btn-practice-edit-video", "#btn-tap"):
+                    self.assertTrue(performer.locator(selector).is_hidden(), selector)
+                performer.locator("#track-actions > summary").click()
+                self.assertTrue(performer.locator("#btn-pedal-setup").is_visible())
+                for selector in ("#btn-new-track", "#btn-video-track", "#btn-dup-track", "#btn-import-track", "#btn-delete-track"):
+                    self.assertTrue(performer.locator(selector).is_hidden(), selector)
+                performer.locator("#track-actions > summary").click()
+                performer.click("#btn-play")
+                performer.wait_for_function("window.mockPlayers[0].state === 1")
+                performer.click("#btn-play")
+                performer.wait_for_function("document.querySelector('#d-clock-status').textContent.includes('Paused')")
+                performer.click("#presentation-share")
+                performer.wait_for_function("!document.querySelector('#presentation-share-link').hidden")
+                performer.click("#presentation-share-stop")
+                performer.wait_for_function("document.querySelector('#presentation-share-status').textContent.includes('stopped')")
+                admin.uncheck("#track-public")
+                admin.wait_for_function("document.querySelector('#track-public-status').textContent.startsWith('Private:')")
+                performer.reload()
+                performer.wait_for_function("document.querySelector('#save-status').textContent.includes('No public tracks')")
+                self.assertEqual(performer.locator("#track-select option").count(), 0)
+                self.assertTrue(performer.locator("#btn-play").is_disabled())
+                self.assertEqual(denied, [])
+                self.assertEqual(errors, [])
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
+    def test_public_presentation_follows_conductor_without_login(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "videoId": "abcdefghijk", "markers": [
+                    {**marker, "time": -2, "bar": "1", "label": "1"},
+                    {**marker, "time": 0, "bar": "2", "label": "2"},
+                    {**marker, "time": 20, "bar": "12", "label": "3"},
+                ],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Private conductor notes", "videoDraftId": draft["id"], "videoOffset": -2,
+                "sections": [
+                    {"startBar": 1, "bars": 1, "bpm": 120, "hitPoint": "1", "countIn": 0},
+                    {"startBar": 2, "bars": 10, "bpm": 120, "hitPoint": "2", "countIn": 0},
+                ],
+            }).json
+            public_client = fixture.app.test_client()
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                conductor = browser.new_context(viewport={"width": 1440, "height": 1100})
+                audience = browser.new_context()
+                mock_player = """
+                  window.mockPlayers = [];
+                  window.YT = {Player: function(frame, config) {
+                    this.time = 0; this.state = 2; this.at = performance.now(); this.muted = true;
+                    this.getDuration = () => 30;
+                    this.getCurrentTime = () => this.time + (this.state === 1 ? (performance.now() - this.at) / 1000 : 0);
+                    this.getPlayerState = () => this.state; this.getPlaybackRate = () => 1;
+                    this.seekTo = time => { this.time = time; this.at = performance.now(); };
+                    this.pauseVideo = () => { this.time = this.getCurrentTime(); this.state = 2; this.at = performance.now(); };
+                    this.playVideo = () => { if (this.state !== 1) { this.state = 1; this.at = performance.now(); } };
+                    this.mute = () => { this.muted = true; }; this.unMute = () => { this.muted = false; };
+                    this.destroy = () => {};
+                    window.mockPlayers.push(this);
+                    setTimeout(() => config.events.onReady({target: this}), 0);
+                  }};
+                """
+                errors = []
+                requests = []
+                network = {"offline": False}
+
+                def route_request(route, client):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    if client is public_client and network["offline"] and parsed.path.endswith("/state"):
+                        route.abort()
+                        return
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    if "/api/presentations" in path:
+                        requests.append((request.method, path))
+                    response = client.open(path, method=request.method, data=request.post_data,
+                                           content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                for context, client in ((conductor, fixture.client), (audience, public_client)):
+                    context.add_init_script(mock_player)
+                    context.route("https://www.youtube-nocookie.com/**", lambda route: route.fulfill(
+                        status=200, content_type="text/html", body="<html><body></body></html>"))
+                conductor.route("http://clicktrack.test/**", lambda route: route_request(route, fixture.client))
+                audience.route("http://clicktrack.test/**", lambda route: route_request(route, public_client))
+                page = conductor.new_page()
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.select_option("#track-select", str(track["id"]))
+                page.wait_for_function("!document.querySelector('#presentation-share').disabled")
+                page.bring_to_front()
+                page.click("#presentation-share")
+                try:
+                    page.wait_for_function("!document.querySelector('#presentation-share-link').hidden", timeout=5000)
+                except Error:
+                    self.fail(page.locator("#presentation-share-status").text_content() + repr(errors) + repr(requests))
+                url = page.locator("#presentation-share-link").get_attribute("href")
+                viewer = audience.new_page()
+                viewer.on("pageerror", lambda error: errors.append(str(error)))
+                viewer.goto(url)
+                self.assertIsNone(viewer.evaluate("window.opener"))
+                viewer.wait_for_function("window.mockPlayers.length === 1")
+                self.assertTrue(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('blank')"))
+                self.assertNotIn("Private conductor notes", viewer.content())
+                self.assertEqual(public_client.get("/clicktrack/api/tracks").status_code, 401)
+                page.click("#btn-play")
+                viewer.wait_for_function("window.mockPlayers[0].state === 1", timeout=6000)
+                self.assertFalse(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('blank')"))
+                page.evaluate("window.mockPlayers[0].seekTo(8)")
+                viewer.wait_for_function("window.mockPlayers[0].getCurrentTime() >= 8 && window.mockPlayers[0].getCurrentTime() < 10")
+                page.click("#btn-play")
+                page.wait_for_function("document.querySelector('#d-clock-status').textContent.includes('Paused')")
+                viewer.wait_for_function("window.mockPlayers[0].state === 2")
+                page.evaluate("window.mockPlayers[0].seekTo(4)")
+                viewer.wait_for_function("Math.abs(window.mockPlayers[0].getCurrentTime() - 4) < 0.1")
+                viewer.click("#presentation-sound")
+                viewer.wait_for_function("window.mockPlayers[0].muted === false")
+                self.assertEqual(page.evaluate("window.mockPlayers[0].state"), 2)
+                network["offline"] = True
+                viewer.wait_for_function("document.querySelector('#presentation-message').textContent.includes('interrupted')")
+                self.assertTrue(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('blank')"))
+                network["offline"] = False
+                viewer.wait_for_function("!document.querySelector('#presentation-player').classList.contains('blank')")
+                viewer.reload()
+                viewer.wait_for_function("window.mockPlayers.length === 1 && Math.abs(window.mockPlayers[0].getCurrentTime() - 4) < 0.1")
+                self.assertEqual(viewer.evaluate("window.mockPlayers[0].state"), 2)
+                page.click("#presentation-share-stop")
+                viewer.wait_for_function("document.querySelector('#presentation-message').textContent.includes('ended')")
+                self.assertEqual(public_client.get(urlsplit(url).path).status_code, 404)
+                self.assertTrue(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('blank')"))
+                page.click("#presentation-share")
+                page.wait_for_function("!document.querySelector('#presentation-share-link').hidden")
+                new_url = page.locator("#presentation-share-link").get_attribute("href")
+                self.assertNotEqual(url, new_url)
+                page.uncheck("#practice-enable")
+                for _ in range(50):
+                    if public_client.get(urlsplit(new_url).path).status_code == 404:
+                        break
+                    page.wait_for_timeout(100)
+                self.assertEqual(public_client.get(urlsplit(new_url).path).status_code, 404)
+                self.assertEqual(errors, [])
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_change_seven_second_lead_and_fine_tune_video(self):
         from urllib.parse import urlsplit
         from playwright.sync_api import Error, sync_playwright
@@ -172,6 +426,170 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.locator("#builder-scale").fill("0.001")
                 page.click("#builder-scale-preview")
                 self.assertTrue(page.locator("#builder-scale-apply").is_disabled())
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
+    def test_ripple_hit_point_times_preserve_later_spacing_and_save(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "videoId": "abcdefghijk", "markers": [
+                    {**marker, "time": i * 8, "bar": str(1 + i * 4), "label": str(i + 1)}
+                    for i in range(5)
+                ],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Ripple timing", "videoDraftId": draft["id"],
+                "sections": [
+                    {"startBar": 1 + i * 4, "bars": 4, "bpm": 120, "hitPoint": str(i + 1), "countIn": 0}
+                    for i in range(4)
+                ],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                page = browser.new_page(viewport={"width": 1440, "height": 1100})
+                errors = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.add_init_script("""
+                  window.YT = {Player: function(frame, config) {
+                    window.mockVideo = this; this.time = 0;
+                    this.getDuration = () => 60; this.getCurrentTime = () => this.time;
+                    this.getPlayerState = () => 2; this.getPlaybackRate = () => 1;
+                    this.seekTo = time => { this.time = time; };
+                    this.pauseVideo = () => {}; this.playVideo = () => {};
+                    this.mute = () => {}; this.unMute = () => {}; this.destroy = () => {};
+                    setTimeout(() => config.events.onReady({target: this}), 0);
+                  }};
+                """)
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    response = fixture.client.open(parsed.path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                page.route("http://clicktrack.test/**", route_request)
+                page.route("https://www.youtube-nocookie.com/**", lambda route: route.fulfill(
+                    status=200, content_type="text/html", body="<html></html>"))
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.select_option("#track-select", str(track["id"]))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+
+                def saved_times():
+                    saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"] if t["id"] == track["id"])
+                    points = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json["markers"]
+                    return saved, [point["time"] for point in points]
+
+                def wait_for_times(expected):
+                    for _ in range(100):
+                        saved, times = saved_times()
+                        if times == expected:
+                            return saved
+                        page.wait_for_timeout(100)
+                    self.fail(f"Expected {expected}, got {times}: " + page.locator("#save-status").text_content())
+
+                def edit_time(value):
+                    page.locator("#builder-time").fill(value)
+                    page.locator("#builder-time").dispatch_event("change")
+
+                page.select_option("#builder-markers", "0")
+                self.assertTrue(page.locator("#builder-time").evaluate("(el) => el.readOnly"))
+                page.select_option("#builder-markers", "2")
+                self.assertEqual(page.locator("#builder-time-mode").input_value(), "single")
+                edit_time("0:16.500")
+                wait_for_times([0, 8, 16.5, 24, 32])
+                edit_time("0:16.000")
+                wait_for_times([0, 8, 16, 24, 32])
+                page.select_option("#builder-time-mode", "ripple")
+                edit_time("0:16.500")
+                saved = wait_for_times([0, 8, 16.5, 24.5, 32.5])
+                self.assertEqual(saved["sections"][0]["bpm"], 120)
+                self.assertAlmostEqual(saved["sections"][1]["bpm"], 112.94)
+                self.assertEqual([s["bpm"] for s in saved["sections"][2:]], [120, 120])
+                self.assertIn("0.5 seconds later", page.locator("#builder-review-status").text_content())
+                edit_time("0:15.750")
+                wait_for_times([0, 8, 15.75, 23.75, 31.75])
+                self.assertIn("0.75 seconds earlier", page.locator("#builder-review-status").text_content())
+                for invalid in ("0:07.500", "0:55.000", "0:08.001"):
+                    edit_time(invalid)
+                    self.assertIn("Could not ripple", page.locator("#builder-review-status").text_content())
+                    self.assertEqual(page.locator("#builder-time").input_value(), "0:15.750")
+                    self.assertEqual(saved_times()[1], [0, 8, 15.75, 23.75, 31.75])
+                # Ripple may pass the old next point: that point moves too.
+                edit_time("0:25.000")
+                wait_for_times([0, 8, 25, 33, 41])
+                page.click("#builder-nudge-forward")
+                wait_for_times([0, 8, 25.1, 33.1, 41.1])
+                page.evaluate("window.mockVideo.time = 26")
+                page.click("#builder-retime")
+                wait_for_times([0, 8, 26, 34, 42])
+                button = page.locator(".builder-timeline-point").nth(2)
+                button.focus()
+                button.press("ArrowLeft")
+                wait_for_times([0, 8, 25.9, 33.9, 41.9])
+                button.scroll_into_view_if_needed()
+                box = button.bounding_box()
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                page.mouse.down()
+                page.mouse.move(box["x"] + box["width"] / 2 + 10, box["y"] + box["height"] / 2, steps=4)
+                page.mouse.up()
+                page.wait_for_function("document.querySelector('#builder-time').value !== '0:25.900'")
+                dragged_time = page.locator("#builder-time").input_value()
+                minutes, seconds = dragged_time.split(":")
+                moved = round(float(minutes) * 60 + float(seconds), 3)
+                wait_for_times([0, 8, moved, round(moved + 8, 3), round(moved + 16, 3)])
+                page.reload()
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                page.select_option("#builder-markers", "2")
+                self.assertEqual(page.locator("#builder-time").input_value(), dragged_time)
+                self.assertEqual(page.locator("#builder-time-mode").input_value(), "single")
+
+                negative_draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                    "videoId": "abcdefghijk", "markers": [
+                        {**marker, "time": -8, "bar": "1", "label": "1"},
+                        {**marker, "time": 0, "bar": "", "label": "0"},
+                        {**marker, "time": 8, "bar": "9", "label": "2"},
+                        {**marker, "time": 16, "bar": "13", "label": "3"},
+                    ],
+                }).json
+                track = fixture.client.post("/clicktrack/api/tracks", json={
+                    "title": "Negative ripple", "videoDraftId": negative_draft["id"], "videoOffset": -8,
+                    "sections": [
+                        {"startBar": 1, "bars": 8, "bpm": 120, "hitPoint": "1"},
+                        {"startBar": 9, "bars": 4, "bpm": 120, "hitPoint": "2"},
+                    ],
+                }).json
+                page.reload()
+                page.select_option("#track-select", str(track["id"]))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                page.select_option("#builder-markers", "0")
+                page.select_option("#builder-time-mode", "ripple")
+                edit_time("-0:07.500")
+                self.assertEqual(wait_for_times([-7.5, 0, 8.5, 16.5])["videoOffset"], -7.5)
+                edit_time("0:00.500")
+                self.assertEqual(wait_for_times([0, 0.5, 16.5, 24.5])["videoOffset"], 0.5)
+                edit_time("0:00.000")
+                self.assertEqual(wait_for_times([0, 16, 24])["videoOffset"], 0)
+                self.assertTrue(page.locator("#builder-time").evaluate("(el) => el.readOnly"))
+                self.assertEqual(errors, [])
                 browser.close()
         finally:
             fixture.tearDown()
@@ -779,8 +1197,8 @@ class ClickTrackBrowserTests(unittest.TestCase):
                     page.click("#presentation-open")
                 popup = popup_info.value
                 page.wait_for_function("document.querySelector('#presentation-status').textContent.includes('Presentation ready')")
-                page.uncheck("#practice-enable")
-                popup.wait_for_event("close")
+                with popup.expect_event("close"):
+                    page.uncheck("#practice-enable")
                 context.close()
                 browser.close()
         finally:

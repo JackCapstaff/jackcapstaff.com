@@ -735,6 +735,7 @@ app.PublishingOrder = PublishingOrder
 app.Recipe = Recipe
 app.ClickTrack = ClickTrack
 app.ClickTrackVideoDraft = models_dict['ClickTrackVideoDraft']
+app.ClickTrackPresentation = models_dict['ClickTrackPresentation']
 app.send_publishing_order_admin_email = _send_publishing_order_admin_email
 
 
@@ -879,6 +880,7 @@ def ensure_optional_columns():
         'click_track': {
             'video_offset': 'FLOAT NOT NULL DEFAULT 0',
             'video_draft_id': 'INTEGER REFERENCES click_track_video_draft(id) ON DELETE SET NULL',
+            'is_public': 'BOOLEAN NOT NULL DEFAULT FALSE',
         },
     }
 

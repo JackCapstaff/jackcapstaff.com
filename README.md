@@ -1,10 +1,26 @@
 # jackcapstaff.com
 Website
 
-## Click tracks with video
+## Performance Studio
 
-In the signed-in Click Track page, open **Track actions → New click track from
-video**. The same dropdown has the new track and JSON options, and **Pedal
+Performance Studio is available at the existing `/clicktrack/` URL. Saved
+tracks, backups and audience links remain compatible.
+
+Only administrators can create, edit, duplicate, import or delete performance tracks
+and video drafts. In Edit, tick **Public track** to make a saved track available
+to all signed-in users for performance; untick it to make it private again.
+Existing and newly created tracks are private by default, including duplicates
+and restored backups. Admins continue to manage their own tracks.
+Non-admin users (including the editor role) see only public tracks owned by
+admins and can select, rehearse and perform them, with video and presentation
+controls, but cannot change the saved music. Their pedal, sound-output and
+display preferences remain personal. The API enforces the same restrictions.
+Public-track selection still requires login; the audience's public live-video
+link described below does not. Unpublishing removes access on the next load;
+it cannot retract a previously downloaded backup or prepared offline show.
+
+In the signed-in Performance Studio page, open **Track actions → New performance track from
+video** as an administrator. The same dropdown has the new track and JSON options, and **Pedal
 setup** when you're in Edit.
 Paste a YouTube video link and select **Load YouTube video**.
 Use **Play video** or **Enter** to play or pause without changing hit points.
@@ -16,6 +32,17 @@ hit**. For example, with hit points at bars 129 and 131, set bar 129 to 9/8
 and enter 1 skipped bar to combine score bars 129 and 130 into one played
 9/8 bar. The display then jumps directly to bar 131. Skipped bars take no time.
 If the embedded player has keyboard focus, use the controls below it.
+
+For a timing jump partway through a replacement video, select the first
+affected hit point and choose **Time edit mode → Ripple this and all later
+hit points**. Change its **Video time**, for example from `10:00.000` to
+`10:00.500`: that point and all later musical points move 0.5 seconds later.
+Their spacing stays unchanged; earlier points and video 0:00 stay fixed.
+The preceding section's tempo is recalculated to meet the moved point.
+Negative changes move the remainder earlier. Ripple also applies to playhead
+moves, nudges and timeline dragging; **Move this hit point only** is the default.
+Invalid order, video limits or impossible tempi are rejected without applying
+the ripple. Linked tracks use the existing automatic draft/track saving.
 
 Enable **Preview click with video** in the video controls to hear the current
 draft as the video plays, without switching to Perform. It follows seeking,
@@ -47,6 +74,27 @@ YouTube seeking and synchronization are approximate; check both windows before
 performing. Closing the presentation window returns film audio to the conductor
 window. The presentation closes when you leave Perform or disable video.
 
+For viewers on other devices, choose **Create public live link** in Perform,
+then **Copy public link**. The separate `/clicktrack/watch/<random-token>/` URL
+needs no login and follows your live start, pause and seek controls. Only the
+video and playback state are public, not your track, notes or hit points.
+This supports saved YouTube videos, not files local to your computer.
+Viewers initially receive muted video and can enable film audio themselves;
+their audio choice does not affect the conductor or the local presentation.
+They may need to allow playback in their browser.
+
+Keep the conductor page open with internet access. Cross-device timing is
+approximate (updates are polled about once a second); buffering, network delays,
+ads and YouTube seeking can cause differences, so use the local presentation or
+a wired display for critical projection. The public picture remains black
+before video 0:00 and goes black if live updates stop for about five seconds.
+The same link resumes after a temporary connection loss. **Stop public sharing**,
+changing tracks or leaving Perform revokes the link. Links expire after 12 hours;
+after a page reload or an expired link, create and share a new one. Anyone with
+the link can view it while active. Public playback cannot control the conductor.
+The relay uses the shared application database, so it works across server workers;
+the new table is created by the application's existing `db.create_all()` startup.
+
 To start the music before the picture, select the musical hit point that should
 coincide with the start of the video and choose **Start video at this hit
 point**. This shifts all musical hit-point times by the same amount, preserving
@@ -61,7 +109,7 @@ Manual cue waits or repeats can make planned times approximate.
 The presentation picture stays black while the selected performance position
 is before video 0:00, and reappears when the film begins.
 In Perform, playing or pausing the conductor's video also plays or pauses the
-click track. Seeking the video moves the metronome to the corresponding planned
+performance track. Seeking the video moves the metronome to the corresponding planned
 position without a new count-in, preserving whether playback was paused or
 running. After a manual cue or repeat, the planned position assumes one pass and
 no waiting; the video status warns that the position is estimated. Use the
@@ -101,7 +149,7 @@ the upcoming hit point.
 
 Hit-point changes save automatically when signed in. An incomplete new
 video draft can be reopened under **Import an existing video draft**; once it
-has a valid timing plan, a linked click track is created automatically and
+has a valid timing plan, a linked performance track is created automatically and
 appears in the track list. Open that track and select **Edit** to see its full
 track editor alongside the video and hit points. Collapse **Video and hit
 points** when you want to focus on sections. The video itself stays on YouTube,

@@ -1,10 +1,10 @@
 <main id="view-video" class="view" aria-labelledby="video-builder-title" hidden>
-  <h1 id="video-builder-title">New click track from video</h1>
+  <h1 id="video-builder-title">New performance track from video</h1>
   <button type="button" class="btn small" id="builder-back-to-edit" hidden>Back to track editor</button>
   <p>Load a YouTube link and use the controls below to play, pause or add a hit point. YouTube needs internet access and an embeddable video; seeking is not frame-accurate.</p>
   <div class="video-builder-meta">
     <label hidden>Video file <input id="builder-file" type="file" accept="video/*,.mp4,.mov,.webm,.m4v"></label>
-    <label>Track title <input id="builder-title" type="text" maxlength="255" placeholder="New click track"></label>
+    <label>Track title <input id="builder-title" type="text" maxlength="255" placeholder="New performance track"></label>
   </div>
   <div class="stage-tool-row">
     <label>YouTube link <input id="builder-youtube-url" type="url" maxlength="2048" placeholder="https://youtu.be/…"></label>
@@ -115,6 +115,10 @@
         <div class="video-builder-fields">
           <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
+          <label>Time edit mode <select id="builder-time-mode" aria-describedby="builder-time-mode-help">
+            <option value="single">Move this hit point only</option>
+            <option value="ripple">Ripple this and all later hit points</option>
+          </select></label>
           <button type="button" class="btn small" id="builder-snap-video">Start video at this hit point</button>
           <label>Duration to next hit point (seconds) <input type="number" id="builder-span-duration" min="0.001" max="86400" step="0.001"></label>
           <button type="button" class="btn small" id="builder-span-apply">Set section duration</button>
@@ -123,6 +127,7 @@
             <button type="button" class="btn small" id="builder-nudge-back" aria-label="Move selected hit point 0.1 seconds earlier" disabled>−0.1 s</button>
             <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later" disabled>+0.1 s</button>
           </div>
+          <p id="builder-time-mode-help" class="muted small">Applies to Video time, playhead moves, nudges and timeline dragging. Ripple adds the same time change to this and all later musical hit points, preserving their spacing; earlier music and the video 0:00 reference stay fixed. For example, change 10:00.000 to 10:00.500 to move the rest 0.5 seconds later.</p>
           <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
           <label>Score bars skipped before the next hit <input id="builder-skip" type="number" min="0" max="9998" step="1" value="0" inputmode="numeric" aria-describedby="builder-skip-help"></label>
           <label>Rehearsal figure <input id="builder-figure" type="text" maxlength="32" placeholder="e.g. 6 or A"></label>
@@ -170,7 +175,7 @@
     <p class="muted small">Changes save automatically. Edit hit points to change video-derived timing; the last playable track is kept if timing is incomplete.</p>
   </section>
   <section class="video-builder-preview" aria-labelledby="builder-preview-title">
-    <h2 id="builder-preview-title">Click track preview</h2>
+    <h2 id="builder-preview-title">Performance track preview</h2>
     <p class="muted small">Leave the 0:00 bar blank if it is just a reference. Give each musical marker a bar number and set the meter, tempo shape and cue for the span that follows it. Enter skipped score bars on the hit point at the start of that span; they add no time. The final hit point closes the last span. Ramp anchors fix one endpoint or match a neighbouring section; the other tempo is calculated from the hit-point times.</p>
     <p id="builder-result" role="status"></p>
     <ol id="builder-preview"></ol>
@@ -179,9 +184,9 @@
       <span class="muted small">For a new track, leave blank for the automatic two-second minimum. After creation, use the track editor.</span>
     </label>
     <button type="button" class="btn" id="builder-save-draft" disabled hidden>Save YouTube draft</button>
-    <button class="btn primary" id="builder-create" disabled hidden>Create click track</button>
+    <button class="btn primary" id="builder-create" disabled hidden>Create performance track</button>
     <div class="stage-tool-row" hidden>
-      <label>Existing click track <select id="builder-target-track">
+      <label>Existing performance track <select id="builder-target-track">
         <option value="">Choose a track</option>
       </select></label>
       <button type="button" class="btn danger" id="builder-overwrite" disabled>Save over existing track</button>

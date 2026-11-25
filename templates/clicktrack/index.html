@@ -5,27 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#0d1117">
-  <title>Click Track · Jack Capstaff</title>
+  <title>Performance Studio · Jack Capstaff</title>
   {% if offline %}<style>{{ offline_css | safe }}</style>
   {% else %}<link rel="stylesheet" href="{{ url_for('static', filename='css/clicktrack.css') }}">{% endif %}
 </head>
-<body{% if offline %} class="offline-performance"{% endif %}>
+{% set can_edit = not offline and current_user.is_authenticated and current_user.role == 'admin' %}
+<body class="{{ 'offline-performance ' if offline else '' }}{{ 'read-only' if not can_edit else '' }}">
   <div id="flash-layer" aria-hidden="true"></div>
 
   <header class="ct-top">
-    <a class="ct-brand" href="{{ url_for('index') }}" title="Back to jackcapstaff.com">Click Track</a>
+    <a class="ct-brand" href="{{ url_for('index') }}" title="Back to jackcapstaff.com">Performance Studio</a>
     <div class="ct-trackpick">
       <select id="track-select" aria-label="Choose track"></select>
       <details class="ct-menu" id="track-actions">
         <summary class="btn small">Track actions <span aria-hidden="true">▾</span></summary>
         <div class="ct-menu-body">
-          <button class="btn small ghost" id="btn-new-track">New click track</button>
-          {% if not offline %}<button class="btn small ghost" id="btn-video-track">New click track from video</button>{% endif %}
+          <button class="btn small ghost" id="btn-new-track">New performance track</button>
+          {% if not offline %}<button class="btn small ghost" id="btn-video-track">New performance track from video</button>{% endif %}
           <button class="btn small ghost" id="btn-import-track">Load track (.json)</button>
           <input type="file" id="import-file" accept="application/json,.json" hidden>
           <button class="btn small ghost" id="btn-export-track">Export track backup (.json)</button>
           <button class="btn small ghost" id="btn-dup-track">Duplicate track</button>
-          <button class="btn small ghost" id="btn-pedal-setup" aria-controls="pedal-setup" aria-expanded="false" hidden>Pedal setup</button>
+          <button class="btn small ghost" id="btn-pedal-setup" aria-controls="pedal-setup" aria-expanded="false" {% if can_edit %}hidden{% endif %}>Pedal setup</button>
           <button class="btn small ghost" id="btn-editor-fullscreen" hidden>Fullscreen performance</button>
           <button class="btn small danger" id="btn-delete-track">Delete track</button>
         </div>
@@ -172,9 +173,16 @@
             <button type="button" class="btn small" id="presentation-open" disabled>Open presentation window</button>
             <label>Film audio output <select id="presentation-audio"><option value="conductor">Conductor window</option><option value="audience">Presentation window</option></select></label>
           </div>
-          <p class="muted small">The video player’s play, pause and seek controls also control the click track. Seeking uses the planned timeline without a count-in; timing after cue waits or repeats is estimated. Start video from beginning counts down to the first musical cue, or plays the first section’s count-in if music starts before the picture. YouTube sync is approximate. Film audio uses your system output.</p>
+          <p class="muted small">The video player’s play, pause and seek controls also control the performance track. Seeking uses the planned timeline without a count-in; timing after cue waits or repeats is estimated. Start video from beginning counts down to the first musical cue, or plays the first section’s count-in if music starts before the picture. YouTube sync is approximate. Film audio uses your system output.</p>
           <p id="practice-status" class="muted small" role="status"></p>
           <p id="presentation-status" class="muted small" role="status"></p>
+          <div class="stage-tool-row">
+            <button type="button" class="btn small" id="presentation-share" disabled>Create public live link</button>
+            <button type="button" class="btn small" id="presentation-share-stop" hidden>Stop public sharing</button>
+            <a id="presentation-share-link" target="_blank" rel="noopener noreferrer" hidden>Open public presentation</a>
+            <button type="button" class="btn small" id="presentation-share-copy" hidden>Copy public link</button>
+          </div>
+          <p id="presentation-share-status" class="muted small" role="status">Public sharing supports saved YouTube videos. Anyone with the link can watch without signing in; cross-device synchronization is approximate.</p>
         </div>
       </div>
     </section>
@@ -245,6 +253,10 @@
     {% endif %}
     <section class="track-meta">
       <label>Title <input type="text" id="track-title" maxlength="255"></label>
+      {% if not offline %}
+      <label><span><input type="checkbox" id="track-public"> Public track — available to all signed-in users for performance</span></label>
+      <p id="track-public-status" class="muted small" role="status">Private until published by an administrator.</p>
+      {% endif %}
       <label>Notes <textarea id="track-notes" maxlength="2000" rows="2" placeholder="Optional notes about this track"></textarea></label>
       <label>Video offset (seconds or m:ss)
         <input type="text" id="track-offset" maxlength="32" value="0:00.0" placeholder="0:25">
@@ -307,11 +319,13 @@
   <script>
     window.CLICKTRACK_CONFIG = {
       offline: {{ 'true' if offline else 'false' }},
+      canEdit: {{ 'true' if can_edit else 'false' }},
       authenticated: {{ 'true' if not offline and current_user.is_authenticated else 'false' }},
       userKey: {{ (('u' ~ current_user.id) if not offline and current_user.is_authenticated else 'anon') | tojson }},
       apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }},
       {% if not offline %}videoDrafts: {{ url_for('clicktrack.api_video_drafts') | tojson }},
       presentation: {{ url_for('clicktrack.presentation') | tojson }},{% endif %}
+      {% if not offline %}publicPresentations: {{ url_for('clicktrack.api_create_presentation') | tojson }},{% endif %}
       offlinePage: {{ url_for('clicktrack.offline_performance') | tojson }},
       offlineWorker: {{ url_for('clicktrack.offline_worker') | tojson }}
     };
