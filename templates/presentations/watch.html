@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Presentation · Performance Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/presentations.css') }}">
+</head>
+<body class="audience">
+  <main id="preview" class="screen"></main>
+  <p id="player-status" role="status">Connecting to presentation…</p>
+  <p id="connection-status" role="status"></p>
+  <button id="allow-playback" hidden>Allow media playback and sound</button>
+  <script>window.PRESENTATION_CONFIG = {{ {'stateUrl': state_url} | tojson }};</script>
+  <script type="module" src="{{ url_for('static', filename='js/presentations/watch.js') }}"></script>
+</body>
+</html>

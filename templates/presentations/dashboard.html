@@ -1,0 +1,14 @@
+{% extends "presentations/layout.html" %}
+{% block main %}
+  <h1>Presentations</h1>
+  <p>Build a three-layer show, then open its controller to broadcast to an audience link.</p>
+  <form id="new-show" class="toolbar">
+    <label>Presentation title <input id="new-title" required maxlength="255" placeholder="Concert presentation"></label>
+    <button type="submit">Create presentation</button>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+  <section id="show-list" class="show-list" aria-label="Your presentations"></section>
+{% endblock %}
+{% block scripts %}
+  <script type="module" src="{{ url_for('static', filename='js/presentations/dashboard.js') }}"></script>
+{% endblock %}

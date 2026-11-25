@@ -453,6 +453,32 @@ def init_models(db):
         updated_at = db.Column(db.Float, nullable=False)
         expires_at = db.Column(db.Float, nullable=False, index=True)
 
+    class PresentationAsset(db.Model):
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+        name = db.Column(db.String(255), nullable=False)
+        kind = db.Column(db.String(16), nullable=False)
+        url = db.Column(db.Text, nullable=False)
+        public_id = db.Column(db.String(255))
+        duration = db.Column(db.Float)
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+        def to_dict(self):
+            return {'id': self.id, 'name': self.name, 'kind': self.kind,
+                    'url': self.url, 'duration': self.duration}
+
+    class StudioPresentation(db.Model):
+        __table_args__ = {'sqlite_autoincrement': True}
+        id = db.Column(db.Integer, primary_key=True)
+        user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+        title = db.Column(db.String(255), nullable=False)
+        cues = db.Column(db.JSON, nullable=False, default=list)
+        revision = db.Column(db.Integer, nullable=False, default=1)
+        token = db.Column(db.String(64), nullable=False, unique=True, index=True)
+        live = db.Column(db.JSON, nullable=False, default=dict)
+        live_version = db.Column(db.Integer, nullable=False, default=0)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
     return {
         'SiteSetting': SiteSetting,
         'User': User,
@@ -470,4 +496,6 @@ def init_models(db):
         'ClickTrack': ClickTrack,
         'ClickTrackVideoDraft': ClickTrackVideoDraft,
         'ClickTrackPresentation': ClickTrackPresentation,
+        'PresentationAsset': PresentationAsset,
+        'StudioPresentation': StudioPresentation,
     }

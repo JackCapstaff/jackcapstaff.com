@@ -1,0 +1,81 @@
+{% extends "presentations/layout.html" %}
+{% block title %}Edit presentation · Performance Studio{% endblock %}
+{% block main %}
+  <div class="toolbar">
+    <label>Title <input id="show-title" maxlength="255" value="{{ show.title }}"></label>
+    <button id="save-show">Save presentation</button>
+    <a class="button" id="open-controller" href="{{ show.controlUrl }}">Open controller</a>
+  </div>
+  <p id="status" role="status" aria-live="polite">Loading presentation…</p>
+  <div class="editor-grid">
+    <aside class="panel">
+      <h2>Media library</h2>
+      <label id="upload-zone" class="upload-zone">Drop files here or choose files
+        <input id="media-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.mp4,.webm,.mov,.mp3,.wav,.m4a,.ogg">
+      </label>
+      <p class="hint">Cloudinary uploads: up to 100 MB each, videos up to 3 minutes. Your plan may allow less. Files are publicly accessible by their media URL.</p>
+      <form id="youtube-form">
+        <label>YouTube name <input id="youtube-name" maxlength="255" value="YouTube video" required></label>
+        <label>YouTube link <input id="youtube-url" type="url" required placeholder="https://youtu.be/…"></label>
+        <button>Add YouTube video</button>
+      </form>
+      <div id="asset-list" class="asset-list"></div>
+    </aside>
+    <section class="panel">
+      <h2>Preview</h2>
+      <div id="preview" class="screen"></div>
+      <div class="toolbar">
+        <button id="preview-play">Play preview</button>
+        <button id="preview-next">Next picture cue</button>
+        <label>Preview position (seconds) <input id="preview-time" type="number" min="0" step="0.1" value="0"></label>
+      </div>
+      <p id="player-status" role="status"></p>
+      <button id="allow-playback" hidden>Allow media playback</button>
+      <p class="hint">Preview is local only. Uploaded video audio defaults off; use Volume on its cue to enable it. Text overlays sit above the picture; audio has its own lane.</p>
+    </section>
+    <aside class="panel">
+      <h2>Cue properties</h2>
+      <p id="cue-empty">Select a timeline cue to edit it.</p>
+      <form id="cue-form" hidden>
+        <label>Name <input name="name" required maxlength="120"></label>
+        <div class="field-pair">
+          <label>Start (seconds) <input name="start" type="number" min="0" max="86400" step="0.1" required></label>
+          <label>Duration (seconds) <input name="duration" type="number" min="0.1" max="86400" step="0.1" required></label>
+        </div>
+        <label>In transition <select name="transition"><option value="cut">Cut</option><option value="fade">Fade from black / silence</option><option value="crossfade">Crossfade from previous cue</option></select></label>
+        <label>Fade-in / crossfade length (seconds) <input name="fade" type="number" min="0" step="0.1" required></label>
+        <label>Fade-out to black / silence (seconds) <input name="fadeOut" type="number" min="0" step="0.1" required></label>
+        <label id="cue-advance">After this picture cue <select name="advance"><option value="auto">Continue automatically</option><option value="manual">Hold until Next or Play</option></select></label>
+        <div id="cue-media-fields">
+          <label>Media in point (seconds) <input name="offset" type="number" min="0" step="0.1" required></label>
+          <label>Volume (0–1) <input name="volume" type="number" min="0" max="1" step="0.05" required></label>
+        </div>
+        <div id="cue-text-fields" hidden>
+          <label>Overlay text <textarea name="text" rows="4" maxlength="4000"></textarea></label>
+          <label>Text size (% of screen height) <input name="fontSize" type="number" min="1" max="30" step="0.5"></label>
+          <label>Text color <input name="color" type="color" value="#ffffff"></label>
+          <label>Text position <select name="position"><option value="bottom">Bottom</option><option value="center">Center</option><option value="top">Top</option></select></label>
+        </div>
+        <div class="toolbar"><button type="submit">Apply cue changes</button><button type="button" id="delete-cue" class="danger">Remove cue</button></div>
+      </form>
+    </aside>
+  </div>
+  <section class="panel">
+    <div class="toolbar">
+      <h2>Timeline</h2>
+      <button id="add-text">Add text overlay</button><button id="add-blank">Add black cue</button>
+      <label>Zoom <input id="timeline-zoom" type="range" min="4" max="40" value="16"></label>
+    </div>
+    <p class="hint">Drag library assets onto their lane. Drag cues to move them, or set exact times in Cue properties. Click an asset's Add button to append it. Lanes play together; cues within a lane must not overlap. Crossfades blend the previous cue's final frame at an adjacent join. Picture holds pause all three lanes.</p>
+    <div class="timeline-scroll"><div id="timeline">
+      <div id="time-ruler" class="time-ruler"></div>
+      <div class="lane" data-lane="picture" aria-label="Picture lane"><strong>Picture</strong></div>
+      <div class="lane" data-lane="text" aria-label="Text overlay lane"><strong>Text</strong></div>
+      <div class="lane" data-lane="audio" aria-label="Audio lane"><strong>Audio</strong></div>
+    </div></div>
+  </section>
+{% endblock %}
+{% block scripts %}
+  <script>window.PRESENTATION_CONFIG = {{ show | tojson }};</script>
+  <script type="module" src="{{ url_for('static', filename='js/presentations/editor.js') }}"></script>
+{% endblock %}

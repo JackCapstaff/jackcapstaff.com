@@ -1,6 +1,68 @@
 # jackcapstaff.com
 Website
 
+## Presentations
+
+Administrators can open **Presentations** from the site navigation or visit
+`/presentations/`. This is a separate, browser-rendered presentation builder,
+not a video-file exporter; click-track integration is deliberately deferred.
+Each admin manages their own presentations and reusable media library.
+
+1. Create a presentation and upload or drop files into the media library, or
+   add a YouTube link. Add media using its **Add** button or drag it to the timeline.
+2. Arrange the **Picture**, **Text** and **Audio** lanes. Pictures can be images,
+   uploaded videos, YouTube excerpts or black cues. Text overlays and audio
+   play independently above/alongside the picture. Gaps are black/silent.
+3. Click a cue to edit its exact start, duration, media in point, volume and
+   transitions. Choose **Apply cue changes**, then **Save presentation**.
+   Drag cues horizontally to move them; cues within a lane cannot overlap.
+   Add text at the preview position and black cues at the end of the picture lane.
+4. Choose automatic progression or **Hold until Next or Play** on picture cues.
+   Holds pause all three lanes. Picture and text support cuts, fades and
+   crossfades at adjacent joins; crossfades use the outgoing picture's frozen
+   final frame, not two simultaneously playing video clips. Audio supports
+   fade-in/out, not overlapping audio crossfades.
+5. Use local preview, then **Open controller**. Share **Open audience view**
+   and choose **Start broadcast**. The controller provides Next/Previous,
+   pause/play, seeking, cue jumps and blackout (picture and sound).
+   Its monitor is muted unless **Hear media on this control device** is enabled.
+
+Each presentation has its own persistent, anonymous audience link, suitable
+for one projector or several devices. Only its owning admin can edit or
+control it. **Replace audience link** disconnects viewers and invalidates the
+old link. Deleting a presentation also invalidates its link. Saving edits does
+not alter a running broadcast: restart it to use the latest saved timeline.
+Leave the controller open and connected; missing controller heartbeats blank
+the public view after eight seconds. Audience network failures also blank
+playback, with automatic reconnection while the link remains valid.
+
+### Media storage and playback requirements
+
+- Configure `CLOUDINARY_URL` on the server. No local-disk upload fallback is
+  used. Uploads go directly from the browser to Cloudinary using a short-lived,
+  admin-authorized signature; the server verifies the stored media before
+  adding it to the library. Cloudinary credentials stay on the server
+  (only the public API key and upload signature go to the browser).
+- Files are limited to **100 MB each**; uploaded videos must be **three
+  minutes or less**. Your Cloudinary plan may impose lower limits. Supported
+  inputs: JPG/JPEG, PNG, WebP, MP4, WebM, MOV, MP3, WAV, M4A and OGG.
+  Browser codec support still applies; MP4/H.264 and MP3 are recommended.
+  YouTube cues can use an in point and up to three minutes per cue.
+- Media URLs are public, not private or access-controlled. Revoking a
+  presentation link does not revoke already shared media URLs.
+  Deleting presentations retains library media. **Delete media** permanently
+  removes unused uploads from Cloudinary; saved or running timelines must
+  release them first. Interrupted/unfinalised uploads may need removing
+  manually from the `jackcapstaff/presentations` folder in Cloudinary.
+- Browsers may require **Allow media playback** on each audience device
+  before sound/video starts. Uploaded video audio defaults off; set the
+  cue's Volume to enable it. Independent audio defaults on.
+- This is online, approximate wall-clock synchronization, not frame-accurate
+  broadcast playout. YouTube requires connectivity, allows only embeddable
+  videos, and may buffer or show provider content. Rehearse on the intended
+  devices/network. There are no waveform/thumbnail trim tools or offline
+  presentation export in this first version.
+
 ## Performance Studio
 
 Performance Studio is available at `/live/` (or `/live`, which adds the trailing

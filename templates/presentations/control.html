@@ -1,0 +1,33 @@
+{% extends "presentations/layout.html" %}
+{% block main %}
+  <div class="toolbar"><h1>{{ show.title }}</h1><a href="{{ show.editUrl }}">Edit timeline</a></div>
+  <p>Starting a broadcast uses the latest saved timeline. Editing it does not change a running broadcast until you restart it.</p>
+  <div id="preview" class="screen controller-screen"></div>
+  <div class="toolbar">
+    <button data-action="start" class="primary">Start / restart broadcast</button>
+    <button data-action="previous">Previous cue</button>
+    <button data-action="play">Play / resume</button>
+    <button data-action="pause">Pause / hold</button>
+    <button data-action="next">Next cue</button>
+    <button data-action="black">Toggle blackout</button>
+    <button data-action="stop">Stop broadcast</button>
+  </div>
+  <form id="seek-form" class="toolbar">
+    <label>Go to time (seconds) <input id="seek-time" type="number" min="0" step="0.1" required value="0"></label>
+    <button>Seek</button><output id="clock">0.0 s</output>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+  <p id="player-status" role="status"></p><button id="allow-playback" hidden>Allow media playback</button>
+  <label><span><input id="monitor-sound" type="checkbox"> Hear media on this control device</span></label>
+  <p class="hint">The control monitor is muted by default to avoid double audio. Audience sound follows each cue's volume. Audience browsers may need one click to allow sound. Browser/YouTube/network timing is approximate; use a wired screen for critical projection.</p>
+  <section class="panel">
+    <h2>Audience link</h2>
+    <div class="toolbar"><a id="audience-link" href="{{ show.url }}" target="_blank" rel="noopener">Open audience view</a><button id="copy-link">Copy link</button><button id="revoke-link" class="danger">Replace audience link</button></div>
+    <p class="hint">A persistent, unlisted link. Anyone with it can watch without logging in while you broadcast. Keep one controller tab connected; another controller can take over and disconnect this one. Audience screens go black if its heartbeat is lost for 8 seconds. Replacing the link disconnects existing viewers.</p>
+  </section>
+  <section class="panel"><h2>Picture cues</h2><div id="cue-buttons" class="toolbar"></div></section>
+{% endblock %}
+{% block scripts %}
+  <script>window.PRESENTATION_CONFIG = {{ show | tojson }};</script>
+  <script type="module" src="{{ url_for('static', filename='js/presentations/control.js') }}"></script>
+{% endblock %}
