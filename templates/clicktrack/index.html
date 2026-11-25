@@ -9,7 +9,7 @@
   {% if offline %}<style>{{ offline_css | safe }}</style>
   {% else %}<link rel="stylesheet" href="{{ url_for('static', filename='css/clicktrack.css') }}">{% endif %}
 </head>
-{% set can_edit = not offline and current_user.is_authenticated and current_user.role == 'admin' %}
+{% set can_edit = not offline and not invited_track and current_user.is_authenticated and current_user.role == 'admin' %}
 <body class="{{ 'offline-performance ' if offline else '' }}{{ 'read-only' if not can_edit else '' }}">
   <div id="flash-layer" aria-hidden="true"></div>
 
@@ -26,6 +26,11 @@
           <input type="file" id="import-file" accept="application/json,.json" hidden>
           <button class="btn small ghost" id="btn-export-track">Export track backup (.json)</button>
           <button class="btn small ghost" id="btn-dup-track">Duplicate track</button>
+          {% if not offline %}
+          <button type="button" class="btn small ghost" id="btn-invite-track" disabled>Invite band members</button>
+          <p id="track-invite-status" class="muted small" role="status"></p>
+          <a id="track-invite-link" target="_blank" rel="noopener" hidden>Open band invitation</a>
+          {% endif %}
           <button class="btn small ghost" id="btn-pedal-setup" aria-controls="pedal-setup" aria-expanded="false" {% if can_edit %}hidden{% endif %}>Pedal setup</button>
           <button class="btn small ghost" id="btn-editor-fullscreen" hidden>Fullscreen performance</button>
           <button class="btn small danger" id="btn-delete-track">Delete track</button>
@@ -72,6 +77,9 @@
 
   <!-- ===================== PERFORM ===================== -->
   <main id="view-perform" class="view">
+    {% if invited_track %}
+    <p class="muted small">Band practice: {{ invited_track.title }}. Video and film audio are enabled. Press Start when ready; you control your own playback.</p>
+    {% endif %}
     <div class="fullscreen-controls">
       <button type="button" class="btn small" id="btn-exit-stage">Exit fullscreen</button>
     </div>
@@ -176,13 +184,20 @@
           <p class="muted small">The video player’s play, pause and seek controls also control the performance track. Seeking uses the planned timeline without a count-in; timing after cue waits or repeats is estimated. Start video from beginning counts down to the first musical cue, or plays the first section’s count-in if music starts before the picture. YouTube sync is approximate. Film audio uses your system output.</p>
           <p id="practice-status" class="muted small" role="status"></p>
           <p id="presentation-status" class="muted small" role="status"></p>
-          <div class="stage-tool-row">
+          <div class="stage-tool-row public-sharing-admin">
             <button type="button" class="btn small" id="presentation-share" disabled>Create public live link</button>
             <button type="button" class="btn small" id="presentation-share-stop" hidden>Stop public sharing</button>
             <a id="presentation-share-link" target="_blank" rel="noopener noreferrer" hidden>Open public presentation</a>
             <button type="button" class="btn small" id="presentation-share-copy" hidden>Copy public link</button>
           </div>
-          <p id="presentation-share-status" class="muted small" role="status">Public sharing supports saved YouTube videos. Anyone with the link can watch without signing in; cross-device synchronization is approximate.</p>
+          <div class="stage-tool-row public-sharing-admin">
+            <label><span><input id="presentation-public-audio" type="checkbox"> Play film audio on audience devices</span></label>
+            <label>Audience timing offset (seconds)
+              <input id="presentation-offset" type="number" min="-10" max="10" step="0.05" value="0" aria-describedby="presentation-offset-help">
+            </label>
+          </div>
+          <p id="presentation-offset-help" class="muted small public-sharing-admin">Audience behind? Try +0.50 to move their video ahead by half a second. Negative values delay it. Applies live to everyone watching this public link, only while playing; your music, local presentation and hit points stay unchanged. Range: -10 to +10 seconds.</p>
+          <p id="presentation-share-status" class="muted small public-sharing-admin" role="status">Admins can share saved YouTube videos. Anyone with the link can watch without signing in; cross-device synchronization is approximate.</p>
         </div>
       </div>
     </section>
@@ -320,12 +335,14 @@
     window.CLICKTRACK_CONFIG = {
       offline: {{ 'true' if offline else 'false' }},
       canEdit: {{ 'true' if can_edit else 'false' }},
+      invitedTrack: {{ (invited_track or none) | tojson }},
       authenticated: {{ 'true' if not offline and current_user.is_authenticated else 'false' }},
       userKey: {{ (('u' ~ current_user.id) if not offline and current_user.is_authenticated else 'anon') | tojson }},
       apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }},
       {% if not offline %}videoDrafts: {{ url_for('clicktrack.api_video_drafts') | tojson }},
       presentation: {{ url_for('clicktrack.presentation') | tojson }},{% endif %}
       {% if not offline %}publicPresentations: {{ url_for('clicktrack.api_create_presentation') | tojson }},{% endif %}
+      {% if not offline %}inviteBase: {{ url_for('clicktrack.performance_invite', track_id=0) | tojson }},{% endif %}
       offlinePage: {{ url_for('clicktrack.offline_performance') | tojson }},
       offlineWorker: {{ url_for('clicktrack.offline_worker') | tojson }}
     };

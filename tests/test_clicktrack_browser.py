@@ -51,7 +51,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                     this.seekTo = time => { this.time = time; this.at = performance.now(); };
                     this.pauseVideo = () => { this.time = this.getCurrentTime(); this.state = 2; this.at = performance.now(); };
                     this.playVideo = () => { if (this.state !== 1) { this.state = 1; this.at = performance.now(); } };
-                    this.mute = () => {}; this.unMute = () => {}; this.destroy = () => {};
+                    this.mute = () => { this.muted = true; }; this.unMute = () => { this.muted = false; }; this.destroy = () => {};
                     window.mockPlayers.push(this);
                     setTimeout(() => config.events.onReady({target: this}), 0);
                   }};
@@ -108,13 +108,37 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 performer.wait_for_function("window.mockPlayers[0].state === 1")
                 performer.click("#btn-play")
                 performer.wait_for_function("document.querySelector('#d-clock-status').textContent.includes('Paused')")
-                performer.click("#presentation-share")
-                performer.wait_for_function("!document.querySelector('#presentation-share-link').hidden")
-                performer.click("#presentation-share-stop")
-                performer.wait_for_function("document.querySelector('#presentation-share-status').textContent.includes('stopped')")
+                self.assertTrue(performer.locator("#presentation-share").is_hidden())
+                self.assertTrue(performer.locator("#presentation-offset").is_hidden())
+                self.assertTrue(performer.locator("#presentation-public-audio").is_hidden())
+                self.assertTrue(performer.locator("#presentation-open").is_visible())
+                admin.locator("#track-actions > summary").click()
+                admin.click("#btn-invite-track")
+                admin.wait_for_function("!document.querySelector('#track-invite-link').hidden")
+                invite_url = admin.locator("#track-invite-link").get_attribute("href")
+                self.assertEqual(invite_url, f"http://clicktrack.test/live/invite/{track['id']}/")
+                other_track = fixture.client.post("/live/api/tracks", json={
+                    "title": "Another rehearsal", "sections": [{"bars": 1, "bpm": 120}],
+                }).json
+                fixture.client.put(f"/live/api/tracks/{other_track['id']}/publication", json={"isPublic": True})
+                performer.evaluate("(id) => localStorage.setItem('clicktrack.last.u" + str(user_id) + "', JSON.stringify(id))",
+                                   other_track["id"])
+                performer.goto(invite_url)
+                performer.wait_for_function("document.querySelector('#practice-status').textContent.includes('Ready')")
+                self.assertEqual(performer.locator("#track-select").input_value(), str(track["id"]))
+                self.assertTrue(performer.locator("#practice-enable").is_checked())
+                self.assertTrue(performer.locator("#practice-sound").is_checked())
+                performer.wait_for_function("window.mockPlayers[0].muted === false")
+                self.assertTrue(performer.locator('[data-view="edit"]').is_hidden())
+                performer.click("#btn-play")
+                performer.wait_for_function("window.mockPlayers[0].state === 1")
+                performer.click("#btn-play")
+                performer.wait_for_function("window.mockPlayers[0].state === 2")
+                fixture.client.put(f"/live/api/tracks/{other_track['id']}/publication", json={"isPublic": False})
+                admin.locator("#track-actions > summary").click()
                 admin.uncheck("#track-public")
                 admin.wait_for_function("document.querySelector('#track-public-status').textContent.startsWith('Private:')")
-                performer.reload()
+                performer.goto("http://clicktrack.test/live/")
                 performer.wait_for_function("document.querySelector('#save-status').textContent.includes('No public tracks')")
                 self.assertEqual(performer.locator("#track-select option").count(), 0)
                 self.assertTrue(performer.locator("#btn-play").is_disabled())
@@ -160,11 +184,11 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 mock_player = """
                   window.mockPlayers = [];
                   window.YT = {Player: function(frame, config) {
-                    this.time = 0; this.state = 2; this.at = performance.now(); this.muted = true;
+                    this.time = 0; this.state = 2; this.at = performance.now(); this.muted = true; this.seeks = [];
                     this.getDuration = () => 30;
                     this.getCurrentTime = () => this.time + (this.state === 1 ? (performance.now() - this.at) / 1000 : 0);
                     this.getPlayerState = () => this.state; this.getPlaybackRate = () => 1;
-                    this.seekTo = time => { this.time = time; this.at = performance.now(); };
+                    this.seekTo = time => { this.time = time; this.at = performance.now(); this.seeks.push(time); };
                     this.pauseVideo = () => { this.time = this.getCurrentTime(); this.state = 2; this.at = performance.now(); };
                     this.playVideo = () => { if (this.state !== 1) { this.state = 1; this.at = performance.now(); } };
                     this.mute = () => { this.muted = true; }; this.unMute = () => { this.muted = false; };
@@ -216,12 +240,29 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 viewer.goto(url)
                 self.assertIsNone(viewer.evaluate("window.opener"))
                 viewer.wait_for_function("window.mockPlayers.length === 1")
+                self.assertIn("controls=0", viewer.locator("#presentation-player iframe").get_attribute("src"))
                 self.assertTrue(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('blank')"))
                 self.assertNotIn("Private conductor notes", viewer.content())
                 self.assertEqual(public_client.get("/clicktrack/api/tracks").status_code, 401)
                 page.click("#btn-play")
                 viewer.wait_for_function("window.mockPlayers[0].state === 1", timeout=6000)
                 self.assertFalse(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('blank')"))
+                self.assertTrue(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('fade-in')"))
+                self.assertTrue(page.locator("#practice-player").evaluate("(el) => el.classList.contains('fade-in')"))
+                self.assertEqual(viewer.locator("#presentation-player").evaluate(
+                    "(el) => getComputedStyle(el).animationDuration"), "0.8s")
+                for offset in (0.5, -0.5, 0):
+                    before = viewer.evaluate("window.mockPlayers[0].seeks.length")
+                    page.locator("#presentation-offset").fill(str(offset))
+                    page.locator("#presentation-offset").dispatch_event("change")
+                    viewer.wait_for_function("(count) => window.mockPlayers[0].seeks.length > count", arg=before)
+                    public_state = public_client.get(urlsplit(url).path + "state").json
+                    self.assertEqual(public_state["offset"], offset)
+                    audience_time = viewer.evaluate("window.mockPlayers[0].getCurrentTime()")
+                    self.assertAlmostEqual(audience_time, public_state["time"], delta=0.4)
+                page.locator("#presentation-offset").fill("11")
+                page.locator("#presentation-offset").dispatch_event("change")
+                self.assertEqual(page.locator("#presentation-offset").input_value(), "0")
                 page.evaluate("window.mockPlayers[0].seekTo(8)")
                 viewer.wait_for_function("window.mockPlayers[0].getCurrentTime() >= 8 && window.mockPlayers[0].getCurrentTime() < 10")
                 page.click("#btn-play")
@@ -229,9 +270,12 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 viewer.wait_for_function("window.mockPlayers[0].state === 2")
                 page.evaluate("window.mockPlayers[0].seekTo(4)")
                 viewer.wait_for_function("Math.abs(window.mockPlayers[0].getCurrentTime() - 4) < 0.1")
-                viewer.click("#presentation-sound")
+                self.assertEqual(viewer.locator("#presentation-sound").count(), 0)
+                self.assertTrue(viewer.evaluate("window.mockPlayers[0].muted"))
+                page.check("#presentation-public-audio")
                 viewer.wait_for_function("window.mockPlayers[0].muted === false")
                 self.assertEqual(page.evaluate("window.mockPlayers[0].state"), 2)
+                self.assertTrue(page.evaluate("window.mockPlayers[0].muted"))
                 network["offline"] = True
                 viewer.wait_for_function("document.querySelector('#presentation-message').textContent.includes('interrupted')")
                 self.assertTrue(viewer.locator("#presentation-player").evaluate("(el) => el.classList.contains('blank')"))
@@ -239,7 +283,23 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 viewer.wait_for_function("!document.querySelector('#presentation-player').classList.contains('blank')")
                 viewer.reload()
                 viewer.wait_for_function("window.mockPlayers.length === 1 && Math.abs(window.mockPlayers[0].getCurrentTime() - 4) < 0.1")
+                viewer.wait_for_function("window.mockPlayers[0].muted === false")
+                page.uncheck("#presentation-public-audio")
+                viewer.wait_for_function("window.mockPlayers[0].muted === true")
                 self.assertEqual(viewer.evaluate("window.mockPlayers[0].state"), 2)
+                replacement = conductor.new_page()
+                replacement.goto("http://clicktrack.test/live/")
+                replacement.wait_for_function("!document.querySelector('#presentation-share').disabled")
+                replacement.once("dialog", lambda dialog: dialog.dismiss())
+                replacement.click("#presentation-share")
+                replacement.wait_for_function("document.querySelector('#presentation-share-status').textContent.includes('kept')")
+                self.assertEqual(public_client.get(urlsplit(url).path + "state").json["time"], 4)
+                replacement.once("dialog", lambda dialog: dialog.accept())
+                replacement.click("#presentation-share")
+                replacement.wait_for_function("!document.querySelector('#presentation-share-link').hidden")
+                self.assertEqual(replacement.locator("#presentation-share-link").get_attribute("href"), url)
+                page.wait_for_function("document.querySelector('#presentation-share-status').textContent.includes('interrupted')")
+                page = replacement
                 page.click("#presentation-share-stop")
                 viewer.wait_for_function("document.querySelector('#presentation-message').textContent.includes('ended')")
                 self.assertEqual(public_client.get(urlsplit(url).path).status_code, 404)
@@ -247,7 +307,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.click("#presentation-share")
                 page.wait_for_function("!document.querySelector('#presentation-share-link').hidden")
                 new_url = page.locator("#presentation-share-link").get_attribute("href")
-                self.assertNotEqual(url, new_url)
+                self.assertEqual(url, new_url)
                 page.uncheck("#practice-enable")
                 for _ in range(50):
                     if public_client.get(urlsplit(new_url).path).status_code == 404:
@@ -511,12 +571,37 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.select_option("#builder-markers", "0")
                 self.assertTrue(page.locator("#builder-time").evaluate("(el) => el.readOnly"))
                 page.select_option("#builder-markers", "2")
-                self.assertEqual(page.locator("#builder-time-mode").input_value(), "single")
+                self.assertTrue(page.locator("#builder-time-single").is_checked())
+                for width in (1440, 780, 613, 390):
+                    page.set_viewport_size({"width": width, "height": 1100})
+                    layout = page.locator(".builder-timing-panel").first.evaluate("""panel => {
+                      const box = panel.getBoundingClientRect();
+                      const labels = [...panel.querySelectorAll('.builder-time-options label')]
+                        .map(el => el.getBoundingClientRect());
+                      const help = panel.querySelector('#builder-time-mode-help').getBoundingClientRect();
+                      const input = panel.querySelector('#builder-time').getBoundingClientRect();
+                      return {
+                        contained: labels.every(label => label.left >= box.left && label.right <= box.right),
+                        separated: labels[0].bottom <= labels[1].top && labels[1].bottom <= help.top
+                          && help.bottom <= input.top,
+                        helpWidth: help.width / box.width,
+                        inputHeight: input.height,
+                        overflow: panel.scrollWidth > panel.clientWidth
+                      };
+                    }""")
+                    self.assertTrue(layout["contained"], (width, layout))
+                    self.assertTrue(layout["separated"], (width, layout))
+                    self.assertGreater(layout["helpWidth"], 0.8, (width, layout))
+                    self.assertLess(layout["inputHeight"], 50, (width, layout))
+                    self.assertFalse(layout["overflow"], (width, layout))
+                    self.assertTrue(page.get_by_label("Ripple edit — this hit point and everything after it", exact=True).is_visible())
+                page.set_viewport_size({"width": 1440, "height": 1100})
                 edit_time("0:16.500")
                 wait_for_times([0, 8, 16.5, 24, 32])
                 edit_time("0:16.000")
                 wait_for_times([0, 8, 16, 24, 32])
-                page.select_option("#builder-time-mode", "ripple")
+                page.get_by_text("Ripple edit", exact=True).click()
+                self.assertTrue(page.locator("#builder-time-ripple").is_checked())
                 edit_time("0:16.500")
                 saved = wait_for_times([0, 8, 16.5, 24.5, 32.5])
                 self.assertEqual(saved["sections"][0]["bpm"], 120)
@@ -559,7 +644,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
                 page.select_option("#builder-markers", "2")
                 self.assertEqual(page.locator("#builder-time").input_value(), dragged_time)
-                self.assertEqual(page.locator("#builder-time-mode").input_value(), "single")
+                self.assertTrue(page.locator("#builder-time-single").is_checked())
 
                 negative_draft = fixture.client.post("/clicktrack/api/video-drafts", json={
                     "videoId": "abcdefghijk", "markers": [
@@ -581,7 +666,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.click("button[data-view=edit]")
                 page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
                 page.select_option("#builder-markers", "0")
-                page.select_option("#builder-time-mode", "ripple")
+                page.check("#builder-time-ripple")
                 edit_time("-0:07.500")
                 self.assertEqual(wait_for_times([-7.5, 0, 8.5, 16.5])["videoOffset"], -7.5)
                 edit_time("0:00.500")
@@ -1154,7 +1239,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.wait_for_function("document.querySelector('#track-select').options.length === 1")
                 page.select_option("#track-select", str(track["id"]))
                 page.wait_for_function("!document.querySelector('#presentation-open').disabled")
-                for width, height in ((1280, 720), (375, 812)):
+                for width, height in ((1280, 720), (780, 900), (554, 780), (375, 812)):
                     page.set_viewport_size({"width": width, "height": height})
                     for fullscreen in (False, True):
                         page.evaluate("(on) => document.body.classList.toggle('performance-mode', on)", fullscreen)
@@ -1171,6 +1256,25 @@ class ClickTrackBrowserTests(unittest.TestCase):
                         sizes = page.evaluate("""() => ['d-bar','d-meter'].map(id =>
                           parseFloat(getComputedStyle(document.getElementById(id)).fontSize))""")
                         self.assertGreater(sizes[0], sizes[1])
+                        for values in (["98", "6/8", "♩.=61"], ["99999", "32/32", "♩.=400"]):
+                            page.evaluate("""values => ['d-bar', 'd-meter', 'd-tempo'].forEach(
+                              (id, index) => document.getElementById(id).textContent = values[index])""", values)
+                            page.wait_for_function("""() => ['d-bar','d-meter','d-tempo'].every(id => {
+                              const el = document.getElementById(id);
+                              const range = document.createRange();
+                              range.selectNodeContents(el);
+                              const rect = range.getBoundingClientRect();
+                              const box = el.getBoundingClientRect();
+                              return getComputedStyle(el).whiteSpace === 'nowrap'
+                                && rect.width <= box.width + 0.5
+                                && rect.left >= box.left - 0.5 && rect.right <= box.right + 0.5;
+                            })""")
+                            self.assertEqual(page.locator("#d-tempo").text_content(), values[2])
+                        page.evaluate("""() => {
+                          document.getElementById('d-bar').textContent = '1';
+                          document.getElementById('d-meter').textContent = '4/4';
+                          document.getElementById('d-tempo').textContent = '♩=120';
+                        }""")
                 page.evaluate("document.body.classList.remove('performance-mode')")
                 page.set_viewport_size({"width": 1280, "height": 720})
                 with page.expect_popup() as popup_info:
@@ -1622,7 +1726,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 def route_request(route):
                     request = route.request
                     parsed = urlsplit(request.url)
-                    if parsed.path == "/clicktrack/api/video-drafts" and request.method == "POST":
+                    if parsed.path == "/live/api/video-drafts" and request.method == "POST":
                         failures["attempts"] += 1
                         if failures["remaining"]:
                             failures["remaining"] -= 1
@@ -2016,7 +2120,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 def route_request(route):
                     request = route.request
                     parsed = urlsplit(request.url)
-                    if fail_draft["enabled"] and parsed.path == f"/clicktrack/api/video-drafts/{draft['id']}":
+                    if fail_draft["enabled"] and parsed.path == f"/live/api/video-drafts/{draft['id']}":
                         route.fulfill(status=503, content_type="application/json", body='{"error":"Unavailable"}')
                         return
                     path = parsed.path + (("?" + parsed.query) if parsed.query else "")
@@ -2498,6 +2602,9 @@ class ClickTrackBrowserTests(unittest.TestCase):
             page.add_script_tag(content=source)
             page.evaluate("""() => {
               const t = window.testHooks, eps = 1e-8;
+              const picture = document.createElement('div');
+              picture.id = 'practice-player';
+              document.body.append(picture);
               const assert = (ok, message) => { if (!ok) throw Error(message); };
               const pause = t.normal({type:'timedPause', pauseDuration:3.001, bars:1, startBar:175});
               const next = t.normal({type:'click', bpm:94, num:3, den:4, bars:2, startBar:176});

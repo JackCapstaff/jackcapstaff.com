@@ -7,7 +7,7 @@
 	<article id="main">
 		<header>
 			<h2>LOGIN</h2>
-			<p>Access the admin panel</p>
+			<p>Sign in to your account</p>
 		</header>
 
 		<section class="wrapper style5">
@@ -38,7 +38,7 @@
 				<hr />
 
 				<p style="text-align: center; margin-top: 2rem;">
-					Don't have an account? <a href="{{ url_for('register') }}">Create one</a>
+					Don't have an account? <a href="{{ url_for('register', next=next_page) if next_page else url_for('register') }}">Create one</a>
 				</p>
 			</div>
 		</section>

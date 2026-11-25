@@ -3,8 +3,10 @@ Website
 
 ## Performance Studio
 
-Performance Studio is available at the existing `/clicktrack/` URL. Saved
-tracks, backups and audience links remain compatible.
+Performance Studio is available at `/live/` (or `/live`, which adds the trailing
+slash). Existing `/clicktrack/` URLs remain supported, including APIs, prepared
+offline pages and unexpired legacy audience links. Saved tracks and backups
+remain compatible.
 
 Only administrators can create, edit, duplicate, import or delete performance tracks
 and video drafts. In Edit, tick **Public track** to make a saved track available
@@ -14,10 +16,22 @@ and restored backups. Admins continue to manage their own tracks.
 Non-admin users (including the editor role) see only public tracks owned by
 admins and can select, rehearse and perform them, with video and presentation
 controls, but cannot change the saved music. Their pedal, sound-output and
-display preferences remain personal. The API enforces the same restrictions.
+display preferences remain personal. Only admins can create or broadcast
+public live links; ordinary performers can still use the local presentation
+window. The API enforces the same restrictions.
 Public-track selection still requires login; the audience's public live-video
 link described below does not. Unpublishing removes access on the next load;
 it cannot retract a previously downloaded backup or prepared offline show.
+
+To invite band members for independent practice, publish the track, then choose
+**Track actions → Invite band members**. Copy the invitation link, or use the
+displayed link if clipboard access is unavailable. The `/live/invite/<track-id>/`
+page offers signup and login and preserves the invited track through both.
+It opens that track in read-only Perform mode rather than the member's last
+track, with video enabled and film audio on. Each member presses Start and
+controls their own playback (browsers may require interaction before sound).
+This is not the live audience broadcast. Invites do not grant private-track
+access; unpublishing or deleting the track makes its invite unavailable.
 
 In the signed-in Performance Studio page, open **Track actions → New performance track from
 video** as an administrator. The same dropdown has the new track and JSON options, and **Pedal
@@ -34,13 +48,16 @@ and enter 1 skipped bar to combine score bars 129 and 130 into one played
 If the embedded player has keyboard focus, use the controls below it.
 
 For a timing jump partway through a replacement video, select the first
-affected hit point and choose **Time edit mode → Ripple this and all later
-hit points**. Change its **Video time**, for example from `10:00.000` to
+affected hit point and find **Move hit points in time**. Under **What should
+move?**, select **Ripple edit — this hit point and everything after it**.
+Change its **Video time**, for example from `10:00.000` to
 `10:00.500`: that point and all later musical points move 0.5 seconds later.
 Their spacing stays unchanged; earlier points and video 0:00 stay fixed.
 The preceding section's tempo is recalculated to meet the moved point.
 Negative changes move the remainder earlier. Ripple also applies to playhead
-moves, nudges and timeline dragging; **Move this hit point only** is the default.
+moves, nudges and timeline dragging; **Just this hit point** is the default.
+Section duration and video-start tools are grouped separately and are not
+affected by the ripple setting.
 Invalid order, video limits or impossible tempi are rejected without applying
 the ripple. Linked tracks use the existing automatic draft/track saving.
 
@@ -63,6 +80,8 @@ cue and its count-in. It disappears when normal playback begins.
 The **Find section / rehearsal points** panel stays available in both normal
 and fullscreen performance views. Use it to pause and restart
 at a section or score bar.
+Bar, meter and tempo figures automatically shrink to fit their columns without
+wrapping, including beside video, in fullscreen and in the editor preview.
 
 For an audience display, enable video in Perform and choose **Open presentation
 window**. Move that window to the audience display and make it fullscreen using
@@ -74,24 +93,50 @@ YouTube seeking and synchronization are approximate; check both windows before
 performing. Closing the presentation window returns film audio to the conductor
 window. The presentation closes when you leave Perform or disable video.
 
-For viewers on other devices, choose **Create public live link** in Perform,
-then **Copy public link**. The separate `/clicktrack/watch/<random-token>/` URL
+For viewers on other devices, as an admin choose **Create public live link** in Perform,
+then **Copy public link**. The separate `/live/watch/YYYY-MM-DD/` URL
 needs no login and follows your live start, pause and seek controls. Only the
 video and playback state are public, not your track, notes or hit points.
 This supports saved YouTube videos, not files local to your computer.
-Viewers initially receive muted video and can enable film audio themselves;
-their audio choice does not affect the conductor or the local presentation.
-They may need to allow playback in their browser.
+The date uses **Europe/London**, including British Summer Time. There is one
+shared broadcast per date across all admins. Creating a second broadcast
+requires explicit confirmation to replace the current one; old conductor
+updates cannot control its replacement. The daily URL is predictable and
+intentionally public, not a secret link. Stopping sharing takes it offline;
+starting again that day reuses the same URL. Viewers whose page already says
+the broadcast ended must reload it. Date changes do not redirect yesterday's
+viewers; share the new day's link when starting a new broadcast.
+The admin controls remote film audio using **Play film audio on audience
+devices**, off by default. It applies live to every viewer, including after
+a viewer reloads; the public page has no audio toggle. Conductor and local
+presentation audio settings stay independent. Viewers may still need to allow
+playback in their browser, particularly when the admin enables sound.
+
+Admins can adjust **Audience timing offset (seconds)** during playback.
+If the audience video is behind, try `+0.50` to move it ahead half a second;
+negative values delay it. This updates everyone watching that live link on
+their next poll without changing music, hit points or the local presentation.
+It applies only while playing, never to paused seeks, pre-video blackout or
+stale connections. The range is -10 to +10 seconds, default 0 on page load;
+it is not saved with the track. Network-delay estimation is already automatic,
+but YouTube buffering and individual screen delay cannot be measured reliably.
+A shared offset cannot guarantee frame-accurate sync across different devices.
 
 Keep the conductor page open with internet access. Cross-device timing is
 approximate (updates are polled about once a second); buffering, network delays,
 ads and YouTube seeking can cause differences, so use the local presentation or
 a wired display for critical projection. The public picture remains black
 before video 0:00 and goes black if live updates stop for about five seconds.
+When music starts before video 0:00, the picture fades up over 0.8 seconds as
+it begins, in the conductor, local presentation and public audience views.
+Returning to a pre-video position or losing the live connection blacks out
+immediately; starting or seeking later into the film does not add a fade.
 The same link resumes after a temporary connection loss. **Stop public sharing**,
-changing tracks or leaving Perform revokes the link. Links expire after 12 hours;
-after a page reload or an expired link, create and share a new one. Anyone with
-the link can view it while active. Public playback cannot control the conductor.
+changing tracks or leaving Perform stops the broadcast. Broadcasts expire after
+12 hours; after reloading the conductor or expiry, start sharing again (confirm
+replacement if asked). The same date reuses its URL; a new date gets a new URL.
+Anyone can discover and view a daily URL while active. Public playback cannot
+control the conductor.
 The relay uses the shared application database, so it works across server workers;
 the new table is created by the application's existing `db.create_all()` startup.
 

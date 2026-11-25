@@ -110,24 +110,40 @@
       <button type="button" class="btn small" id="builder-export-csv">Export hit points (.csv)</button>
       <fieldset id="builder-marker">
         <legend id="builder-marker-title">Hit point details</legend>
-        <label><span><input id="builder-renumber-following" type="checkbox" aria-describedby="builder-renumber-help"> Renumber following hit points</span></label>
-        <p id="builder-renumber-help" class="muted small">Tick before editing the number. For example, changing 13 to 12A shifts 14 to 13, 15 to 14, and so on.</p>
         <div class="video-builder-fields">
           <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
-          <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
-          <label>Time edit mode <select id="builder-time-mode" aria-describedby="builder-time-mode-help">
-            <option value="single">Move this hit point only</option>
-            <option value="ripple">Ripple this and all later hit points</option>
-          </select></label>
-          <button type="button" class="btn small" id="builder-snap-video">Start video at this hit point</button>
-          <label>Duration to next hit point (seconds) <input type="number" id="builder-span-duration" min="0.001" max="86400" step="0.001"></label>
-          <button type="button" class="btn small" id="builder-span-apply">Set section duration</button>
-          <p id="builder-span-status" class="muted small" role="status">Select a musical hit point with a following hit point.</p>
+        </div>
+        <label><span><input id="builder-renumber-following" type="checkbox" aria-describedby="builder-renumber-help"> Renumber following hit points</span></label>
+        <p id="builder-renumber-help" class="muted small">Only affects hit point numbers, not timing.</p>
+        <section class="builder-timing-panel" aria-labelledby="builder-timing-title">
+          <h3 id="builder-timing-title">Move hit points in time</h3>
+          <fieldset id="builder-time-mode" class="builder-time-options" aria-describedby="builder-time-mode-help">
+            <legend>What should move?</legend>
+            <label><input id="builder-time-single" type="radio" name="builder-time-mode" value="single" checked> <span>Just this hit point</span></label>
+            <label><input id="builder-time-ripple" type="radio" name="builder-time-mode" value="ripple"> <span><strong>Ripple edit</strong> &mdash; this hit point and everything after it</span></label>
+          </fieldset>
+          <p id="builder-time-mode-help" class="muted small">Ripple keeps later hit points spaced apart exactly as they are. Earlier hit points and video 0:00 stay fixed.</p>
+          <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000" aria-describedby="builder-time-example"></label>
+          <p id="builder-time-example" class="muted small">To move 0.5 seconds earlier, change 10:00.000 to 9:59.500. Choose the mode above before changing the time.</p>
           <div class="stage-tool-row" role="group" aria-label="Nudge selected hit point">
             <button type="button" class="btn small" id="builder-nudge-back" aria-label="Move selected hit point 0.1 seconds earlier" disabled>−0.1 s</button>
             <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later" disabled>+0.1 s</button>
+            <button type="button" class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           </div>
-          <p id="builder-time-mode-help" class="muted small">Applies to Video time, playhead moves, nudges and timeline dragging. Ripple adds the same time change to this and all later musical hit points, preserving their spacing; earlier music and the video 0:00 reference stay fixed. For example, change 10:00.000 to 10:00.500 to move the rest 0.5 seconds later.</p>
+          <p class="muted small">The selected mode also applies to nudges, playhead moves and timeline dragging.</p>
+        </section>
+        <section class="builder-timing-panel" aria-labelledby="builder-duration-title">
+          <h3 id="builder-duration-title">Section duration and video start</h3>
+          <div class="stage-tool-row">
+            <label>Duration to next hit point (seconds) <input type="number" id="builder-span-duration" min="0.001" max="86400" step="0.001"></label>
+            <button type="button" class="btn small" id="builder-span-apply">Set section duration</button>
+          </div>
+          <p id="builder-span-status" class="muted small" role="status">Select a musical hit point with a following hit point.</p>
+          <button type="button" class="btn small" id="builder-snap-video">Start video at this hit point</button>
+          <p class="muted small">These are separate timing tools; the ripple setting above does not apply.</p>
+        </section>
+        <h3>Musical settings</h3>
+        <div class="video-builder-fields">
           <label>Score bar <input id="builder-bar" type="number" min="1" max="99999" step="1"></label>
           <label>Score bars skipped before the next hit <input id="builder-skip" type="number" min="0" max="9998" step="1" value="0" inputmode="numeric" aria-describedby="builder-skip-help"></label>
           <label>Rehearsal figure <input id="builder-figure" type="text" maxlength="32" placeholder="e.g. 6 or A"></label>
@@ -158,7 +174,6 @@
         <p id="builder-skip-help" class="muted small">Applies to the span starting at this hit. Add the next score-bar hit point first.</p>
         <p class="muted small">For a timed pause, choose that tempo shape on the hit at the start of the pause. It stays silent, then counts into the next section using its starting tempo.</p>
         <div class="stage-tool-row">
-          <button class="btn small" id="builder-retime" disabled>Move hit point to playhead</button>
           <button class="btn small danger" id="builder-remove">Remove hit point</button>
           <button type="button" class="btn small" id="builder-perform" hidden>Perform from here</button>
           <button type="button" class="btn small" id="builder-jump-section" disabled>Jump to full track section</button>

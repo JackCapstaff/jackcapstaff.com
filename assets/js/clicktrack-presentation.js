@@ -4,12 +4,11 @@
   const status = document.getElementById('presentation-message');
   const unlock = document.getElementById('presentation-unlock');
   const publicStateUrl = window.CLICKTRACK_PUBLIC_STATE_URL;
-  const sound = document.getElementById('presentation-sound');
   const parent = window.opener;
   const origin = window.location.origin;
   let media = null, player = null, desired = null, sourceKey = null, syncKey = null, generation = 0;
   let youtubeApi = null, lastState = Date.now(), loadTimer = null;
-  let publicMuted = true, publicKey = 0, receivedAt = 0, ended = false;
+  let publicKey = 0, receivedAt = 0, ended = false;
   let playbackMessage = '';
   const send = (type, message = '') => {
     if (!publicStateUrl) parent?.postMessage({ channel: 'clicktrack-presentation', type, message }, origin);
@@ -83,7 +82,8 @@
         frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
         frame.referrerPolicy = 'strict-origin-when-cross-origin';
         frame.src = 'https://www.youtube-nocookie.com/embed/' + source.id + '?'
-          + new URLSearchParams({ enablejsapi: '1', playsinline: '1', origin });
+          + new URLSearchParams({ enablejsapi: '1', playsinline: '1', origin,
+            ...(publicStateUrl ? { controls: '0', disablekb: '1' } : {}) });
         host.append(frame);
         player = new yt.Player(frame, { events: {
           onReady: ({ target }) => {
@@ -107,7 +107,11 @@
   }
   function receiveState(data) {
     lastState = Date.now();
+    const fadeIn = desired?.blank === true && data.blank !== true && data.playing
+      && data.time <= 2 && desired.source.key === data.source.key;
     desired = data;
+    if (data.blank || fadeIn) host.classList.remove('fade-in');
+    if (fadeIn) host.classList.add('fade-in');
     host.classList.toggle('blank', data.blank === true);
     if (data.source.key !== sourceKey) {
       sourceKey = data.source.key;
@@ -138,10 +142,10 @@
       const now = performance.now();
       const expected = desired ? desired.time + (desired.playing ? (now - receivedAt) / 1000 : 0) : null;
       if (data.playing) data.time += (now - start) / 2000;
-      if (!desired || desired.playing !== data.playing || desired.blank !== data.blank
+      if (!desired || desired.offset !== data.offset || desired.playing !== data.playing || desired.blank !== data.blank
         || desired.source.key !== data.source.key || Math.abs(data.time - expected) > (data.playing ? 0.5 : 0.001)) publicKey++;
       receivedAt = now;
-      receiveState({ ...data, key: String(publicKey), muted: publicMuted });
+      receiveState({ ...data, key: String(publicKey) });
     } catch (error) {
       blankPublic('Live connection interrupted: ' + error.message + '. Reconnecting…');
     } finally {
@@ -159,13 +163,6 @@
     unlock.hidden = true;
     playbackMessage = '';
     status.textContent = '';
-    apply();
-  });
-  sound?.addEventListener('click', () => {
-    publicMuted = !publicMuted;
-    sound.textContent = publicMuted ? 'Enable film audio' : 'Mute film audio';
-    sound.setAttribute('aria-pressed', String(!publicMuted));
-    if (desired) desired.muted = publicMuted;
     apply();
   });
   setInterval(() => {

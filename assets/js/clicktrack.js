@@ -1370,7 +1370,12 @@
     });
     let data = null;
     try { data = await res.json(); } catch (e) { /* non-JSON */ }
-    if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+    if (!res.ok) {
+      const error = new Error((data && data.error) || ('HTTP ' + res.status));
+      error.status = res.status;
+      error.data = data;
+      throw error;
+    }
     return data;
   }
 
@@ -2040,6 +2045,12 @@
   }
 
   function renderEditor() {
+    if (!CFG.offline) {
+      $('btn-invite-track').disabled = !canEdit || !current?.isPublic || !isServerId(current?.id);
+      $('track-invite-status').textContent = canEdit && !current?.isPublic
+        ? 'Publish this track in Edit before inviting band members.' : '';
+      $('track-invite-link').hidden = true;
+    }
     if (!current) return;
     $('track-title').value = current.title;
     if (!CFG.offline) {
@@ -2729,7 +2740,7 @@
 
   let practice = null;
   const presentation = { window: null, connected: false, ready: false, timer: null, connectTimer: null };
-  const publicPresentation = { id: null, timer: null, busy: false, creating: false };
+  const publicPresentation = { id: null, timer: null, busy: false, creating: false, offset: 0 };
 
   function publicVideoState() {
     const source = practice;
@@ -2741,13 +2752,15 @@
       videoId: source.presentationSource.id, time: source.videoTime ?? 0,
       playing: !!source.playing && !E.suspended && E.playing,
       blank: source.beforeVideo === true,
+      offset: publicPresentation.offset,
+      audio: $('presentation-public-audio').checked,
     };
   }
 
   function renderPublicSharing() {
     const active = publicPresentation.id != null;
     $('presentation-share').disabled = active || publicPresentation.creating
-      || !practice?.media || practice.presentationSource?.kind !== 'youtube' || !current?.videoDraftId;
+      || !canEdit || !practice?.media || practice.presentationSource?.kind !== 'youtube' || !current?.videoDraftId;
     $('presentation-share-stop').hidden = !active;
     $('presentation-share-link').hidden = !active;
     $('presentation-share-copy').hidden = !active;
@@ -2776,7 +2789,7 @@
     renderPublicSharing();
     try {
       await api('DELETE', '/' + id, null, CFG.publicPresentations);
-      $('presentation-share-status').textContent = 'Public sharing stopped. The old link no longer works.';
+      $('presentation-share-status').textContent = 'Public sharing stopped. Today’s link is offline until an admin starts another broadcast.';
     } catch (error) {
       $('presentation-share-status').textContent = 'Could not revoke public link: ' + error.message + ' Live updates have stopped; audience playback will stop within a few seconds. The link expires after 12 hours.';
       toast('Could not revoke public presentation link: ' + error.message);
@@ -2784,12 +2797,23 @@
   }
 
   async function createPublicPresentation() {
-    if (publicPresentation.id != null || publicPresentation.creating) return;
+    if (!canEdit || publicPresentation.id != null || publicPresentation.creating) return;
     const source = practice;
     publicPresentation.creating = true;
     renderPublicSharing();
     try {
-      const live = await api('POST', '', publicVideoState(), CFG.publicPresentations);
+      let live;
+      try {
+        live = await api('POST', '', publicVideoState(), CFG.publicPresentations);
+      } catch (error) {
+        if (error.status !== 409 || !Number.isInteger(error.data?.replaceId)) throw error;
+        if (!window.confirm('Replace the public broadcast for ' + error.data.date
+          + '? Everyone using today’s audience link will follow this performance instead.')) {
+          $('presentation-share-status').textContent = 'Existing public broadcast kept. No changes made.';
+          return;
+        }
+        live = await api('POST', '', { ...publicVideoState(), replaceId: error.data.replaceId }, CFG.publicPresentations);
+      }
       if (practice !== source) {
         await api('DELETE', '/' + live.id, null, CFG.publicPresentations);
         $('presentation-share-status').textContent = 'Public sharing cancelled because the practice video changed. Create a new link when the video is ready.';
@@ -3089,7 +3113,12 @@
     const expected = source.cueTime + (rolling ? Math.max(0, ctx.currentTime - entry) : 0);
     const playing = rolling && !E.suspended && expected >= -1e-8;
     const blankChanged = source.beforeVideo !== (expected < -1e-8);
+    const fadeIn = source.beforeVideo === true && expected >= -1e-8 && expected <= 2 && playing;
     source.beforeVideo = expected < -1e-8;
+    const picture = $('practice-player');
+    if (source.beforeVideo || fadeIn) picture.classList.remove('fade-in');
+    if (fadeIn) picture.classList.add('fade-in');
+    picture.classList.toggle('before-video', source.beforeVideo);
     source.videoTime = Math.max(0, expected);
     const key = positionKey + ':' + playing;
     if (!force && key === source.syncKey && !blankChanged) return;
@@ -3163,7 +3192,8 @@
     const track = current, host = $('practice-player'), status = $('practice-status');
     const source = { syncKey: null };
     practice = source;
-    $('practice-sound').checked = false;
+    host.classList.remove('fade-in', 'before-video');
+    $('practice-sound').checked = !!CFG.invitedTrack && String(track.id) === String(CFG.invitedTrack.id);
     status.textContent = 'Loading practice video…';
     const fail = (message) => {
       if (practice !== source) return;
@@ -4049,7 +4079,7 @@
   }
 
   function markerLimits(index) {
-    if ($('builder-time-mode').value === 'ripple') {
+    if ($('builder-time-ripple').checked) {
       const marker = builder.markers[index];
       const previous = builder.markers.slice(0, index).filter((point) => point.time !== 0 || point.bar !== '').at(-1);
       const min = previous ? roundMarkerTime(previous.time + 0.001) : -86400;
@@ -4127,7 +4157,7 @@
 
   function moveVideoMarker(index, time, recenter) {
     const marker = builder.markers[index];
-    if ($('builder-time-mode').value === 'ripple' && time !== marker.time) {
+    if ($('builder-time-ripple').checked && time !== marker.time) {
       try {
         const delta = roundMarkerTime(time - marker.time);
         const shifted = retimedMarkers((point) => point.time >= marker.time ? point.time + delta : point.time);
@@ -4771,7 +4801,7 @@
       }
       const changed = builder.markers[index].time !== time;
       if (!moveVideoMarker(index, time, true)) return;
-      if ($('builder-time-mode').value === 'ripple' && changed) return;
+      if ($('builder-time-ripple').checked && changed) return;
       $('builder-review-status').textContent = changed ? 'Hit point moved to ' + markerTime(time) + '.'
         : 'Seek to a different time first, or drag the hit point on the timeline.';
     });
@@ -4848,7 +4878,7 @@
       const marker = builder.markers[builder.selected];
       const parsed = parseTimecode(e.target.value), time = parsed == null ? null : roundMarkerTime(parsed);
       if (!videoReady() || marker.time === 0 || time == null || time < -86400 || time > roundMarkerTime(builderMedia().duration)
-        || ($('builder-time-mode').value !== 'ripple' && builder.markers.some((m) => m !== marker && m.time === time))) {
+        || (!$('builder-time-ripple').checked && builder.markers.some((m) => m !== marker && m.time === time))) {
         e.target.value = markerTime(marker.time);
         toast('Enter a unique time from -24 hours up to the end of the video.');
         return;
@@ -5427,6 +5457,29 @@
       $('presentation-audio').addEventListener('change', () => { applyPracticeSound(); sendPresentationState(); });
       $('presentation-open').addEventListener('click', openPresentation);
       $('presentation-share').addEventListener('click', createPublicPresentation);
+      $('btn-invite-track').addEventListener('click', async () => {
+        if (!canEdit || !current?.isPublic || !isServerId(current.id)) return;
+        const link = $('track-invite-link');
+        link.href = new URL(CFG.inviteBase.replace('/0/', '/' + current.id + '/'), location.origin).href;
+        link.hidden = false;
+        try {
+          await navigator.clipboard.writeText(link.href);
+          $('track-invite-status').textContent = 'Invitation copied. Members sign up or log in, then practice this track with video and film audio enabled.';
+        } catch (error) {
+          $('track-invite-status').textContent = 'Could not copy invitation: ' + error.message + '. Copy the Open band invitation link instead.';
+        }
+      });
+      $('presentation-public-audio').addEventListener('change', publishPublicPresentation);
+      $('presentation-offset').addEventListener('change', (event) => {
+        const input = event.target;
+        if (!input.reportValidity() || !Number.isFinite(input.valueAsNumber)) {
+          input.value = String(publicPresentation.offset ?? 0);
+          $('presentation-share-status').textContent = 'Enter an audience timing offset from -10 to +10 seconds.';
+          return;
+        }
+        publicPresentation.offset = input.valueAsNumber;
+        publishPublicPresentation();
+      });
       $('presentation-share-stop').addEventListener('click', stopPublicPresentation);
       $('presentation-share-copy').addEventListener('click', async () => {
         try {
@@ -5830,8 +5883,41 @@
     });
   }
 
+  function wireStageFigureSizing() {
+    const figures = [...document.querySelectorAll('.stage-col .big')];
+    let pending = false;
+    function scheduleFit() {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        for (const figure of figures) {
+          if (!figure.clientWidth) continue;
+          figure.style.removeProperty('font-size');
+          const size = parseFloat(getComputedStyle(figure).fontSize);
+          const range = document.createRange();
+          range.selectNodeContents(figure);
+          const width = range.getBoundingClientRect().width;
+          if (width > figure.clientWidth) {
+            figure.style.fontSize = (size * (figure.clientWidth - 1) / width) + 'px';
+          }
+        }
+      });
+    }
+    const resize = new ResizeObserver(scheduleFit);
+    const content = new MutationObserver(scheduleFit);
+    for (const figure of figures) {
+      resize.observe(figure.parentElement);
+      content.observe(figure, { childList: true, characterData: true, subtree: true });
+    }
+    window.addEventListener('resize', scheduleFit);
+    document.fonts.ready.then(scheduleFit);
+    scheduleFit();
+  }
+
   async function init() {
     wire();
+    wireStageFigureSizing();
     renderPedalKeys();
     renderAll();
     requestAnimationFrame(frame);
@@ -5850,7 +5936,10 @@
       return;
     }
     await loadTracks();
-    selectTrack(loadJSON(LS_LAST, null));
+    if (CFG.invitedTrack && !tracks.some((track) => String(track.id) === String(CFG.invitedTrack.id))) {
+      tracks.push(normTrack(CFG.invitedTrack));
+    }
+    selectTrack(CFG.invitedTrack?.id ?? loadJSON(LS_LAST, null));
     if (prefs.midi) setMidi(true);
   }
 

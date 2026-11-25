@@ -84,9 +84,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .stage-secnum { color: var(--muted); font-size: 14px; letter-spacing: .1em; text-transform: uppercase; }
 .stage-name { font-size: clamp(28px, 6vw, 64px); font-weight: 800; line-height: 1.1; margin: 4px 0; word-break: break-word; }
 .stage-notes { color: var(--beat-on); font-size: clamp(18px, 2.8vw, 34px); min-height: 1.2em; white-space: pre-wrap; overflow-wrap: anywhere; }
-.stage-main { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0 10px; }
+.stage-main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0 10px; }
+.stage-col { min-width: 0; }
 .stage-col .lbl { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .1em; }
-.stage-col .big { font-size: clamp(40px, 10vw, 120px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.stage-col .big { font-size: clamp(40px, 10vw, 120px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
 #d-bar { font-size: clamp(52px, 12vw, 150px); }
 .stage-col .sub { color: var(--muted); font-size: clamp(14px, 2vw, 20px); min-height: 1.3em; margin-top: 4px; }
 
@@ -226,7 +227,7 @@ body.performance-mode .rehearsal-panel { top: max(8px, env(safe-area-inset-top))
 .practice-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
 .practice-video { margin-bottom: 12px; padding: 8px 12px; min-width: 0; border: 1px solid var(--line); border-radius: 12px; }
 .perform-layout.with-video .stage-main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.perform-layout.with-video .stage-col .big { font-size: clamp(24px, 5vw, 64px); overflow-wrap: anywhere; }
+.perform-layout.with-video .stage-col .big { font-size: clamp(24px, 5vw, 64px); }
 .perform-layout.with-video #d-bar { font-size: clamp(42px, 7vw, 92px); }
 .perform-layout.with-video .stage-countin .n { font-size: clamp(72px, 12vw, 160px); }
 @media (min-width: 800px) {
@@ -242,6 +243,9 @@ body.performance-mode .rehearsal-panel { top: max(8px, env(safe-area-inset-top))
   .with-video .practice-video { grid-area: video; }
 }
 #practice-picture { margin: 8px auto; position: relative; }
+#practice-player.before-video { visibility: hidden; }
+#practice-player.fade-in:not(.before-video) { animation: picture-fade-in 800ms ease-out both; }
+@keyframes picture-fade-in { from { opacity: 0; } to { opacity: 1; } }
 #practice-player iframe, #practice-player video { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; }
 #practice-player iframe { min-height: 200px; }
 #practice-visual-cues { position: relative; height: 28px; background: #141414; overflow: hidden; pointer-events: none; }
@@ -324,6 +328,15 @@ body.performance-mode .with-video .stage.show-fermata .stage-countin {
 .builder-timeline-point[data-index="0"]::before { border-radius: 50%; }
 .builder-timeline-point:active:not([data-index="0"]) { cursor: grabbing; }
 #builder-marker { min-width: 0; border: 1px solid var(--line); border-radius: 12px; margin: 12px 0 0; }
+.builder-timing-panel { padding: 12px; margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.builder-timing-panel h3 { margin: 0 0 12px; }
+.builder-timing-panel p { margin: 8px 0 12px; }
+.builder-timing-panel .btn { border-radius: 8px; }
+.builder-time-options { min-width: 0; padding: 0; margin: 0; border: 0; }
+.builder-time-options legend { margin-bottom: 8px; font-weight: 700; }
+#view-video .builder-time-options label { display: flex; align-items: flex-start; gap: 10px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.builder-time-options input { flex-shrink: 0; margin-top: 3px; }
+.builder-time-options label:has(input:checked) { border-color: var(--green); background: #142a23; }
 .builder-dialogue { grid-column: 1 / -1; }
 #builder-preview { padding-left: 0; list-style: none; }
 #builder-preview li { margin-bottom: 6px; overflow-wrap: anywhere; }
@@ -340,7 +353,7 @@ body.performance-mode .with-video .stage.show-fermata .stage-countin {
 }
 @media (max-width: 700px) {
   body.performance-mode .stage-main { margin: 10px 0 4px; }
-  body.performance-mode .stage-col .big { font-size: clamp(24px, 8vw, 54px); overflow-wrap: anywhere; }
+  body.performance-mode .stage-col .big { font-size: clamp(24px, 8vw, 54px); }
   body.performance-mode .beats { margin: 8px 0; min-height: 32px; }
   body.performance-mode .performance-clock { margin: 8px 0; }
   body.performance-mode .transport { margin: 8px 0; gap: 6px; }
@@ -435,3 +448,8 @@ body.performance-mode .with-video .stage.show-fermata .stage-countin {
 .read-only #btn-practice-edit-video,
 .read-only #btn-tap,
 .read-only .rehearsal-edit { display: none !important; }
+.read-only .public-sharing-admin { display: none !important; }
+.read-only #btn-invite-track,
+.read-only #track-invite-status,
+.read-only #track-invite-link { display: none !important; }
+.performance-invite { max-width: 640px; margin: 8vh auto; padding: 24px; }

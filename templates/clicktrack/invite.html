@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Band invitation · Performance Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/clicktrack.css') }}">
+</head>
+<body>
+  <main class="performance-invite">
+    <h1>You're invited to Performance Studio</h1>
+    <p>Create an account or sign in to open your band's performance track.</p>
+    <p>You control your own practice playback. Video and film audio will be enabled; press Start when ready.</p>
+    <div class="stage-tool-row">
+      <a class="btn primary" href="{{ url_for('register', next=destination) }}">Create an account</a>
+      <a class="btn" href="{{ url_for('login', next=destination) }}">Sign in</a>
+    </div>
+  </main>
+</body>
+</html>

@@ -751,6 +751,7 @@ app.register_blueprint(recipes_bp)
 
 from clicktrack import clicktrack_bp
 app.register_blueprint(clicktrack_bp)
+app.register_blueprint(clicktrack_bp, name="clicktrack_legacy", url_prefix="/clicktrack")
 
 from alexa_skill import alexa_bp
 app.register_blueprint(alexa_bp)

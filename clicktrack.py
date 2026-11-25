@@ -1,5 +1,9 @@
 """
-Click track / programmable metronome.
+Performance Studio / programmable metronome.
+
+The canonical prefix is /live; /clicktrack remains a compatibility alias.
+New public broadcasts use /live/watch/YYYY-MM-DD/ (Europe/London date).
+Only admins can create or broadcast; readers need no login.
 
   /clicktrack/                    performance + editor page (login required)
   /clicktrack/watch/<token>/       public live video          (no login)
@@ -20,17 +24,18 @@ Tracks are saved to the signed-in user's account, with a browser-local cache.
 """
 import math
 import re
-import secrets
 import time
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, current_app, jsonify, make_response, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
-clicktrack_bp = Blueprint("clicktrack", __name__, url_prefix="/clicktrack")
+clicktrack_bp = Blueprint("clicktrack", __name__, url_prefix="/live")
 
 MAX_TRACKS_PER_USER = 200
 MAX_SECTIONS = 500
@@ -63,10 +68,13 @@ def _api_login_required(view):
 
 @clicktrack_bp.before_request
 def restrict_track_editing():
-    if not request.path.startswith(("/clicktrack/api/tracks", "/clicktrack/api/video-drafts")):
+    endpoint = (request.endpoint or "").rsplit(".", 1)[-1]
+    if endpoint in ("api_create_presentation", "api_publish_presentation") and current_user.is_authenticated and current_user.role != "admin":
+        return jsonify({"error": "Only administrators can create or broadcast public presentations."}), 403
+    if not request.path.startswith(("/clicktrack/api/tracks", "/clicktrack/api/video-drafts", "/live/api/tracks", "/live/api/video-drafts")):
         return
     editing = request.method not in ("GET", "HEAD", "OPTIONS")
-    listing_drafts = request.endpoint == "clicktrack.api_video_drafts"
+    listing_drafts = endpoint == "api_video_drafts"
     if (editing or listing_drafts) and current_user.is_authenticated and current_user.role != "admin":
         return jsonify({"error": "Only administrators can edit performance tracks and video drafts."}), 403
 
@@ -228,6 +236,19 @@ def clicktrack_index():
     return render_template("clicktrack/index.html")
 
 
+@clicktrack_bp.get("/invite/<int:track_id>/")
+def performance_invite(track_id):
+    track = _published_tracks().filter(current_app.ClickTrack.id == track_id).first_or_404()
+    if not current_user.is_authenticated:
+        destination = url_for("clicktrack.performance_invite", track_id=track_id)
+        return _presentation_response(make_response(render_template(
+            "clicktrack/invite.html", destination=destination,
+        )))
+    return _presentation_response(make_response(render_template(
+        "clicktrack/index.html", invited_track=track.to_dict(),
+    )))
+
+
 @clicktrack_bp.get("/presentation/")
 @login_required
 def presentation():
@@ -250,10 +271,7 @@ def _public_video_state(data):
     if not isinstance(video_id, str) or not YOUTUBE_ID_RE.fullmatch(video_id):
         abort(400, description="A saved YouTube video is required for public sharing.")
     drafts = current_app.ClickTrackVideoDraft
-    if current_user.role == "admin":
-        available = drafts.query.filter_by(user_id=current_user.id, video_id=video_id).first()
-    else:
-        available = _published_tracks().join(drafts, current_app.ClickTrack.video_draft_id == drafts.id).filter(drafts.video_id == video_id).first()
+    available = drafts.query.filter_by(user_id=current_user.id, video_id=video_id).first()
     if not available:
         abort(400, description="Save and link this video draft before sharing.")
     position = data.get("time")
@@ -261,24 +279,51 @@ def _public_video_state(data):
         abort(400, description="Enter a valid presentation video position.")
     if any(type(data.get(field)) is not bool for field in ("playing", "blank")):
         abort(400, description="Presentation playing and blank states must be boolean.")
-    return {"videoId": video_id, "time": position, "playing": data["playing"], "blank": data["blank"]}
+    offset = data.get("offset", 0)
+    if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not math.isfinite(offset) or not -10 <= offset <= 10:
+        abort(400, description="Audience timing offset must be between -10 and +10 seconds.")
+    audio = data.get("audio", False)
+    if type(audio) is not bool:
+        abort(400, description="Audience film audio must be boolean.")
+    return {"videoId": video_id, "time": position, "playing": data["playing"], "blank": data["blank"], "offset": round(offset, 3), "audio": audio}
 
 
 @clicktrack_bp.post("/api/presentations")
 @_api_login_required
 def api_create_presentation():
-    state = _public_video_state(_json_body())
+    data = _json_body()
+    state = _public_video_state(data)
     db, _ = _models()
     model = current_app.ClickTrackPresentation
     now = time.time()
+    date = datetime.fromtimestamp(now, ZoneInfo("Europe/London")).date().isoformat()
+    existing = model.query.filter_by(token=date).first()
+    if existing is not None and existing.expires_at > now:
+        if data.get("replaceId") != existing.id or type(data.get("replaceId")) is not int:
+            return _presentation_response(jsonify({
+                "error": "A public broadcast already exists for " + date + ". Replace it?",
+                "replaceId": existing.id, "date": date,
+            })), 409
+        db.session.delete(existing)
+        db.session.flush()
     model.query.filter(model.expires_at <= now).delete(synchronize_session=False)
     if model.query.filter_by(user_id=current_user.id).count() >= 3:
         db.session.rollback()
         abort(400, description="Stop an existing public presentation before creating another.")
-    live = model(user_id=current_user.id, token=secrets.token_urlsafe(32), state=state,
+    live = model(user_id=current_user.id, token=date, state=state,
                  updated_at=now, expires_at=now + PRESENTATION_LIFETIME)
     db.session.add(live)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = model.query.filter_by(token=date).first()
+        if existing is None:
+            raise
+        return _presentation_response(jsonify({
+            "error": "Another admin started today's broadcast. Confirm replacement to continue.",
+            "replaceId": existing.id, "date": date,
+        })), 409
     return _presentation_response(jsonify({
         "id": live.id, "url": url_for("clicktrack.public_presentation", token=live.token),
     })), 201
@@ -322,10 +367,14 @@ def public_presentation_state(token):
     age = max(0, now - live.updated_at)
     state = live.state
     waiting = age > PRESENTATION_STALE_AFTER
+    playing = state["playing"] and not waiting and not state["blank"]
+    offset = state.get("offset", 0)
     return _presentation_response(jsonify({
         "source": {"kind": "youtube", "id": state["videoId"], "key": state["videoId"]},
-        "time": min(86400, state["time"] + (age if state["playing"] and not state["blank"] and not waiting else 0)),
-        "playing": state["playing"] and not waiting and not state["blank"],
+        "time": max(0, min(86400, state["time"] + (age + offset if playing else 0))),
+        "offset": offset,
+        "muted": not state.get("audio", False),
+        "playing": playing,
         "blank": state["blank"] or waiting, "waiting": waiting,
     }))
 
@@ -656,7 +705,9 @@ def api_update_unlinked_video_draft(draft_id):
 @_api_login_required
 def api_video_draft(draft_id):
     model = current_app.ClickTrackVideoDraft
-    if current_user.role == "admin":
+    if current_user.role == "admin" and (
+        request.method != "GET" or model.query.filter_by(id=draft_id, user_id=current_user.id).first()
+    ):
         draft = model.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
     else:
         if not _published_tracks().filter(current_app.ClickTrack.video_draft_id == draft_id).first():
