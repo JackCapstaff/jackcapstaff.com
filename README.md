@@ -58,6 +58,12 @@ Perform, the count-in comes first, then the pre-video music; the conductor and
 presentation videos wait at 0:00 until the selected hit point. Starting from a
 later section or using **Start video from beginning** follows the same alignment.
 Manual cue waits or repeats can make planned times approximate.
+The presentation picture stays black while the selected performance position
+is before video 0:00, and reappears when the film begins.
+In the video editor, select a negative-time hit point and choose **Start from
+hit point** to preview from its section count-in. Enable **Preview click with
+video** to hear the count-in and music; the video waits at 0:00. The existing
+pause-before-hit option also applies before the picture starts.
 
 To revise a draft, select a hit point and play from there. **Pause just before each
 hit point** stops playback at the next marker so you can edit, move or remove

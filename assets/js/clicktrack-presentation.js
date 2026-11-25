@@ -105,6 +105,7 @@
     if (data.type !== 'state') return;
     lastState = Date.now();
     desired = data;
+    host.classList.toggle('blank', data.blank === true);
     if (data.source.key !== sourceKey) {
       sourceKey = data.source.key;
       openSource(data.source);

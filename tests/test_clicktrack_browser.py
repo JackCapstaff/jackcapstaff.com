@@ -88,6 +88,17 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
                 self.assertEqual([m["time"] for m in saved_draft["markers"]], [-1.8, -0.6, 0, 1.2])
                 self.assertEqual([m["bar"] for m in saved_draft["markers"]], ["1", "2", "4", "6"])
+                page.check("#builder-click-preview")
+                page.select_option("#builder-markers", "0")
+                page.click("#builder-play")
+                page.wait_for_function("document.querySelector('#builder-metro-barof').textContent === 'count-in'")
+                page.wait_for_function("document.querySelector('#builder-review-status').textContent.includes('Paused just before hit point 2')", timeout=7000)
+                self.assertEqual(page.evaluate("window.mockPlayers.at(-1).state"), 2)
+                page.click("#builder-play")
+                page.wait_for_function("document.querySelector('#builder-review-status').textContent.includes('Paused just before hit point 3')", timeout=4000)
+                self.assertEqual(page.evaluate("window.mockPlayers.at(-1).state"), 2)
+                page.click("#builder-play")
+                page.wait_for_function("window.mockPlayers.at(-1).state === 1", timeout=4000)
                 page.reload()
                 page.wait_for_function("document.querySelector('#track-select').options.length === 1")
                 page.select_option("#track-select", str(track["id"]))
@@ -99,6 +110,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page.click("#practice-from-start")
                 page.wait_for_function("document.querySelector('#d-clock-status').textContent.includes('Count-in')")
                 self.assertEqual(page.evaluate("window.mockPlayers[0].state"), 2)
+                popup.wait_for_function("document.querySelector('#presentation-player').classList.contains('blank')")
                 page.click("#btn-play")
                 page.wait_for_function("document.querySelector('#d-clock-status').textContent.includes('Paused')")
                 page.wait_for_timeout(400)
@@ -110,9 +122,19 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 self.assertEqual(popup.evaluate("window.mockPlayers[0].state"), 2)
                 page.wait_for_function("window.mockPlayers[0].state === 1", timeout=6000)
                 popup.wait_for_function("window.mockPlayers[0].state === 1", timeout=3000)
+                popup.wait_for_function("!document.querySelector('#presentation-player').classList.contains('blank')")
                 self.assertEqual(page.locator("#d-bar").text_content().strip(), "4")
                 page.click("#btn-stop")
                 page.locator("#rehearsal-panel > summary").click()
+                page.locator("#rehearsal-bar").fill("3")
+                page.locator("#rehearsal-bar-form button[type=submit]").click()
+                page.select_option("#rehearsal-count-in", "0")
+                page.locator("#rehearsal-form button[type=submit]").click()
+                page.wait_for_function("document.querySelector('#d-bar').textContent.trim() === '3'")
+                popup.wait_for_function("document.querySelector('#presentation-player').classList.contains('blank')")
+                page.wait_for_function("window.mockPlayers[0].state === 1", timeout=4000)
+                popup.wait_for_function("!document.querySelector('#presentation-player').classList.contains('blank')")
+                page.click("#btn-stop")
                 page.locator("#rehearsal-list .rehearsal-point").nth(2).click()
                 page.select_option("#rehearsal-count-in", "0")
                 page.locator("#rehearsal-form button[type=submit]").click()
@@ -150,6 +172,22 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 with open(downloaded.value.path(), encoding="utf-8-sig", newline="") as stream:
                     rows = list(csv.DictReader(stream))
                 self.assertEqual(rows[0]["time"], "-1.6")
+                page.check("#builder-click-preview")
+                page.wait_for_function("document.querySelector('#builder-click-status').textContent.includes('ready')")
+                page.select_option("#builder-markers", "0")
+                self.assertEqual(page.locator("#builder-play").text_content(), "Start from hit point")
+                page.click("#builder-play")
+                page.wait_for_function("document.querySelector('#builder-play').textContent === 'Pause'")
+                self.assertEqual(page.evaluate("window.mockPlayers.at(-1).state"), 2)
+                page.click("#builder-play")
+                self.assertEqual(page.locator("#builder-play").text_content(), "Resume")
+                page.wait_for_timeout(300)
+                self.assertEqual(page.evaluate("window.mockPlayers.at(-1).state"), 2)
+                page.click("#builder-play")
+                page.wait_for_function("document.querySelector('#builder-review-status').textContent.includes('Paused just before hit point 2')", timeout=6000)
+                self.assertEqual(page.evaluate("window.mockPlayers.at(-1).state"), 2)
+                page.click("#builder-play")
+                page.wait_for_function("window.mockPlayers.at(-1).state === 1", timeout=4000)
                 context.close()
                 browser.close()
         finally:
@@ -1410,7 +1448,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
         self.assertIn(original, source)
         source = source.replace(original, """
           window.previewHooks = {
-            normal: normSection, events: builderClickEvents, state: builderMetronomeState,
+            normal: normSection, events: builderClickEvents, preEvents: preRollEvents, state: builderMetronomeState,
             setup: (secs) => {
               const media = {currentTime:0, paused:false, seeking:false, readyState:4, playbackRate:1};
               const clicks = [];
@@ -1444,6 +1482,10 @@ class ClickTrackBrowserTests(unittest.TestCase):
               const t = window.previewHooks, near = (a,b) => Math.abs(a-b) < 1e-8;
               const assert = (ok, message) => { if (!ok) throw Error(message); };
               const first = t.normal({bpm:120, bars:1, num:4, den:4, calcStart:'0:00.000', calcEnd:'0:02.000'});
+              const before = t.normal({bpm:120, bars:1, num:4, den:4, calcStart:'-0:02.000',calcEnd:'0:00.000'});
+              const pre = Array.from(t.preEvents(before, -4, -2, [before]));
+              assert(pre.length === 8 && near(pre[0].time, -4) && near(pre[4].time, -2),
+                     'one count-in bar followed by the actual pre-video bar');
               const pause = t.normal({type:'timedPause', pauseDuration:3.001, bars:1, calcStart:'0:02.000', calcEnd:'0:05.001'});
               const next = t.normal({bpm:94, bars:1, num:3, den:4, calcStart:'0:05.001', calcEnd:'0:06.916'});
               const secs = [first, pause, next];

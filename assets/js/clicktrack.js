@@ -2125,6 +2125,7 @@
   let openTrackVideoEditor = null;
   const markerFields = ['bar', 'num', 'den', 'unit', 'shape', 'bpm', 'rampAnchor', 'endBpm', 'dialogue', 'figure'];
   const builderClick = { plan: null, error: '', timer: null, cursor: null, next: null, anchor: null, sources: new Set(), revision: 0 };
+  const builderPreRoll = { active: false, running: false, pending: false, revision: 0, time: 0, clock: 0, timer: null, cursor: null, next: null, section: null, countStart: 0, musicStart: 0 };
   const REVIEW_LEAD = 0.12;
   let builderBeatKey = '';
   const builderBarStarts = new WeakMap();
@@ -2196,7 +2197,15 @@
 
   function renderBuilderMetronome() {
     const plan = builderClick.plan, media = builderMedia();
-    const state = plan && videoReady() ? builderMetronomeState(plan, media.currentTime) : null;
+    const pre = builderPreRoll;
+    const time = pre.active ? pre.time + (pre.running ? ctx.currentTime - pre.clock : 0) : media.currentTime;
+    const counting = pre.active && time < pre.musicStart;
+    let state = plan && videoReady() ? builderMetronomeState(plan, Math.max(time, pre.active ? pre.musicStart : time)) : null;
+    if (counting && state) {
+      const elapsed = Math.max(0, time - pre.countStart), unit = unitSeconds(pre.section, pre.section.bpm);
+      state = { ...state, tick: Math.floor(elapsed / unit) % pre.section.num,
+        bpm: pre.section.bpm, status: 'Count-in to hit point ' + (pre.section.hitPoint || '–'), swing: null };
+    }
     const section = state?.section, info = state?.info;
     const text = (id, value) => { if ($(id).textContent !== String(value)) $(id).textContent = value; };
     text('builder-metro-section', state ? (section.hitPoint ? 'Hit point ' + section.hitPoint
@@ -2205,8 +2214,8 @@
       : builderClick.error ? 'Metronome unavailable: ' + builderClick.error
         : !videoReady() ? 'Load a video and add hit points.' : 'Outside the marked sections.');
     text('builder-metro-notes', section?.notes || '');
-    text('builder-metro-bar', state ? (section.startBar || 1) + state.bar : '–');
-    text('builder-metro-barof', state ? section.type === 'timedPause' ? 'timed pause'
+    text('builder-metro-bar', counting ? '–' : state ? (section.startBar || 1) + state.bar : '–');
+    text('builder-metro-barof', counting ? 'count-in' : state ? section.type === 'timedPause' ? 'timed pause'
       : (state.bar + 1) + ' of ' + section.bars : '');
     text('builder-metro-meter', info ? info.num + '/' + info.den : '–');
     const groups = info ? groupsOf(info) : [];
@@ -2268,6 +2277,7 @@
   }
 
   function builderClickTick() {
+    if (builderPreRoll.active) return;
     if (!$('builder-click-preview').checked || $('view-video').hidden || !builderClick.plan) return;
     const media = builderMedia();
     const playing = builder.youtube ? builder.youtube.ready && builder.youtube.player.getPlayerState() === 1
@@ -2314,6 +2324,10 @@
   }
 
   function updateBuilderClickPlan(plan, error) {
+    if (builderPreRoll.active || builderPreRoll.pending) {
+      stopBuilderPreRoll();
+      $('builder-review-status').textContent = 'Preview stopped because the hit-point plan changed.';
+    }
     cancelBuilderClicks();
     builderClick.plan = null;
     builderClick.error = error || '';
@@ -2331,12 +2345,131 @@
   }
 
   function stopBuilderClickPreview() {
+    if (builderPreRoll.active || builderPreRoll.pending) stopBuilderPreRoll();
     builderClick.revision++;
     $('builder-click-preview').checked = false;
     clearInterval(builderClick.timer);
     builderClick.timer = null;
     cancelBuilderClicks();
     $('builder-click-status').textContent = 'Click preview is off.';
+  }
+
+  function stopBuilderPreRoll() {
+    builderPreRoll.revision++;
+    builderPreRoll.pending = false;
+    clearInterval(builderPreRoll.timer);
+    builderPreRoll.timer = null;
+    builderPreRoll.active = builderPreRoll.running = false;
+    cancelBuilderClicks();
+    setBuilderMediaControls();
+  }
+
+  function* preRollEvents(section, start, musicStart, plan) {
+    const unit = unitSeconds(section, section.bpm), levels = unitLevels(section);
+    for (let time = start, tick = 0; time < musicStart - 1e-8; time += unit, tick++) {
+      const level = levels[tick % section.num];
+      if (audible(section, level, 'countin')) yield { time, level, section };
+    }
+    yield* builderClickEvents(plan, musicStart);
+  }
+
+  function pauseBuilderPreRoll() {
+    const pre = builderPreRoll;
+    pre.time = Math.min(0, pre.time + ctx.currentTime - pre.clock);
+    pre.running = false;
+    cancelBuilderClicks();
+    setBuilderMediaControls();
+  }
+
+  async function tickBuilderPreRoll() {
+    const pre = builderPreRoll;
+    if (!pre.active || !pre.running) return;
+    const now = ctx.currentTime, time = pre.time + now - pre.clock;
+    const next = nextReviewMarker(time < pre.musicStart ? pre.musicStart : time);
+    const boundary = next && next.marker.time <= 0 ? next : null;
+    const stop = boundary ? Math.max(pre.musicStart, boundary.marker.time - REVIEW_LEAD) : 0;
+    if (time >= stop) {
+      pre.time = stop;
+      pre.clock = now;
+      pre.running = false;
+      cancelBuilderClicks();
+      if (boundary) {
+        selectVideoMarker(boundary.index, false, false);
+        scrollToVideoMarker(boundary.index);
+        builder.reviewAnchor = boundary.marker.time;
+        $('builder-review-status').textContent = 'Paused just before hit point ' + boundary.marker.label
+          + ' at ' + markerTime(boundary.marker.time) + '. Resume to hear its first click.';
+        setBuilderMediaControls();
+      } else {
+        stopBuilderPreRoll();
+        builder.reviewTime = 0;
+        builder.reviewAnchor = null;
+        try { await builderMedia().play(); }
+        catch (error) { $('builder-media-status').textContent = 'Could not play video: ' + error.message; }
+      }
+      return;
+    }
+    if (!$('builder-review').checked && time >= pre.musicStart && !editingVideoMarker()) {
+      let index = builder.selected;
+      builder.markers.forEach((marker, i) => { if (marker.time <= time && marker.bar !== '') index = i; });
+      if (index !== builder.selected) {
+        selectVideoMarker(index, false, false);
+        scrollToVideoMarker(index);
+      }
+    }
+    if (!$('builder-click-preview').checked) return;
+    while (pre.next && !pre.next.done) {
+      const event = pre.next.value;
+      if (boundary && event.time >= boundary.marker.time - 1e-8) break;
+      const at = now + event.time - time;
+      if (at > now + 0.1) break;
+      if (at >= now - 0.025) playClick(Math.max(now, at), event.level, event.section, {
+        ctx, master, noiseBuf, sound: prefs.sound,
+        track: (source) => {
+          builderClick.sources.add(source);
+          source.addEventListener('ended', () => builderClick.sources.delete(source), { once: true });
+        },
+      });
+      pre.next = pre.cursor.next();
+    }
+  }
+
+  async function startBuilderPreRoll(marker) {
+    if (outputBusy) throw new Error('Finish choosing an audio output before starting.');
+    if (builderPreRoll.pending) return;
+    const plan = builderClick.plan;
+    const section = plan?.find((item) => parseTimecode(item.calcStart) === marker.time);
+    if (!section) throw new Error('Select a playable section with a valid hit-point plan.');
+    const pre = builderPreRoll;
+    const revision = ++pre.revision;
+    pre.pending = true;
+    const audio = ensureAudio(false);
+    try {
+      if (audio.state !== 'running') await audio.resume();
+      if (revision !== pre.revision) return;
+      if (audio.state !== 'running') throw new Error('Audio did not start.');
+    } finally {
+      if (revision === pre.revision) pre.pending = false;
+    }
+    const count = section.type === 'click' ? effectiveCountIn(section) : 0;
+    pre.section = section;
+    pre.musicStart = marker.time;
+    pre.countStart = marker.time - (count ? countInSeconds(section, count) : 0);
+    pre.time = pre.countStart;
+    pre.clock = audio.currentTime;
+    pre.active = pre.running = true;
+    pre.cursor = count ? preRollEvents(section, pre.countStart, pre.musicStart, plan)
+      : builderClickEvents(plan, pre.musicStart);
+    pre.next = pre.cursor.next();
+    builder.reviewTime = marker.time;
+    builder.reviewAnchor = null;
+    builderMedia().pause();
+    pre.timer = setInterval(tickBuilderPreRoll, TIMER_MS);
+    $('builder-review-status').textContent = 'Starting from hit point ' + marker.label
+      + (count ? ' with ' + count + ' count-in bar' + (count === 1 ? '' : 's') + '.' : '.')
+      + ($('builder-click-preview').checked ? '' : ' Enable click preview to hear the clicks.');
+    setBuilderMediaControls();
+    tickBuilderPreRoll();
   }
 
   function nextMarkerNumber(used, start) {
@@ -2455,6 +2588,7 @@
   }
 
   function resetBuilderSource() {
+    if (builderPreRoll.active || builderPreRoll.pending) stopBuilderPreRoll();
     if ($('builder-click-preview').checked) {
       cancelBuilderClicks();
       builderClick.plan = null;
@@ -2554,9 +2688,13 @@
           },
           onStateChange: () => {
             if (builder.youtube === source && $('view-video').hidden && !builderMedia().paused) builderMedia().pause();
+            if (builder.youtube === source && builderPreRoll.active && source.player?.getPlayerState() === 1) stopBuilderPreRoll();
             if (builder.youtube === source && $('builder-click-preview').checked
               && source.player?.getPlayerState() !== 1) cancelBuilderClicks();
             refresh();
+          },
+          onAutoplayBlocked: () => {
+            if (builder.youtube === source) status.textContent = 'Video playback was blocked by the browser. Select Play video to continue.';
           },
           onError: (event) => fail('YouTube cannot play this video here (error ' + event.data + '). Try a link that allows embedding or a local file.'),
         },
@@ -2590,6 +2728,7 @@
     if (!presentation.connected || !source?.media || !source.presentationSource) return;
     target.postMessage({ channel: 'clicktrack-presentation', type: 'state', source: source.presentationSource,
       time: source.videoTime ?? 0, key: source.syncKey ?? 'stopped',
+      blank: source.beforeVideo === true,
       playing: !!source.playing && !E.suspended && E.playing,
       muted: !presentation.ready || !$('practice-sound').checked || $('presentation-audio').value !== 'audience',
     }, window.location.origin);
@@ -2745,9 +2884,11 @@
     }
     const expected = source.cueTime + (rolling ? Math.max(0, ctx.currentTime - entry) : 0);
     const playing = rolling && !E.suspended && expected >= -1e-8;
+    const blankChanged = source.beforeVideo !== (expected < -1e-8);
+    source.beforeVideo = expected < -1e-8;
     source.videoTime = Math.max(0, expected);
     const key = positionKey + ':' + playing;
-    if (!force && key === source.syncKey) return;
+    if (!force && key === source.syncKey && !blankChanged) return;
     source.syncKey = key;
     // Avoid a seek at a scheduled intro/count-in handoff.
     const continuous = entering && source.sectionIdx === idx && playing && source.playing
@@ -2756,6 +2897,7 @@
     source.sectionIdx = idx;
     source.entry = entry;
     source.playing = playing;
+    if (blankChanged || entering || force) sendPresentationState();
     if (continuous && !force) return;
     if (phase !== 'waiting' && (entering || playing || force)) source.media.seek(source.videoTime);
     if (playing) source.media.play();
@@ -3452,6 +3594,7 @@
     if (seek && videoReady()) seekBuilderVideo(marker.time);
     renderVideoTimeline();
     renderSelectedVideoSection();
+    setBuilderMediaControls();
   }
 
   function editingVideoMarker() {
@@ -3568,6 +3711,7 @@
   }
 
   function seekBuilderVideo(time) {
+    if (builderPreRoll.active || builderPreRoll.pending) stopBuilderPreRoll();
     const video = builderMedia();
     const target = clamp(time, 0, video.duration);
     if ($('builder-click-preview').checked) cancelBuilderClicks();
@@ -3586,7 +3730,8 @@
   function nextReviewMarker(time) {
     if (!$('builder-review').checked) return null;
     const previous = builder.reviewAnchor ?? builder.reviewTime ?? time;
-    const index = builder.markers.findIndex((marker) => marker.time > previous + 0.000001);
+    const index = builder.markers.findIndex((marker) => marker.time > previous + 0.000001
+      && (marker.time !== 0 || marker.bar !== ''));
     return index < 0 ? null : { index, marker: builder.markers[index] };
   }
 
@@ -3794,12 +3939,37 @@
     const marker = builder.markers[builder.selected];
     $('builder-snap-video').disabled = !videoReady() || !marker.bar || marker.time === 0;
     $('builder-play').disabled = !canPlay;
-    $('builder-play').textContent = video.paused ? 'Play video' : 'Pause video';
+    $('builder-play').textContent = builderPreRoll.active
+      ? builderPreRoll.running ? 'Pause' : 'Resume'
+      : video.paused ? (marker.time < 0 ? 'Start from hit point' : 'Play video') : 'Pause video';
   }
 
   async function toggleBuilderVideo(resumeOnly = false) {
     const play = $('builder-play'), media = builderMedia();
     if (play.disabled) return;
+    const pre = builderPreRoll;
+    if (pre.active) {
+      if (pre.running) { if (!resumeOnly) pauseBuilderPreRoll(); return; }
+      if (ctx.state !== 'running') {
+        try { await ctx.resume(); }
+        catch (error) { $('builder-media-status').textContent = 'Could not resume audio: ' + error.message; return; }
+      }
+      pre.clock = ctx.currentTime;
+      pre.running = true;
+      pre.cursor = pre.time < pre.musicStart
+        ? preRollEvents(pre.section, pre.countStart, pre.musicStart, builderClick.plan)
+        : builderClickEvents(builderClick.plan, pre.time - 0.001);
+      pre.next = pre.cursor.next();
+      while (!pre.next.done && pre.next.value.time < pre.time - 0.001) pre.next = pre.cursor.next();
+      setBuilderMediaControls();
+      tickBuilderPreRoll();
+      return;
+    }
+    if (media.paused && builder.markers[builder.selected].time < 0) {
+      try { await startBuilderPreRoll(builder.markers[builder.selected]); }
+      catch (error) { $('builder-media-status').textContent = 'Could not start from hit point: ' + error.message; }
+      return;
+    }
     if (!media.paused && !resumeOnly) { media.pause(); return; }
     play.focus();
     if (!media.paused) return;
@@ -4139,6 +4309,7 @@
       renderVideoPlan();
     });
     for (const event of ['play', 'pause', 'ended']) video.addEventListener(event, setBuilderMediaControls);
+    video.addEventListener('play', () => { if (!builder.youtube && builderPreRoll.active) stopBuilderPreRoll(); });
     for (const event of ['timeupdate', 'seeking']) video.addEventListener(event, updateVideoPlayhead);
     for (const event of ['pause', 'ended', 'seeking', 'waiting', 'ratechange']) {
       video.addEventListener(event, () => { if (!builder.youtube && $('builder-click-preview').checked) cancelBuilderClicks(); });
