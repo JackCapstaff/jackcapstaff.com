@@ -158,8 +158,8 @@ def _apply_payload(track, data):
     track.notes = _text(data.get("notes"), 2000)
     if "videoOffset" in data:
         offset = data["videoOffset"]
-        if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not 0 <= offset <= 86400:
-            abort(400, description="Video offset must be between 0 and 86400 seconds.")
+        if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not math.isfinite(offset) or not -86400 <= offset <= 86400:
+            abort(400, description="Video offset must be between -86400 and 86400 seconds.")
         track.video_offset = offset
     if "videoDraftId" in data:
         draft_id = data["videoDraftId"]
@@ -284,10 +284,10 @@ def _apply_video_draft(draft, data):
         if not isinstance(raw, dict):
             abort(400, description="Invalid hit point.")
         time = raw.get("time")
-        previous = cleaned[-1]["time"] if cleaned else -1
-        if (type(time) not in (int, float) or not 0 <= time <= 86400
-                or time != round(time, 3) or time <= previous or (not cleaned and time != 0)):
-            abort(400, description="Hit points must start at zero and have increasing times to millisecond precision.")
+        previous = cleaned[-1]["time"] if cleaned else None
+        if (type(time) not in (int, float) or not math.isfinite(time) or not -86400 <= time <= 86400
+                or time != round(time, 3) or (previous is not None and time <= previous)):
+            abort(400, description="Hit points must have increasing times within 24 hours of video zero, to millisecond precision.")
         shape = _text(raw.get("shape"), 10)
         unit = _text(raw.get("unit"), 8)
         den = _text(raw.get("den"), 2)
@@ -328,6 +328,8 @@ def _apply_video_draft(draft, data):
                 abort(400, description="Hit point numbers must be unique.")
             labels.add(label)
             cleaned[-1]["label"] = label
+    if not any(marker["time"] == 0 for marker in cleaned):
+        abort(400, description="A video draft must include a hit point at video 0:00.")
     draft.video_id = video_id
     draft.title = _text(data.get("title"), 255) or "YouTube video " + video_id
     draft.markers = cleaned

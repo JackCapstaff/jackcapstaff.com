@@ -158,6 +158,26 @@ class ClickTrackStorageTests(unittest.TestCase):
         self.assertEqual(saved["videoOffset"], 25.5)
         self.assertEqual(saved["sections"][0]["calcEnd"], "0:45")
 
+    def test_negative_offset_and_video_markers_persist(self):
+        response = self.client.post("/clicktrack/api/tracks", json={**self.payload, "videoOffset": -6.25})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json["videoOffset"], -6.25)
+        marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+        draft = self.client.post("/clicktrack/api/video-drafts", json={
+            "videoId": "abcdefghijk", "markers": [
+                {**marker, "time": -6.25, "bar": "1", "label": "1"},
+                {**marker, "time": 0, "bar": "4", "label": "2"},
+                {**marker, "time": 8, "bar": "8", "label": "3"},
+            ],
+        })
+        self.assertEqual(draft.status_code, 201)
+        self.assertEqual([m["time"] for m in draft.json["markers"]], [-6.25, 0, 8])
+        self.assertEqual(self.client.get(f"/clicktrack/api/video-drafts/{draft.json['id']}").json, draft.json)
+        missing_zero = self.client.post("/clicktrack/api/video-drafts", json={
+            "videoId": "abcdefghijk", "markers": [draft.json["markers"][0], draft.json["markers"][2]],
+        })
+        self.assertEqual(missing_zero.status_code, 400)
+
     def test_legacy_update_preserves_offset_and_existing_notes(self):
         saved = self.client.post("/clicktrack/api/tracks", json={**self.payload, "videoOffset": 25}).json
         response = self.client.put("/clicktrack/api/tracks/" + str(saved["id"]), json=self.payload)
@@ -173,7 +193,7 @@ class ClickTrackStorageTests(unittest.TestCase):
 
     def test_bad_offset_does_not_overwrite_track(self):
         saved = self.client.post("/clicktrack/api/tracks", json={**self.payload, "videoOffset": 25}).json
-        for value in [-1, 86401, "0:25", True, None, float("inf"), float("nan")]:
+        for value in [-86401, 86401, "0:25", True, None, float("inf"), float("nan")]:
             with self.subTest(value=value):
                 response = self.client.put("/clicktrack/api/tracks/" + str(saved["id"]),
                                            json={**self.payload, "videoOffset": value})

@@ -80,11 +80,11 @@
 
   function parseTimecode(value) {
     const text = String(value).trim();
-    if (!/^\d+(?::\d{1,2}){0,2}(?:\.\d+)?$/.test(text)) return null;
-    const parts = text.split(':').map(Number);
+    if (!/^-?\d+(?::\d{1,2}){0,2}(?:\.\d+)?$/.test(text)) return null;
+    const parts = text.replace(/^-/, '').split(':').map(Number);
     if (parts.slice(1).some((part) => part >= 60)) return null;
     const seconds = parts.reduce((total, part) => total * 60 + part, 0);
-    return Number.isFinite(seconds) ? seconds : null;
+    return Number.isFinite(seconds) ? (text.startsWith('-') ? -seconds : seconds) : null;
   }
   let toastTimer = null;
   function toast(msg) {
@@ -721,7 +721,7 @@
     for (let bar = 0; bar < barOffset; bar++) cueTime += barSeconds(s, bar);
     const startBpm = bpmAt(s, barOffset / s.bars);
     const countSection = barOffset ? { ...s, bpm: startBpm } : s;
-    const film = fromVideoBeginning && s.type === 'click' ? filmCountIn(s, cueTime) : null;
+    const film = fromVideoBeginning && cueTime >= 0 && s.type === 'click' ? filmCountIn(s, cueTime) : null;
     const countIn = film?.bars ?? (s.type !== 'click' ? 0 : countInOverride ?? effectiveCountIn(countSection));
     const lead = film?.lead ?? countInSeconds(countSection, countIn);
     const intro = fromVideoBeginning ? Math.max(0, cueTime - lead) : 0;
@@ -1344,7 +1344,7 @@
       id: t.id != null ? t.id : newLocalId(),
       title: String(t.title || 'Untitled').slice(0, 255),
       notes: String(t.notes || '').slice(0, 2000),
-      videoOffset: clamp(Number(t.videoOffset) || 0, 0, 86400),
+      videoOffset: clamp(Number(t.videoOffset) || 0, -86400, 86400),
       videoDraftId: Number.isInteger(t.videoDraftId) && t.videoDraftId > 0 ? t.videoDraftId : null,
       _linkDirty: !!t._linkDirty,
       sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
@@ -1757,7 +1757,7 @@
       }
       const made = list.filter((x) => x && Array.isArray(x.sections)).map((x) => {
         const t = makeTrack(x.title || file.name.replace(/\.json$/i, ''), x.sections, x.notes);
-        t.videoOffset = num(x.videoOffset, 0, 0, 86400);
+        t.videoOffset = Number.isFinite(Number(x.videoOffset)) ? clamp(Number(x.videoOffset), -86400, 86400) : 0;
         return t;
       });
       if (!made.length) throw new Error('no sections found');
@@ -2134,7 +2134,7 @@
       'bpm', 'rampAnchor', 'endBpm', 'modulationOld', 'modulationNew', 'dialogue', 'figure', 'visualCue'];
     const csvCell = (value) => {
       let text = String(value ?? '');
-      if (/^[\s]*[=+\-@\t\r]/.test(text)) text = "'" + text;
+      if (!(typeof value === 'number' && Number.isFinite(value)) && /^[\s]*[=+\-@\t\r]/.test(text)) text = "'" + text;
       return '"' + text.replace(/"/g, '""') + '"';
     };
     const rows = [fields, ...builder.markers.map((marker) => fields.map((field) => marker[field]))];
@@ -2902,19 +2902,19 @@
   }
 
   function markerTime(seconds) {
-    const ms = Math.round(seconds * 1000), whole = Math.floor(ms / 1000);
-    return Math.floor(whole / 60) + ':' + String(whole % 60).padStart(2, '0')
+    const ms = Math.round(Math.abs(seconds) * 1000), whole = Math.floor(ms / 1000);
+    return (seconds < 0 && ms ? '-' : '') + Math.floor(whole / 60) + ':' + String(whole % 60).padStart(2, '0')
       + '.' + String(ms % 1000).padStart(3, '0');
   }
 
   function planVideoTrack(markers = builder.markers, checkMedia = true) {
-    const points = markers.filter((m, i) => i !== 0 || m.bar !== '');
+    const points = markers.filter((m) => m.time !== 0 || m.bar !== '');
     if (points.length < 2) throw new Error('Add a musical hit point and a closing hit point with the next score bar.');
     if (points.length > 501) throw new Error('A track can have at most 500 sections.');
     if (checkMedia && videoReady() && points[points.length - 1].time > roundMarkerTime(builderMedia().duration)) {
       throw new Error('A hit point is beyond the end of the video. Move it before creating the track.');
     }
-    if (points[0].time > 86400) throw new Error('The first musical hit point must be within the first 24 hours.');
+    if (Math.abs(points[0].time) > 86400) throw new Error('The first musical hit point must be within 24 hours of video 0:00.');
     const secs = new Array(points.length - 1), resolving = new Set();
     function calculate(i) {
       if (secs[i]) return secs[i];
@@ -3217,6 +3217,15 @@
         used.add(oldMatches[0].index);
       });
     };
+    const shifts = sections.map((section) => {
+      const old = track.sections.filter((item) => item.hitPoint && item.hitPoint === section.hitPoint);
+      const from = old.length === 1 ? parseTimecode(old[0].calcStart) : null;
+      const to = parseTimecode(section.calcStart);
+      return from === null || to === null ? null : to - from;
+    });
+    const shiftedTogether = shifts.length && shifts.every((shift) => shift !== null
+      && Math.abs(shift - shifts[0]) < 0.001) && Math.abs(shifts[0]) >= 0.001;
+    if (shiftedTogether) matchUnique((section) => section.hitPoint, (section) => section.hitPoint);
     matchUnique((section) => parseTimecode(section.calcStart), (section) => parseTimecode(section.calcStart));
     matchUnique((section) => section.hitPoint, (section) => section.hitPoint);
     matchUnique((section, index) => starts[index], (section) => section.startBar,
@@ -3293,7 +3302,7 @@
       if (oldMatches.length === 1 && last.section.visualEndCue !== oldMatches[0].visualEndCue) {
         const starts = markers.map((marker, index) => marker.bar !== '' && Number(marker.bar) === bar ? index : -1)
           .filter((index) => index >= 0);
-        const closing = starts.length === 1 ? markers[starts[0] + 1] : null;
+        const closing = starts.length === 1 ? markers.slice(starts[0] + 1).find((marker) => marker.time !== 0 || marker.bar !== '') : null;
         if (!closing || closing.bar === '') throw new Error('Bar ' + bar + ' has no unique closing hit point; its end cue cannot be synchronized.');
         closing.visualCue = last.section.visualEndCue;
       }
@@ -3384,7 +3393,7 @@
       + (m.figure?.trim() ? ' · ' + figureLabel(m.figure.trim()) : '')
       + (m.visualCue ? ' · Visual cue' : '')
       + (Number(nextMusicalMarker(i)?.skip) ? ' · Skip ' + nextMusicalMarker(i).skip + ' score bars before next hit' : '')
-      + (m.bar ? ' · Bar ' + m.bar : i === 0 ? ' · Video start' : ' · Add bar number')
+      + (m.bar ? ' · Bar ' + m.bar : m.time === 0 ? ' · Video start' : ' · Add bar number')
       + (i > 0 && i === builder.markers.length - 1 ? ' · Current closing point' : ''), i)));
     list.value = builder.selected;
     list.scrollTop = scrollTop;
@@ -3395,7 +3404,7 @@
   // Saved drafts store each span's skip count on its closing hit point.
   function nextMusicalMarker(index) {
     if (!builder.markers[index]?.bar) return null;
-    const next = builder.markers[index + 1];
+    const next = builder.markers.slice(index + 1).find((marker) => marker.time !== 0 || marker.bar !== '');
     return next?.bar ? next : null;
   }
 
@@ -3420,9 +3429,10 @@
     renderVideoMarkers();
     renderSelectedMarkerHeading();
     $('builder-time').value = markerTime(marker.time);
-    $('builder-time').readOnly = index === 0;
-    $('builder-remove').disabled = index === 0;
-    $('builder-retime').disabled = index === 0 || !videoReady();
+    $('builder-time').readOnly = marker.time === 0;
+    $('builder-remove').disabled = marker.time === 0;
+    $('builder-retime').disabled = marker.time === 0 || !videoReady();
+    $('builder-snap-video').disabled = !marker.bar || marker.time === 0 || !videoReady();
     const unitSelect = $('builder-unit');
     unitSelect.replaceChildren(...BEAT_UNITS.map(([value, name]) => new Option(name, value)));
     if (marker.unit && !BEAT_UNITS.some(([value]) => value === marker.unit)) {
@@ -3620,7 +3630,7 @@
   }
 
   function markerLimits(index) {
-    const min = roundMarkerTime(builder.markers[index - 1].time + 0.001);
+    const min = index ? roundMarkerTime(builder.markers[index - 1].time + 0.001) : -86400;
     const end = roundMarkerTime(builderMedia().duration);
     const max = builder.markers[index + 1] ? Math.min(end, roundMarkerTime(builder.markers[index + 1].time - 0.001)) : end;
     return min <= max ? [min, max] : null;
@@ -3654,11 +3664,11 @@
       }
       button.hidden = marker.time < roundMarkerTime(start) || marker.time > roundMarkerTime(end);
       button.style.left = clamp(100 * (marker.time - start) / (end - start), 0, 100) + '%';
-      button.title = markerHeading(marker) + (marker.bar ? ' · Bar ' + marker.bar : index ? '' : ' · Video start');
+      button.title = markerHeading(marker) + (marker.bar ? ' · Bar ' + marker.bar : marker.time === 0 ? ' · Video start' : '');
       button.setAttribute('aria-label', button.title);
       button.setAttribute('aria-pressed', String(index === builder.selected));
     });
-    const selected = builder.markers[builder.selected], limits = builder.selected ? markerLimits(builder.selected) : null;
+    const selected = builder.markers[builder.selected], limits = selected.time !== 0 ? markerLimits(builder.selected) : null;
     $('builder-nudge-back').disabled = !limits || selected.time <= limits[0];
     $('builder-nudge-forward').disabled = !limits || selected.time >= limits[1];
     updateVideoPlayhead();
@@ -3676,7 +3686,7 @@
   }
 
   function nudgeVideoMarker(index, delta) {
-    if (!index || !videoReady()) return;
+    if (builder.markers[index].time === 0 || !videoReady()) return;
     const limits = markerLimits(index);
     if (!limits) return;
     const time = clamp(roundMarkerTime(builder.markers[index].time + delta), ...limits);
@@ -3699,7 +3709,7 @@
       if (!videoReady()) return;
       const index = indexOfButton(e.target);
       if (Number.isInteger(index)) {
-        if (e.detail === 0 || !index) selectVideoMarker(index, true, false);
+        if (e.detail === 0 || builder.markers[index].time === 0) selectVideoMarker(index, true, false);
       } else {
         const [start, end] = timelineRange(), rect = rail.getBoundingClientRect();
         seekBuilderVideo(start + clamp((e.clientX - rect.left) / rect.width, 0, 1) * (end - start));
@@ -3707,7 +3717,7 @@
     });
     rail.addEventListener('keydown', (e) => {
       const index = indexOfButton(e.target);
-      if (!index || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+      if (!Number.isInteger(index) || builder.markers[index].time === 0 || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
       e.preventDefault();
       nudgeVideoMarker(index, e.key === 'ArrowLeft' ? -0.1 : 0.1);
     });
@@ -3719,7 +3729,7 @@
       index = builder.markers.indexOf(marker);
       if (index < 0) return;
       selectVideoMarker(index, true, false);
-      if (index === 0 || !markerLimits(index)) return;
+      if (marker.time === 0 || !markerLimits(index)) return;
       const button = $('builder-timeline-points').children[index];
       button.setPointerCapture(e.pointerId);
       drag = { id: e.pointerId, button, marker, x: e.clientX, time: marker.time };
@@ -3739,12 +3749,12 @@
     rail.addEventListener('pointermove', (e) => {
       if (drag?.id !== e.pointerId || !videoReady()) return;
       const index = builder.markers.indexOf(drag.marker);
-      if (index > 0) previewDrag(e, index);
+      if (index >= 0) previewDrag(e, index);
     });
     rail.addEventListener('pointerup', (e) => {
       if (drag?.id !== e.pointerId) return;
       const index = builder.markers.indexOf(drag.marker);
-      const time = index > 0 && videoReady() ? previewDrag(e, index) : null;
+      const time = index >= 0 && videoReady() ? previewDrag(e, index) : null;
       drag = null;
       if (time !== null) moveVideoMarker(index, time, false);
     });
@@ -3752,7 +3762,7 @@
       if (drag?.id !== e.pointerId) return;
       const index = builder.markers.indexOf(drag.marker);
       drag = null;
-      if (index > 0) selectVideoMarker(index, true, false);
+      if (index >= 0) selectVideoMarker(index, true, false);
     });
   }
 
@@ -3766,7 +3776,7 @@
       if (builder.markers.length >= 502) { toast('A track can have at most 500 sections.'); return; }
       index = builder.markers.findIndex((marker) => marker.time > time);
       if (index < 0) index = builder.markers.length;
-      if (builder.markers.length === 501 && builder.markers[0].bar !== '') { toast('A track can have at most 500 sections.'); return; }
+      if (builder.markers.length === 501 && !builder.markers.some((m) => m.time === 0 && m.bar === '')) { toast('A track can have at most 500 sections.'); return; }
       const marker = builderMarker(time, builder.markers[index - 1]);
       marker.label = newMarkerLabel(index);
       builder.markers.splice(index, 0, marker);
@@ -3780,7 +3790,9 @@
   function setBuilderMediaControls() {
     const video = builderMedia(), canPlay = builder.youtube ? video.readyState >= 1 && !video.error : videoReady();
     $('builder-add').disabled = !videoReady();
-    $('builder-retime').disabled = !videoReady() || builder.selected === 0;
+    $('builder-retime').disabled = !videoReady() || builder.markers[builder.selected].time === 0;
+    const marker = builder.markers[builder.selected];
+    $('builder-snap-video').disabled = !videoReady() || !marker.bar || marker.time === 0;
     $('builder-play').disabled = !canPlay;
     $('builder-play').textContent = video.paused ? 'Play video' : 'Pause video';
   }
@@ -3986,32 +3998,37 @@
       draftStatus.textContent = 'Video replaced. Saving changes…';
     });
     let shiftPreview = null;
-    function proposedShift() {
-      const input = $('builder-shift');
-      if (input.value === '' || !input.reportValidity() || !Number.isFinite(input.valueAsNumber)) throw new Error('Enter a shift in seconds.');
-      const shift = input.valueAsNumber, points = builder.markers;
-      const musical = points.filter((marker, index) => index > 0 || marker.bar !== '');
+    function shiftedMarkers(shift) {
+      const points = builder.markers;
+      const musical = points.filter((marker) => marker.time !== 0 || marker.bar !== '');
       if (!musical.length) throw new Error('Add musical hit points before shifting.');
       const shifted = musical.map((marker) => ({ ...marker, time: roundMarkerTime(marker.time + shift) }));
-      if (shifted.some((marker) => marker.time < 0 || marker.time > 86400
+      if (shifted.some((marker) => marker.time < -86400 || marker.time > 86400
         || (videoReady() && marker.time > roundMarkerTime(builderMedia().duration)))) {
-        throw new Error('The shift would put a hit point outside the video or the 24-hour limit.');
+        throw new Error('The shift would put a hit point beyond the video or the 24-hour limit.');
       }
-      if (shifted[0].time > 0) {
-        const reference = points[0].bar === '' ? { ...points[0] } : builderMarker(0);
+      if (!shifted.some((marker) => marker.time === 0)) {
+        const oldReference = points.find((marker) => marker.time === 0 && marker.bar === '');
+        const reference = oldReference ? { ...oldReference } : builderMarker(0);
         const used = new Set(shifted.map((marker) => marker.label));
         if (used.has(reference.label)) reference.label = nextMarkerNumber(used, 0);
-        shifted.unshift(reference);
+        shifted.push(reference);
+        shifted.sort((a, b) => a.time - b.time);
       }
       if (shifted.length > 502) throw new Error('The shifted draft would exceed the 502 hit point limit.');
       return shifted;
+    }
+    function proposedShift() {
+      const input = $('builder-shift');
+      if (input.value === '' || !input.reportValidity() || !Number.isFinite(input.valueAsNumber)) throw new Error('Enter a shift in seconds.');
+      return shiftedMarkers(input.valueAsNumber);
     }
     $('builder-shift-preview').addEventListener('click', () => {
       try {
         const shifted = proposedShift();
         shiftPreview = { original: JSON.stringify(builder.markers), value: $('builder-shift').value };
-        const before = builder.markers.find((m, i) => i > 0 || m.bar !== '');
-        const after = shifted.find((m, i) => i > 0 || m.bar !== '');
+        const before = builder.markers.find((m) => m.time !== 0 || m.bar !== '');
+        const after = shifted.find((m) => m.time !== 0 || m.bar !== '');
         $('builder-shift-status').textContent = 'First musical hit point: ' + markerTime(before.time) + ' → ' + markerTime(after.time)
           + '. Last hit point: ' + markerTime(builder.markers.at(-1).time) + ' → ' + markerTime(shifted.at(-1).time) + '.';
         $('builder-shift-apply').disabled = false;
@@ -4042,6 +4059,24 @@
       selectVideoMarker(0);
       renderVideoPlan();
       $('builder-shift-status').textContent = 'Shift applied.';
+    });
+    $('builder-snap-video').addEventListener('click', () => {
+      const marker = builder.markers[builder.selected];
+      if (!marker.bar || marker.time === 0 || !videoReady()) return;
+      try {
+        const shifted = shiftedMarkers(-marker.time);
+        if (!window.confirm('Start the video at hit point ' + marker.label + '? All musical hit-point times will shift by '
+          + markerTime(-marker.time) + ', preserving their spacing. Check the alignment with the video afterwards.')) return;
+        builder.markers = shifted;
+        builder.dirty = true;
+        shiftPreview = null;
+        $('builder-shift-apply').disabled = true;
+        selectVideoMarker(shifted.findIndex((point) => point.label === marker.label), true);
+        renderVideoPlan();
+        $('builder-shift-status').textContent = 'Video start aligned with hit point ' + marker.label + '.';
+      } catch (error) {
+        $('builder-shift-status').textContent = 'Could not align video start: ' + error.message;
+      }
     });
     link.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadLink(); } });
     drafts.addEventListener('change', renderDraftControls);
@@ -4141,7 +4176,7 @@
     $('builder-add').addEventListener('click', addVideoMarker);
     $('builder-retime').addEventListener('click', () => {
       const index = builder.selected;
-      if (!index || !videoReady()) return;
+      if (builder.markers[index].time === 0 || !videoReady()) return;
       const time = roundMarkerTime(builderMedia().currentTime), limits = markerLimits(index);
       if (!limits || time < limits[0] || time > limits[1]) {
         $('builder-review-status').textContent = 'Choose a new time between the neighbouring hit points.';
@@ -4187,7 +4222,10 @@
       $('builder-' + field).addEventListener('change', (e) => {
         builder.markers[builder.selected][field] = e.target.value;
         builder.dirty = true;
-        if (field === 'bar') { renderSelectedSkip(); renderSelectedVideoSection(); }
+        if (field === 'bar') {
+          renderSelectedSkip(); renderSelectedVideoSection();
+          $('builder-snap-video').disabled = !e.target.value || builder.markers[builder.selected].time === 0 || !videoReady();
+        }
         renderRampControls();
         renderVideoMarkers();
         renderVideoTimeline();
@@ -4221,16 +4259,16 @@
     $('builder-time').addEventListener('change', (e) => {
       const marker = builder.markers[builder.selected];
       const parsed = parseTimecode(e.target.value), time = parsed == null ? null : roundMarkerTime(parsed);
-      if (!videoReady() || builder.selected === 0 || time == null || time > roundMarkerTime(builderMedia().duration)
+      if (!videoReady() || marker.time === 0 || time == null || time < -86400 || time > roundMarkerTime(builderMedia().duration)
         || builder.markers.some((m) => m !== marker && m.time === time)) {
         e.target.value = markerTime(marker.time);
-        toast('Enter a unique video time within the clip.');
+        toast('Enter a unique time from -24 hours up to the end of the video.');
         return;
       }
       moveVideoMarker(builder.selected, time, true);
     });
     $('builder-remove').addEventListener('click', () => {
-      if (builder.selected === 0) return;
+      if (builder.markers[builder.selected].time === 0) return;
       builder.markers.splice(builder.selected, 1);
       builder.dirty = true;
       selectVideoMarker(builder.selected - 1);
@@ -5093,8 +5131,8 @@
     $('track-offset').addEventListener('input', (e) => e.target.setCustomValidity(''));
     $('track-offset').addEventListener('change', (e) => {
       const offset = parseTimecode(e.target.value);
-      if (offset == null || offset > 86400) {
-        e.target.setCustomValidity('Enter 0–86400 seconds, m:ss or h:mm:ss.');
+      if (offset == null || Math.abs(offset) > 86400) {
+        e.target.setCustomValidity('Enter -86400–86400 seconds, m:ss or h:mm:ss.');
         e.target.reportValidity();
         return;
       }

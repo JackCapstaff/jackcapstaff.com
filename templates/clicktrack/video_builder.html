@@ -31,7 +31,7 @@
       <button type="button" class="btn small" id="builder-shift-preview">Preview shift</button>
       <button type="button" class="btn small" id="builder-shift-apply" disabled>Apply shift</button>
     </div>
-    <p id="builder-shift-status" class="muted small" role="status">Shifts musical hit points together; the 0:00 reference stays fixed.</p>
+    <p id="builder-shift-status" class="muted small" role="status">Shifts musical hit points together; points before the video have negative times.</p>
   </fieldset>
   <div class="video-builder-grid">
     <section aria-label="Video player">
@@ -99,6 +99,7 @@
         <div class="video-builder-fields">
           <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
+          <button type="button" class="btn small" id="builder-snap-video">Start video at this hit point</button>
           <div class="stage-tool-row" role="group" aria-label="Nudge selected hit point">
             <button type="button" class="btn small" id="builder-nudge-back" aria-label="Move selected hit point 0.1 seconds earlier" disabled>−0.1 s</button>
             <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later" disabled>+0.1 s</button>

@@ -6,6 +6,156 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class ClickTrackBrowserTests(unittest.TestCase):
+    def test_snap_video_start_after_music_and_countin(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "title": "Lead-in", "videoId": "abcdefghijk",
+                "markers": [{**marker, "time": 0, "bar": "", "label": "0"},
+                            {**marker, "time": 1, "bar": "1", "label": "1"},
+                            {**marker, "time": 2.2, "bar": "2", "label": "2", "num": "6", "den": "8"},
+                            {**marker, "time": 2.8, "bar": "4", "label": "3"},
+                            {**marker, "time": 4, "bar": "6", "label": "4"}],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Lead-in", "videoDraftId": draft["id"], "videoOffset": 1,
+                "sections": [{"startBar": 1, "bars": 1, "bpm": 200, "hitPoint": "1",
+                              "calcStart": "0:01.000", "calcEnd": "0:02.200", "countIn": 1, "click": "sub2"},
+                             {"startBar": 2, "bars": 2, "bpm": 400, "hitPoint": "2", "num": 6, "den": 8,
+                              "calcStart": "0:02.200", "calcEnd": "0:02.800"},
+                             {"startBar": 4, "bars": 2, "bpm": 400, "hitPoint": "3",
+                              "calcStart": "0:02.800", "calcEnd": "0:04.000"}],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                context = browser.new_context()
+                context.add_init_script("""
+                  window.mockPlayers = [];
+                  window.YT = {Player: function(frame, config) {
+                    this.time = 0; this.state = 2; this.seeks = [];
+                    this.getDuration = () => 20;
+                    this.getCurrentTime = () => this.time;
+                    this.getPlayerState = () => this.state;
+                    this.getPlaybackRate = () => 1;
+                    this.seekTo = time => { this.time = time; this.seeks.push(time); };
+                    this.pauseVideo = () => { this.state = 2; };
+                    this.playVideo = () => { this.state = 1; };
+                    this.mute = () => {}; this.unMute = () => {}; this.destroy = () => {};
+                    window.mockPlayers.push(this);
+                    setTimeout(() => config.events.onReady({target: this}), 0);
+                  }};
+                """)
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    response = fixture.client.open(path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                context.route("http://clicktrack.test/**", route_request)
+                context.route("https://www.youtube-nocookie.com/**", lambda route: route.abort())
+                page = context.new_page()
+                page.on("dialog", lambda dialog: dialog.accept())
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.select_option("#track-select", str(track["id"]))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-markers').options.length === 5")
+                page.select_option("#builder-markers", "3")
+                page.click("#builder-snap-video")
+                for _ in range(100):
+                    saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"] if t["id"] == track["id"])
+                    if abs(saved["videoOffset"] + 1.8) < 0.00001:
+                        break
+                    page.wait_for_timeout(100)
+                self.assertAlmostEqual(saved["videoOffset"], -1.8)
+                self.assertEqual(saved["sections"][0]["click"], "sub2")
+                self.assertEqual(saved["sections"][0]["countIn"], 1)
+                saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertEqual([m["time"] for m in saved_draft["markers"]], [-1.8, -0.6, 0, 1.2])
+                self.assertEqual([m["bar"] for m in saved_draft["markers"]], ["1", "2", "4", "6"])
+                page.reload()
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.select_option("#track-select", str(track["id"]))
+                page.wait_for_function("!document.querySelector('#presentation-open').disabled")
+                with page.expect_popup() as popup_info:
+                    page.click("#presentation-open")
+                popup = popup_info.value
+                page.wait_for_function("document.querySelector('#presentation-status').textContent.includes('Presentation ready')")
+                page.click("#practice-from-start")
+                page.wait_for_function("document.querySelector('#d-clock-status').textContent.includes('Count-in')")
+                self.assertEqual(page.evaluate("window.mockPlayers[0].state"), 2)
+                page.click("#btn-play")
+                page.wait_for_function("document.querySelector('#d-clock-status').textContent.includes('Paused')")
+                page.wait_for_timeout(400)
+                self.assertEqual(page.evaluate("window.mockPlayers[0].state"), 2)
+                self.assertEqual(popup.evaluate("window.mockPlayers[0].state"), 2)
+                page.click("#btn-play")
+                page.wait_for_function("document.querySelector('#d-bar').textContent.trim() === '2'")
+                self.assertEqual(page.evaluate("window.mockPlayers[0].state"), 2)
+                self.assertEqual(popup.evaluate("window.mockPlayers[0].state"), 2)
+                page.wait_for_function("window.mockPlayers[0].state === 1", timeout=6000)
+                popup.wait_for_function("window.mockPlayers[0].state === 1", timeout=3000)
+                self.assertEqual(page.locator("#d-bar").text_content().strip(), "4")
+                page.click("#btn-stop")
+                page.locator("#rehearsal-panel > summary").click()
+                page.locator("#rehearsal-list .rehearsal-point").nth(2).click()
+                page.select_option("#rehearsal-count-in", "0")
+                page.locator("#rehearsal-form button[type=submit]").click()
+                page.wait_for_function("window.mockPlayers[0].state === 1")
+                self.assertEqual(page.locator("#d-bar").text_content().strip(), "4")
+                page.click("#btn-stop")
+                page.click("button[data-view=edit]")
+                page.wait_for_function("!document.querySelector('#view-video').hidden")
+                page.select_option("#builder-markers", "0")
+                page.click("#builder-nudge-back")
+                for _ in range(100):
+                    saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"] if t["id"] == track["id"])
+                    if abs(saved["videoOffset"] + 1.9) < 0.00001:
+                        break
+                    page.wait_for_timeout(100)
+                self.assertAlmostEqual(saved["videoOffset"], -1.9)
+                page.locator("#builder-shift").fill("0.3")
+                page.click("#builder-shift-preview")
+                page.click("#builder-shift-apply")
+                for _ in range(100):
+                    saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"] if t["id"] == track["id"])
+                    if abs(saved["videoOffset"] + 1.6) < 0.00001:
+                        break
+                    page.wait_for_timeout(100)
+                self.assertAlmostEqual(saved["videoOffset"], -1.6)
+                saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                self.assertEqual([m["time"] for m in saved_draft["markers"]], [-1.6, -0.3, 0, 0.3, 1.5])
+                self.assertEqual([s["hitPoint"] for s in saved["sections"]], ["1", "2", "3"])
+                self.assertEqual(saved["sections"][0]["click"], "sub2")
+                page.select_option("#builder-markers", "0")
+                self.assertFalse(page.locator("#builder-skip").is_disabled())
+                with page.expect_download() as downloaded:
+                    page.click("#builder-export-csv")
+                import csv
+                with open(downloaded.value.path(), encoding="utf-8-sig", newline="") as stream:
+                    rows = list(csv.DictReader(stream))
+                self.assertEqual(rows[0]["time"], "-1.6")
+                context.close()
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_presentation_window_and_performance_layout(self):
         from urllib.parse import urlsplit
         from playwright.sync_api import Error, sync_playwright

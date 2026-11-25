@@ -47,6 +47,18 @@ YouTube seeking and synchronization are approximate; check both windows before
 performing. Closing the presentation window returns film audio to the conductor
 window. The presentation closes when you leave Perform or disable video.
 
+To start the music before the picture, select the musical hit point that should
+coincide with the start of the video and choose **Start video at this hit
+point**. This shifts all musical hit-point times by the same amount, preserving
+their spacing; earlier points receive negative times. Check the shifted points
+against the video afterwards, especially when replacing the film. Edit negative
+times in the hit-point list; they cannot be sought to in the video itself.
+The normal sections and their meters, tempi and score bars remain in use. In
+Perform, the count-in comes first, then the pre-video music; the conductor and
+presentation videos wait at 0:00 until the selected hit point. Starting from a
+later section or using **Start video from beginning** follows the same alignment.
+Manual cue waits or repeats can make planned times approximate.
+
 To revise a draft, select a hit point and play from there. **Pause just before each
 hit point** stops playback at the next marker so you can edit, move or remove
 it. Untick **Pause just before each hit point** to play through them. With
