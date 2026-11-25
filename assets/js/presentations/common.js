@@ -27,11 +27,11 @@ export function element(tag, text, className) {
 export function duration(cues) {
   return Math.max(0, ...cues.map(cue => cue.start + cue.duration));
 }
-export function limitPosition(cues, base, elapsed, playing) {
+export function limitPosition(cues, base, elapsed, playing, boundary = Infinity) {
   const end = duration(cues);
   const holds = cues.filter(cue => cue.lane === 'picture' && cue.advance === 'manual'
     && cue.start + cue.duration > base + 0.002).map(cue => cue.start + cue.duration);
-  const limit = Math.min(end, ...holds);
+  const limit = Math.min(end, boundary, ...holds);
   const position = base + (playing ? elapsed : 0);
   return { position: Math.max(0, Math.min(position, limit - (playing && position >= limit ? 0.001 : 0))),
     playing: playing && position < limit };

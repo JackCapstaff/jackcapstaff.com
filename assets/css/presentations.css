@@ -35,6 +35,14 @@ label { display: grid; gap: 5px; margin: 8px 0; }
 .field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .screen { background: #000; position: relative; aspect-ratio: 16 / 9; overflow: hidden; container-type: size; }
 .controller-screen { max-width: 960px; }
+#music-performer { width: 100%; height: 650px; border: 1px solid var(--line); }
+.cue-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 12px; }
+.cue-card { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.cue-card[aria-current=true] { border: 2px solid var(--accent); background: #39495f; }
+.cue-card.past { opacity: .7; }
+.cue-thumbnail { width: 100%; aspect-ratio: 16 / 9; background: #000; object-fit: contain; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: pre-wrap; font-size: .85rem; }
+.cue-thumbnail img, .cue-thumbnail video { width: 100%; height: 100%; object-fit: contain; }
+.preflight-probe { position: fixed; left: -10000px; top: 0; width: 320px; height: 180px; overflow: hidden; pointer-events: none; }
 .media-layer { position: absolute; inset: 0; pointer-events: none; }
 .media-layer img, .media-layer video, .media-layer iframe { width: 100%; height: 100%; object-fit: contain; border: 0; display: block; }
 .media-layer.caption { display: flex; justify-content: center; padding: 4%; white-space: pre-wrap; overflow-wrap: anywhere; text-align: center; line-height: 1.2; text-shadow: 0 2px 6px #000; }
@@ -46,6 +54,11 @@ label { display: grid; gap: 5px; margin: 8px 0; }
 #timeline { position: relative; min-width: 100%; }
 .time-ruler { position: relative; height: 25px; color: var(--muted); font-size: .8rem; }
 .time-ruler span { position: absolute; border-left: 1px solid var(--line); padding-left: 4px; white-space: nowrap; }
+.time-ruler { cursor: crosshair; touch-action: none; user-select: none; }
+#timeline-scrub { max-width: none; }
+#timeline-playhead { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; z-index: 4; cursor: ew-resize; touch-action: none; }
+#timeline-playhead::after { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--accent); pointer-events: none; }
+#timeline-playhead span { display: block; width: 14px; height: 14px; background: var(--accent); clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%); }
 .lane { position: relative; height: 78px; border-top: 1px solid var(--line); background: #101927; }
 .lane > strong { position: sticky; left: 0; z-index: 3; background: #101927e8; font-size: .8rem; pointer-events: none; }
 .timeline-cue { position: absolute; top: 24px; height: 46px; min-width: 4px; padding: 4px 6px; display: block; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: #22506a; cursor: grab; }

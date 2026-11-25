@@ -1,0 +1,21 @@
+{% extends "presentations/layout.html" %}
+{% block title %}Performance Studio · Jack Capstaff{% endblock %}
+{% block studio_navigation %}<a href="{{ url_for('index') }}">Website</a>{% endblock %}
+{% block main %}
+  <h1>Performance Studio</h1>
+  <p>Choose a tool for your rehearsal or performance.</p>
+  <div class="show-list">
+    <section class="panel">
+      <h2>Click Tracks</h2>
+      <p>Rehearse and perform with programmable tempi, meters, cues and synchronized video.</p>
+      <a class="button primary" href="{{ url_for('clicktrack.clicktrack_index') }}">Open Click Tracks</a>
+    </section>
+    {% if current_user.role == 'admin' %}
+    <section class="panel">
+      <h2>Media Centre</h2>
+      <p>Build presentations with video, images, text and audio, then control an audience screen.</p>
+      <a class="button primary" href="{{ url_for('presentations.dashboard') }}">Open Media Centre</a>
+    </section>
+    {% endif %}
+  </div>
+{% endblock %}

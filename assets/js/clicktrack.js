@@ -506,6 +506,77 @@
   const clock = { start: 0, elapsed: 0, videoStart: 0 };
   let transportBusy = false;
   const visQ = [];
+  let mediaMusicRun = 0, mediaMusicSent = 0;
+  const mediaMusicTimes = new Map();
+  function musicalPositionSeconds(section, bar, beat) {
+    const key = section + ':' + bar + ':' + beat;
+    if (mediaMusicTimes.has(key)) return mediaMusicTimes.get(key);
+    const s = sections()[section];
+    let time = sectionTimeline()[section].start;
+    if (s.type === 'click') {
+      for (let b = 0; b < bar - 1; b++) time += barSeconds(s, b);
+      const subN = subdivOf(s);
+      for (let tick = 0; tick < beat - 1; tick++) {
+        for (let sub = 0; sub < subN; sub++) time += stepSeconds(s, (bar - 1 + (tick + sub / subN) / s.num) / s.bars, subN);
+      }
+    }
+    mediaMusicTimes.set(key, time);
+    return time;
+  }
+  function mediaMusicHit(position) {
+    if (!position || !ctx) return { eventId: null, eventElapsed: 0 };
+    const event = CFG.musicBridge.events.findLast(event => event.section < position.secIdx ||
+      event.section === position.secIdx && (event.bar < position.bar + 1 ||
+        event.bar === position.bar + 1 && event.beat <= position.tick + 1));
+    if (!event) return { eventId: null, eventElapsed: 0 };
+    const sectionTime = musicalPositionSeconds(position.secIdx, (position.startBarOffset || 0) + 1, 1);
+    return { eventId: event.id, eventElapsed: Math.max(0,
+      sectionTime + ctx.currentTime - position.phaseStart - musicalPositionSeconds(event.section, event.bar, event.beat)) };
+  }
+  function sendMediaMusicState() {
+    if (!CFG.musicBridge || !window.parent || window.parent === window) return;
+    const now = performance.now();
+    if (now - mediaMusicSent < 80) return;
+    mediaMusicSent = now;
+    const position = shown;
+    window.parent.postMessage({
+      channel: 'media-centre-music', session: CFG.musicBridge.session, run: mediaMusicRun,
+      section: position?.secIdx ?? selectedIdx, bar: (position?.bar ?? 0) + 1,
+      beat: (position?.tick ?? 0) + 1, phase: position?.phase || 'stopped',
+      playing: E.playing, suspended: E.suspended,
+      delay: position && ctx && Number.isFinite(position.time) ? Math.max(0, ctx.currentTime - position.time) : 0,
+      ...mediaMusicHit(position),
+      sent: performance.timeOrigin + now,
+    }, window.location.origin);
+  }
+  if (CFG.musicBridge) window.addEventListener('message', async (event) => {
+    if (event.origin !== location.origin || event.source !== window.parent ||
+        event.data?.channel !== 'media-centre-control' || event.data.session !== CFG.musicBridge.session) return;
+    const action = event.data.action;
+    try {
+      if (action === 'play') {
+        if (!E.playing || E.suspended) await togglePlay();
+        else if (E.phase === 'pause') advance();
+      } else if (action === 'pause') {
+        if (E.playing && !E.suspended) await togglePlay();
+      } else if (action === 'next') advance();
+      else if (action === 'previous') back();
+      else if (action === 'jump') {
+        const { section, bar, beat } = event.data;
+        const s = sections()[section];
+        if (!Number.isInteger(section) || !s || !Number.isInteger(bar) || !Number.isInteger(beat) ||
+            bar < 1 || bar > s.bars || beat < 1 || beat > s.num) throw new Error('Invalid musical jump position.');
+        const time = musicalPositionSeconds(section, bar, beat);
+        mediaMusicRun++;
+        if (s.type === 'pause') await start(section, 0);
+        else await seekPerformanceVideo(time, true);
+      }
+    } catch (error) {
+      toast('Linked musical control failed: ' + error.message);
+      window.parent.postMessage({ channel: 'media-centre-music-error', session: CFG.musicBridge.session,
+        message: error.message }, location.origin);
+    }
+  });
   const STREAMER_LEAD = 2;
   let cueOnEntry = false, cueRoute = 0;
 
@@ -712,6 +783,7 @@
     ensureAudio();
     visQ.length = 0;
     E.playing = true;
+    mediaMusicRun++;
     E.suspended = false;
     E.queued = null;
     E.swingSide = 1;
@@ -1327,6 +1399,7 @@
     }
     renderPendulum();
     renderClock();
+    sendMediaMusicState();
     requestAnimationFrame(frame);
   }
 
@@ -1350,7 +1423,7 @@
       videoDraftId: Number.isInteger(t.videoDraftId) && t.videoDraftId > 0 ? t.videoDraftId : null,
       isPublic: t.isPublic === true,
       _linkDirty: !!t._linkDirty,
-      sections: Array.isArray(t.sections) ? t.sections.slice(0, 500).map(normSection) : [],
+      sections: Array.isArray(t.sections) ? t.sections.slice(0, CFG.musicBridge ? 5000 : 500).map(normSection) : [],
       _dirty: !!t._dirty || migrated, _auto: !!t._auto, _ver: 1,
       _server: t._server || (t.updated_at ? JSON.parse(JSON.stringify(t)) : null),
       _draft: t._draft || null, _draftBase: t._draftBase || null,
@@ -1515,7 +1588,7 @@
     current = track;
     if (!CFG.offline) placeTrackEditor(!$('view-video').hidden);
     if (rehearsalListTrack !== track) rehearsalLabelsPending = loadRehearsalLabels(track);
-    if (current && !current._preview) saveJSON(LS_LAST, current.id);
+    if (current && !current._preview && !CFG.musicBridge) saveJSON(LS_LAST, current.id);
     if (!CFG.offline) $('preview-notice').hidden = !current?._preview;
     selectedIdx = 0;
     tester.idx = 0;
@@ -5933,6 +6006,12 @@
         $('btn-remove-offline').hidden = true;
         $('view-perform').hidden = true;
       }
+      return;
+    }
+    if (CFG.musicBridge) {
+      tracks = [normTrack(CFG.invitedTrack)];
+      selectTrack(tracks[0].id);
+      if (prefs.midi) setMidi(true);
       return;
     }
     await loadTracks();

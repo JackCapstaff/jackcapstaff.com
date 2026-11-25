@@ -2,7 +2,7 @@ import { $, config, limitPosition } from './common.js';
 import { PresentationPlayer } from './player.js';
 
 const player = new PresentationPlayer($('preview'), $('player-status'), $('allow-playback'));
-let state = null, received = 0, lastSuccess = 0, ended = false;
+let state = null, received = 0, lastSuccess = 0, ended = false, latency = 0;
 async function poll() {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 3500);
@@ -13,7 +13,7 @@ async function poll() {
     if (!response.ok) throw new Error('HTTP ' + response.status);
     state = await response.json();
     received = performance.now();
-    if (state.playing) state.position += (received - start) / 2000;
+    latency = state.playing ? (received - start) / 2000 : 0;
     lastSuccess = received;
     $('connection-status').textContent = state.active ? '' : 'Waiting for the presenter…';
   } catch (error) {
@@ -27,8 +27,9 @@ async function poll() {
 function frame() {
   if (!state || performance.now() - lastSuccess > 5000) player.render({ cues: [] }, 0, false, true);
   else {
-    const now = limitPosition(state.show.cues, state.position, (performance.now() - received) / 1000, state.playing);
-    player.render(state.show, now.position, now.playing, state.black || !state.active);
+    const now = limitPosition(state.show.cues, state.position, (performance.now() - received) / 1000 + latency, state.playing, state.musicBoundary);
+    player.render(state.show, now.position, now.playing, state.black || !state.active,
+      state.placeholder ? state.placeholderAsset : null, state.musicFrozen);
   }
   requestAnimationFrame(frame);
 }

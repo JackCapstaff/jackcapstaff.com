@@ -2,6 +2,12 @@
 {% block main %}
   <div class="toolbar"><h1>{{ show.title }}</h1><a href="{{ show.editUrl }}">Edit timeline</a></div>
   <p>Starting a broadcast uses the latest saved timeline. Editing it does not change a running broadcast until you restart it.</p>
+  <section id="linked-music" class="panel" hidden>
+    <h2>Linked musical transport</h2>
+    <p>Use this click-track view (including its pedal input) to lead the presentation. Start the music here after starting the broadcast. Keep focus in this view for keyboard pedals; MIDI can be enabled in its pedal settings.</p>
+    <p id="music-connection" role="status"></p>
+    <iframe id="music-performer" title="Linked click-track performance" allow="autoplay; midi"></iframe>
+  </section>
   <div id="preview" class="screen controller-screen"></div>
   <div class="toolbar">
     <button data-action="start" class="primary">Start / restart broadcast</button>
@@ -11,6 +17,7 @@
     <button data-action="next">Next cue</button>
     <button data-action="black">Toggle blackout</button>
     <button data-action="stop">Stop broadcast</button>
+    <button data-action="placeholder" id="show-placeholder" disabled>Show placeholder / pause</button>
   </div>
   <form id="seek-form" class="toolbar">
     <label>Go to time (seconds) <input id="seek-time" type="number" min="0" step="0.1" required value="0"></label>
@@ -25,7 +32,18 @@
     <div class="toolbar"><a id="audience-link" href="{{ show.url }}" target="_blank" rel="noopener">Open audience view</a><button id="copy-link">Copy link</button><button id="revoke-link" class="danger">Replace audience link</button></div>
     <p class="hint">A persistent, unlisted link. Anyone with it can watch without logging in while you broadcast. Keep one controller tab connected; another controller can take over and disconnect this one. Audience screens go black if its heartbeat is lost for 8 seconds. Replacing the link disconnects existing viewers.</p>
   </section>
-  <section class="panel"><h2>Picture cues</h2><div id="cue-buttons" class="toolbar"></div></section>
+  <section class="panel">
+    <h2>Placeholder image</h2>
+    <label>Logo / holding slide <select id="placeholder-asset"><option value="">No placeholder</option></select></label>
+    <button id="save-placeholder">Use selected image</button>
+    <p class="hint">Upload an image in the Media Centre editor, then reload this controller to select it. Show placeholder pauses all media at the current position. Play / resume returns there; selecting a slide jumps straight to it.</p>
+  </section>
+  <section class="panel"><h2>Up next</h2><div id="up-next" class="cue-grid"></div><p id="up-next-status" role="status"></p></section>
+  <section class="panel"><h2>Slide navigator</h2>
+    <p class="hint">Choose any picture or text cue to jump there and play, including earlier slides. This affects the live audience. The grid follows the running snapshot; restart to use saved edits.</p>
+    <div id="cue-buttons" class="cue-grid"></div>
+  </section>
+  {% include "presentations/preflight.html" %}
 {% endblock %}
 {% block scripts %}
   <script>window.PRESENTATION_CONFIG = {{ show | tojson }};</script>

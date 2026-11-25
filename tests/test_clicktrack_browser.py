@@ -78,7 +78,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 admin = admin_context.new_page()
                 admin.on("pageerror", lambda error: errors.append(str(error)))
                 admin.goto("http://clicktrack.test/clicktrack/")
-                self.assertEqual(admin.title(), "Performance Studio · Jack Capstaff")
+                self.assertEqual(admin.title(), "Click Tracks · Performance Studio")
                 self.assertEqual(admin.locator(".ct-brand").text_content(), "Performance Studio")
                 admin.wait_for_function("document.querySelector('#track-select').options.length === 1")
                 admin.click("button[data-view=edit]")

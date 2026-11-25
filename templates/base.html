@@ -43,10 +43,7 @@
 									<li><a href="{{ url_for('media') }}">Media</a></li>
 									<li><a href="{{ url_for('news') }}">News</a></li>
 									{% if current_user.is_authenticated %}
-									<li><a href="{{ url_for('clicktrack.clicktrack_index') }}">Performance Studio</a></li>
-									{% if current_user.is_admin() %}
-									<li><a href="{{ url_for('presentations.dashboard') }}">Presentations</a></li>
-									{% endif %}
+									<li><a href="{{ url_for('clicktrack.performance_home') }}">Performance Studio</a></li>
 									{% endif %}
 									<li><a href="{{ url_for('contact') }}">Contact</a></li>
 									{% if current_user.is_authenticated and (current_user.is_admin() or current_user.is_editor()) %}

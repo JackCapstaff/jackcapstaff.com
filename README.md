@@ -1,9 +1,20 @@
 # jackcapstaff.com
 Website
 
-## Presentations
+## Performance Studio home
 
-Administrators can open **Presentations** from the site navigation or visit
+The site's single **Performance Studio** navigation link opens `/live/home/`.
+All signed-in users can open **Click Tracks** from this home screen. Only
+administrators see **Media Centre**, and its pages and management APIs also
+enforce admin permissions. Public audience links remain accessible without
+login. Tool headers link back to the home screen.
+
+Existing `/live/` and `/clicktrack/` links still open Click Tracks directly;
+presentation editor, controller and audience URLs are unchanged.
+
+## Media Centre
+
+Administrators can open **Media Centre** from Performance Studio home or visit
 `/presentations/`. This is a separate, browser-rendered presentation builder,
 not a video-file exporter; click-track integration is deliberately deferred.
 Each admin manages their own presentations and reusable media library.
@@ -17,6 +28,26 @@ Each admin manages their own presentations and reusable media library.
    transitions. Choose **Apply cue changes**, then **Save presentation**.
    Drag cues horizontally to move them; cues within a lane cannot overlap.
    Add text at the preview position and black cues at the end of the picture lane.
+   Click/drag the timeline ruler or orange playhead, or use the **Preview
+   playhead** slider (also keyboard-accessible), to scrub. Scrubbing pauses
+   local preview; **Play preview** starts from that point, without moving the
+   live audience. The playhead follows playback and respects timeline zoom.
+   Select a video, YouTube or audio cue for its percentage **Volume** slider
+   and **Mute this cue** checkbox. Muting preserves the chosen volume.
+   Apply and save to keep these per-cue settings for the audience.
+   **Undo/Redo** restore up to 100 applied timeline/title edits during this
+   editor session, including after saving. They do not undo library uploads
+   or deletions; deleting media clears edit history. Unapplied cue fields
+   retain the browser's normal text undo. Outside fields use Ctrl/Cmd+Z,
+   Ctrl/Cmd+Shift+Z or Ctrl+Y.
+   **Duplicate cue** appends a copy to the same lane. **Split at playhead**
+   makes two cues with continuous media in points, moving a manual hold to
+   the second half. The first retains its entrance (clamped to its new
+   duration); the second retains its exit, with a cut between the halves.
+   Both halves must be at least 0.1 seconds long.
+   Snapping aligns either end of a dropped cue with nearby cue edges or the
+   playhead (within eight screen pixels). Untick **Snap** or hold Shift while
+   dropping to bypass it; numeric edits remain exact.
 4. Choose automatic progression or **Hold until Next or Play** on picture cues.
    Holds pause all three lanes. Picture and text support cuts, fades and
    crossfades at adjacent joins; crossfades use the outgoing picture's frozen
@@ -26,6 +57,18 @@ Each admin manages their own presentations and reusable media library.
    and choose **Start broadcast**. The controller provides Next/Previous,
    pause/play, seeking, cue jumps and blackout (picture and sound).
    Its monitor is muted unless **Hear media on this control device** is enabled.
+   The controller also shows **Up next** and a **Slide navigator** thumbnail
+   grid for all picture/text cues, including earlier slides. Selecting a
+   thumbnail jumps to that cue and plays all timeline layers from there.
+   Current and past slides are marked; the audience sees none of these controls.
+   Uploaded videos use a paused video thumbnail; YouTube uses its provider thumbnail.
+6. For a logo/holding screen, upload an image in the editor, reload the
+   controller, select it under **Placeholder image** and choose **Use selected
+   image**. The choice is saved per presentation. **Show placeholder / pause**
+   displays only that image and pauses/silences every timeline layer.
+   **Play / resume** returns to the same point, or choose a thumbnail to jump
+   elsewhere. Blackout still overrides the placeholder. Clear the selection
+   before deleting a placeholder asset from the library.
 
 Each presentation has its own persistent, anonymous audience link, suitable
 for one projector or several devices. Only its owning admin can edit or
@@ -35,6 +78,110 @@ not alter a running broadcast: restart it to use the latest saved timeline.
 Leave the controller open and connected; missing controller heartbeats blank
 the public view after eight seconds. Audience network failures also blank
 playback, with automatic reconnection while the link remains valid.
+
+### Linking music and visual cues
+
+For a standalone set, open **Music links** in its editor. Choose one of your
+saved click tracks, or **Create click track for this presentation**. Edit its
+sections in the Click Tracks tab, then **Reload tracks / review changes**.
+Add events at a section, bar within that section and beat (a meter unit:
+1-6 in 6/8, not necessarily six audible clicks). Each event selects a picture
+or text cue and either runs the visual timeline from there or holds it there.
+Save the presentation before broadcasting. At least one event is required.
+
+An image can therefore stay held across several musical sections, while
+several events within one section can select different images. These are
+links between two timelines, not a requirement for one slide per section.
+Selecting an event jumps all three visual timeline lanes to the chosen
+cue's start or its video-local hit time. A held cue cuts its entrance transition
+so it remains visible; held video freezes on that hit and timeline sound stops.
+
+For video/YouTube cues, set **Video-local hit time** in seconds from that
+source video's own zero. Leave it blank to use the cue's in point. For example,
+a cue at timeline 20s with source in point 60s maps source hit 65s to timeline
+25s; another video's source zero is completely independent. Scrub the editor
+preview inside the selected cue and choose **Use preview playhead** to capture
+a hit, or type the source time and use **Preview this hit**. **Edit event**
+changes an existing link. Splitting a video cue moves later source-time hits
+to the new excerpt; undo restores both. Hits must lie inside the saved excerpt.
+These links synchronize existing musical sections to the chosen video times;
+they do not automatically refit tempos. The existing Click Tracks video
+hit-point builder remains the tool for calculating music from a film's timings.
+
+Start the broadcast in the presentation controller, then start the embedded
+click-track transport. Its normal automatic section changes, keyboard/MIDI
+pedals and rehearsal controls drive the linked visual events. Configure and
+focus the embedded transport for keyboard pedals. Controller Play, Pause,
+Next and Previous also route to that transport. Mapped slide thumbnails
+rehearse their associated musical positions; unmapped thumbnails and numeric
+visual seeking are unavailable during a linked broadcast.
+
+For each silent manual musical wait, choose **Pause visuals with music** or
+**Let visuals keep running**. Transport Pause always pauses visuals; manually
+repeating click sections keep running until advanced. **Show placeholder /
+pause** pauses the transport as well as visual media; controller Play resumes.
+Click-track audio is local to the conductor's device, not sent to audience
+devices. Video/audio cue settings still govern audience media sound.
+
+The broadcast freezes both saved music and visual cues. Changing musical
+sections requires reviewing event positions before saving/restarting, so
+reordering a score cannot silently relink the wrong sections. Reloading the
+controller pauses a running visual timeline: select a mapped rehearsal point
+or deliberately restart music rather than expecting seamless audio takeover.
+A lost embedded transport pauses visuals after four seconds.
+
+Concert programmes compile linked set music into one read-only performance
+track, preserving each set's event positions, tempi, meters, repeats and
+pause policies. Nested/repeated sets receive distinct cue/event IDs. Intervals
+become silent musical waits showing the concert logo: one **Next** or pedal
+advance starts the following set, including its configured count-in.
+Visual playback is bounded by the current set, so a shorter film cannot
+run into the next set before its music starts. The expanded concert supports
+up to 5000 musical sections/events as well as the existing visual limits.
+
+A concert with no linked music behaves as before. In a mixed concert, a set
+without linked music runs its visual timeline silently, then waits for Next;
+Next enters the interval and a further Next starts the following set. Manually
+repeating or silent musical sections inside linked sets retain their own
+pedal waits. Timed musical pauses must be followed by a click section within
+the same set. All music is compiled from saved versions at broadcast start,
+not modified in the original tracks.
+
+### Concert programmes and linked sets
+
+Create each set as its own presentation. Create an empty presentation for the
+whole concert, tick **Concert programme**, add the saved sets in running order
+and select an uploaded **Concert interval placeholder** image. Use Move up/down
+to reorder, Remove to unlink, or a set's title to open its editor in another tab.
+Save, then **Load saved concert preview** to rehearse locally, or open the
+controller and start the concert at its own persistent audience link.
+
+The concert uses the latest saved version of every linked set at broadcast
+start; the running snapshot never changes underneath viewers. Sets remain
+independently editable and can also link other programmes (no cycles, maximum
+eight nesting levels). A concert can link up to 50 presentations; the fully
+expanded show must fit within 24 hours and 5000 cues. Linked sets must contain
+saved cues; concerts cannot mix their own timeline cues with linked sets.
+
+Between sets the timeline shows the concert's image and holds all three lanes
+until **Next** or **Play / resume**. The interval occupies a nominal 0.1 seconds
+in the timeline, but holds indefinitely in real time. An end-of-set manual
+hold is replaced by this interval so it takes only one Next to start the next
+set. Internal holds within sets are preserved. The slide grid labels cues with
+their set names and includes interval slides for direct navigation.
+Remove set links before deleting a set; unlink/replace interval images before
+deleting them. Pre-show checks compile all saved linked sets. Editor preview
+must be reloaded to pick up changes saved in another set.
+
+Use **Pre-show checks** in the editor or controller to load each used media
+asset and check excerpt bounds where the player reports duration. Checks are
+local, read-only and cancellable: they do not start a broadcast or guarantee
+full-file buffering. Editor checks use applied edits, controller checks use
+the latest saved version. **Test this device's sound** sends a short tone;
+confirm that you hear it. Re-run checks after edits and rehearse on every
+audience device to check its autoplay permissions, sound output and network.
+YouTube duration may not be available until playback, which is reported as
+a warning rather than a verified excerpt.
 
 ### Media storage and playback requirements
 
@@ -47,7 +194,9 @@ playback, with automatic reconnection while the link remains valid.
   minutes or less**. Your Cloudinary plan may impose lower limits. Supported
   inputs: JPG/JPEG, PNG, WebP, MP4, WebM, MOV, MP3, WAV, M4A and OGG.
   Browser codec support still applies; MP4/H.264 and MP3 are recommended.
-  YouTube cues can use an in point and up to three minutes per cue.
+  YouTube cues have no three-minute limit: use any excerpt or full video
+  that fits in the existing 24-hour timeline, subject to the source video's
+  actual length. This does not change the three-minute uploaded-video limit.
 - Media URLs are public, not private or access-controlled. Revoking a
   presentation link does not revoke already shared media URLs.
   Deleting presentations retains library media. **Delete media** permanently
@@ -55,17 +204,17 @@ playback, with automatic reconnection while the link remains valid.
   release them first. Interrupted/unfinalised uploads may need removing
   manually from the `jackcapstaff/presentations` folder in Cloudinary.
 - Browsers may require **Allow media playback** on each audience device
-  before sound/video starts. Uploaded video audio defaults off; set the
-  cue's Volume to enable it. Independent audio defaults on.
+  before sound/video starts. Video and YouTube cues default muted; untick
+  **Mute this cue** to enable their sound. Independent audio defaults on.
 - This is online, approximate wall-clock synchronization, not frame-accurate
   broadcast playout. YouTube requires connectivity, allows only embeddable
   videos, and may buffer or show provider content. Rehearse on the intended
   devices/network. There are no waveform/thumbnail trim tools or offline
   presentation export in this first version.
 
-## Performance Studio
+## Click Tracks
 
-Performance Studio is available at `/live/` (or `/live`, which adds the trailing
+The Click Tracks tool is available at `/live/` (or `/live`, which adds the trailing
 slash). Existing `/clicktrack/` URLs remain supported, including APIs, prepared
 offline pages and unexpired legacy audience links. Saved tracks and backups
 remain compatible.

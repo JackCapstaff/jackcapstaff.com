@@ -19,12 +19,16 @@ class ClickTrackSectionTests(unittest.TestCase):
                 connection.execute(text("CREATE TABLE click_track (id INTEGER PRIMARY KEY, title TEXT)"))
                 connection.execute(text("INSERT INTO click_track (title) VALUES ('Existing private track')"))
                 connection.execute(text("CREATE TABLE page_content (id INTEGER PRIMARY KEY)"))
+                connection.execute(text("CREATE TABLE studio_presentation (id INTEGER PRIMARY KEY, title TEXT)"))
+                connection.execute(text("INSERT INTO studio_presentation (title) VALUES ('Existing set')"))
             namespace = {"db": SimpleNamespace(engine=engine), "inspect": inspect, "text": text}
             exec(compile(ast.Module(body=[function], type_ignores=[]), "schema-upgrade", "exec"), namespace)
             namespace["ensure_optional_columns"]()
             namespace["ensure_optional_columns"]()
             with engine.connect() as connection:
                 self.assertEqual(connection.execute(text("SELECT is_public FROM click_track")).scalar_one(), 0)
+                self.assertIsNone(connection.execute(text("SELECT programme FROM studio_presentation")).scalar_one())
+                self.assertIsNone(connection.execute(text("SELECT music FROM studio_presentation")).scalar_one())
         finally:
             engine.dispose()
 

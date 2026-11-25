@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#0d1117">
-  <title>Performance Studio · Jack Capstaff</title>
+  <title>Click Tracks · Performance Studio</title>
   {% if offline %}<style>{{ offline_css | safe }}</style>
   {% else %}<link rel="stylesheet" href="{{ url_for('static', filename='css/clicktrack.css') }}">{% endif %}
 </head>
@@ -14,7 +14,7 @@
   <div id="flash-layer" aria-hidden="true"></div>
 
   <header class="ct-top">
-    <a class="ct-brand" href="{{ url_for('index') }}" title="Back to jackcapstaff.com">Performance Studio</a>
+    <a class="ct-brand" href="{{ url_for('index') if offline else url_for('clicktrack.performance_home') }}" title="{{ 'Back to jackcapstaff.com' if offline else 'Back to Performance Studio home' }}">Performance Studio</a>
     <div class="ct-trackpick">
       <select id="track-select" aria-label="Choose track"></select>
       <details class="ct-menu" id="track-actions">
@@ -336,6 +336,7 @@
       offline: {{ 'true' if offline else 'false' }},
       canEdit: {{ 'true' if can_edit else 'false' }},
       invitedTrack: {{ (invited_track or none) | tojson }},
+      musicBridge: {{ (music_bridge or none) | tojson }},
       authenticated: {{ 'true' if not offline and current_user.is_authenticated else 'false' }},
       userKey: {{ (('u' ~ current_user.id) if not offline and current_user.is_authenticated else 'anon') | tojson }},
       apiBase: {{ url_for('clicktrack.api_list_tracks') | tojson }},

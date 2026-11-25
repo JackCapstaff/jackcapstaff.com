@@ -1,0 +1,13 @@
+<section class="panel">
+  <h2>Pre-show checks</h2>
+  <p class="hint">Checks load media on this device only, without starting the audience broadcast. Editor checks use applied edits; controller checks use the latest saved timeline. Run again after editing. A successful check is not a guarantee of uninterrupted playback.</p>
+  <div class="toolbar">
+    <button id="run-preflight">Check media</button>
+    <button id="cancel-preflight" hidden>Cancel checks</button>
+    <button id="test-sound">Test this device's sound</button>
+  </div>
+  <p id="preflight-status" role="status" aria-live="polite"></p>
+  <ul id="preflight-results"></ul>
+  <p id="sound-check-status" role="status"></p>
+  <p class="hint">Open the audience link on every output device, allow playback/sound there and rehearse a video with sound. This controller cannot verify another browser's autoplay permissions, speakers, volume or buffering. YouTube ads and network conditions can still interrupt playback.</p>
+</section>

@@ -1,12 +1,60 @@
 {% extends "presentations/layout.html" %}
-{% block title %}Edit presentation · Performance Studio{% endblock %}
+{% block title %}Edit presentation · Media Centre{% endblock %}
 {% block main %}
   <div class="toolbar">
     <label>Title <input id="show-title" maxlength="255" value="{{ show.title }}"></label>
     <button id="save-show">Save presentation</button>
+    <button id="undo-edit" disabled>Undo</button><button id="redo-edit" disabled>Redo</button>
     <a class="button" id="open-controller" href="{{ show.controlUrl }}">Open controller</a>
   </div>
   <p id="status" role="status" aria-live="polite">Loading presentation…</p>
+  <section class="panel">
+    <label><span><input id="concert-mode" type="checkbox"> Concert programme (linked presentations / sets)</span></label>
+    <div id="concert-settings" hidden>
+      <p class="hint">Arrange saved presentations below. Each keeps its own editor. The latest saved sets are compiled when you start the concert; intervals display this logo and wait for Next. Empty timelines only: remove existing cues before switching to concert mode.</p>
+      <div class="toolbar"><label>Presentation / set <select id="concert-set"></select></label><button id="add-concert-set">Add set</button></div>
+      <ol id="concert-sets"></ol>
+      <label>Concert interval placeholder <select id="concert-placeholder"><option value="">Choose an image from the library</option></select></label>
+      <button id="load-concert-preview">Load saved concert preview</button>
+      <p class="hint">Save first, then load the preview to use current linked sets. Upload an interval logo in the media library. Concert edits do not change a running broadcast.</p>
+    </div>
+  </section>
+  <section class="panel" id="music-links-panel">
+    <h2>Music links</h2>
+    <p class="hint">Link a saved click track to this standalone presentation. Musical events jump the visual timeline to a picture/text cue; between events it can run on its own or hold. Beats below mean meter units (for example 1–6 in 6/8), within a section, not score-bar numbers. Save the presentation before broadcasting.</p>
+    <div class="toolbar">
+      <label>Click track <select id="music-track"><option value="">No linked click track</option></select></label>
+      <button id="reload-music">Reload tracks / review changes</button>
+      <button id="create-music-track">Create click track for this presentation</button>
+      <a id="edit-music-track" href="{{ url_for('clicktrack.clicktrack_index') }}" target="_blank" rel="noopener">Edit click tracks (new tab)</a>
+    </div>
+    <p id="music-review" role="status"></p>
+    <div id="music-event-fields" hidden>
+      <div class="toolbar">
+        <label>Section <select id="music-section"></select></label>
+        <label>Bar within section <input id="music-bar" type="number" min="1" step="1" value="1"></label>
+        <label>Beat (meter unit) <input id="music-beat" type="number" min="1" step="1" value="1"></label>
+        <label>Visual cue <select id="music-cue"></select></label>
+        <label>After trigger <select id="music-mode"><option value="run">Run visual timeline</option><option value="hold">Hold visual timeline on this cue</option></select></label>
+        <button id="add-music-event">Add musical event</button>
+        <button id="cancel-music-event" hidden>Cancel event edit</button>
+      </div>
+      <div id="music-video-fields" hidden>
+        <label>Video-local hit time (seconds from this source video's zero)
+          <input id="music-media-time" type="number" min="0" step="0.001" placeholder="Cue in point">
+        </label>
+        <div class="toolbar">
+          <button id="capture-music-hit">Use preview playhead</button>
+          <button id="preview-music-hit">Preview this hit</button>
+        </div>
+        <p id="music-video-zero" class="hint"></p>
+        <p class="hint">Each video has its own zero and cue in point. Leave blank to use the in point; enter or capture a later source time to link an internal hit to this musical position. This maps existing music to video; it does not recalculate its tempo.</p>
+      </div>
+      <label>When this musical section waits for the pedal <select id="music-hold"><option value="pause">Pause visuals with music</option><option value="continue">Let visuals keep running</option></select></label>
+      <p class="hint">Applies to silent manual cue sections. A transport Pause always pauses visuals. A manually repeating click section keeps playing until the pedal advances it. Choose Hold visual timeline on an event to freeze video while music continues.</p>
+      <ul id="music-events"></ul>
+    </div>
+  </section>
   <div class="editor-grid">
     <aside class="panel">
       <h2>Media library</h2>
@@ -31,24 +79,26 @@
       </div>
       <p id="player-status" role="status"></p>
       <button id="allow-playback" hidden>Allow media playback</button>
-      <p class="hint">Preview is local only. Uploaded video audio defaults off; use Volume on its cue to enable it. Text overlays sit above the picture; audio has its own lane.</p>
+      <p class="hint">Preview is local only. Video and YouTube cues start muted; select a cue to change its sound. Text overlays sit above the picture; audio has its own lane.</p>
     </section>
-    <aside class="panel">
+    <aside class="panel" id="cue-properties-panel">
       <h2>Cue properties</h2>
       <p id="cue-empty">Select a timeline cue to edit it.</p>
       <form id="cue-form" hidden>
         <label>Name <input name="name" required maxlength="120"></label>
         <div class="field-pair">
-          <label>Start (seconds) <input name="start" type="number" min="0" max="86400" step="0.1" required></label>
-          <label>Duration (seconds) <input name="duration" type="number" min="0.1" max="86400" step="0.1" required></label>
+          <label>Start (seconds) <input name="start" type="number" min="0" max="86400" step="0.001" required></label>
+          <label>Duration (seconds) <input name="duration" type="number" min="0.1" max="86400" step="0.001" required></label>
         </div>
         <label>In transition <select name="transition"><option value="cut">Cut</option><option value="fade">Fade from black / silence</option><option value="crossfade">Crossfade from previous cue</option></select></label>
-        <label>Fade-in / crossfade length (seconds) <input name="fade" type="number" min="0" step="0.1" required></label>
-        <label>Fade-out to black / silence (seconds) <input name="fadeOut" type="number" min="0" step="0.1" required></label>
+        <label>Fade-in / crossfade length (seconds) <input name="fade" type="number" min="0" step="0.001" required></label>
+        <label>Fade-out to black / silence (seconds) <input name="fadeOut" type="number" min="0" step="0.001" required></label>
         <label id="cue-advance">After this picture cue <select name="advance"><option value="auto">Continue automatically</option><option value="manual">Hold until Next or Play</option></select></label>
         <div id="cue-media-fields">
-          <label>Media in point (seconds) <input name="offset" type="number" min="0" step="0.1" required></label>
-          <label>Volume (0–1) <input name="volume" type="number" min="0" max="1" step="0.05" required></label>
+          <label>Media in point (seconds) <input name="offset" type="number" min="0" step="0.001" required></label>
+          <label>Volume <input name="volume" type="range" min="0" max="1" step="0.01"><output id="cue-volume-value"></output></label>
+          <label><span><input id="cue-muted" type="checkbox"> Mute this cue</span></label>
+          <p class="hint">Applies to this use of the asset, in preview and on audience devices. Muting keeps your chosen volume. Apply cue changes, then save.</p>
         </div>
         <div id="cue-text-fields" hidden>
           <label>Overlay text <textarea name="text" rows="4" maxlength="4000"></textarea></label>
@@ -56,24 +106,29 @@
           <label>Text color <input name="color" type="color" value="#ffffff"></label>
           <label>Text position <select name="position"><option value="bottom">Bottom</option><option value="center">Center</option><option value="top">Top</option></select></label>
         </div>
-        <div class="toolbar"><button type="submit">Apply cue changes</button><button type="button" id="delete-cue" class="danger">Remove cue</button></div>
+        <div class="toolbar"><button type="submit">Apply cue changes</button><button type="button" id="duplicate-cue">Duplicate cue</button><button type="button" id="split-cue">Split at playhead</button><button type="button" id="delete-cue" class="danger">Remove cue</button></div>
+        <p class="hint">Duplicate appends a copy to this lane. Split preserves media continuity and puts any manual hold at the end of the second half.</p>
       </form>
     </aside>
   </div>
-  <section class="panel">
+  <section class="panel" id="timeline-panel">
     <div class="toolbar">
       <h2>Timeline</h2>
       <button id="add-text">Add text overlay</button><button id="add-blank">Add black cue</button>
       <label>Zoom <input id="timeline-zoom" type="range" min="4" max="40" value="16"></label>
+      <label><span><input id="timeline-snap" type="checkbox" checked> Snap to cue edges and playhead</span></label>
     </div>
-    <p class="hint">Drag library assets onto their lane. Drag cues to move them, or set exact times in Cue properties. Click an asset's Add button to append it. Lanes play together; cues within a lane must not overlap. Crossfades blend the previous cue's final frame at an adjacent join. Picture holds pause all three lanes.</p>
+    <label>Preview playhead <input id="timeline-scrub" type="range" min="0" max="0" step="0.001" value="0"><output id="timeline-position">0.0 s</output></label>
+    <p class="hint">Click or drag the time ruler or playhead to scrub. Scrubbing pauses preview; choose Play preview to start there. This does not seek the live audience. Drag library assets onto their lane. Drag cues to move them, or set exact times in Cue properties. Hold Shift while dropping to bypass snapping. Click an asset's Add button to append it. Lanes play together; cues within a lane must not overlap. Crossfades blend the previous cue's final frame at an adjacent join. Picture holds pause all three lanes.</p>
     <div class="timeline-scroll"><div id="timeline">
       <div id="time-ruler" class="time-ruler"></div>
       <div class="lane" data-lane="picture" aria-label="Picture lane"><strong>Picture</strong></div>
       <div class="lane" data-lane="text" aria-label="Text overlay lane"><strong>Text</strong></div>
       <div class="lane" data-lane="audio" aria-label="Audio lane"><strong>Audio</strong></div>
+      <div id="timeline-playhead" aria-hidden="true"><span></span></div>
     </div></div>
   </section>
+  {% include "presentations/preflight.html" %}
 {% endblock %}
 {% block scripts %}
   <script>window.PRESENTATION_CONFIG = {{ show | tojson }};</script>

@@ -236,6 +236,12 @@ def clicktrack_index():
     return render_template("clicktrack/index.html")
 
 
+@clicktrack_bp.get("/home/")
+@login_required
+def performance_home():
+    return render_template("performance/home.html")
+
+
 @clicktrack_bp.get("/invite/<int:track_id>/")
 def performance_invite(track_id):
     track = _published_tracks().filter(current_app.ClickTrack.id == track_id).first_or_404()

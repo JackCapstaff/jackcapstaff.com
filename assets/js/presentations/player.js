@@ -61,7 +61,10 @@ export class PresentationPlayer {
     this.host.append(node);
     this.layers.set(cue.id, layer);
     const fail = message => {
-      if (!layer.disposed) this.error(cue.name + ': ' + message);
+      if (!layer.disposed) {
+        layer.error = message;
+        this.error(cue.name + ': ' + message);
+      }
     };
     if (cue.kind === 'text') {
       node.classList.add('caption', cue.position);
@@ -110,7 +113,13 @@ export class PresentationPlayer {
     if (!layer.ready) layer.timer = setTimeout(() => fail('Media is still loading. Check the connection and media URL.'), 15000);
     return layer;
   }
-  render(show = { cues: [] }, position = 0, playing = false, black = false) {
+  render(show = { cues: [] }, position = 0, playing = false, black = false, placeholder = null, frozen = false) {
+    if (placeholder) {
+      show = { cues: [{ id: 'placeholder-' + placeholder.id, name: placeholder.name, lane: 'picture', kind: 'image',
+        start: 0, duration: 86400, offset: 0, volume: 0, transition: 'cut', fade: 0, fadeOut: 0, asset: placeholder }] };
+      position = 0;
+      playing = false;
+    }
     this.lastShow = show;
     this.lastPosition = position;
     this.lastPlaying = playing;
@@ -131,7 +140,7 @@ export class PresentationPlayer {
       const active = cues[index];
       if (active) {
         const elapsed = position - active.start;
-        const fade = active.transition !== 'cut' && active.fade > 0 ? Math.min(1, elapsed / active.fade) : 1;
+        const fade = !frozen && active.transition !== 'cut' && active.fade > 0 ? Math.min(1, elapsed / active.fade) : 1;
         const out = active.fadeOut > 0 ? Math.min(1, (active.duration - elapsed) / active.fadeOut) : 1;
         const previous = cues[index - 1];
         if (active.transition === 'crossfade' && fade < 1 && previous
@@ -161,7 +170,7 @@ export class PresentationPlayer {
       const layer = this.layers.get(state.cue.id) || this.create(state.cue);
       layer.node.style.opacity = String(black ? 0 : state.opacity);
       layer.node.style.zIndex = String(state.z);
-      const volume = this.muted || black ? 0 : state.volume;
+      const volume = this.muted || black || state.cue.muted ? 0 : state.volume;
       if (!layer.ready) continue;
       const now = performance.now();
       if (layer.video) {

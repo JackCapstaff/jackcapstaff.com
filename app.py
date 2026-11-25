@@ -888,6 +888,10 @@ def ensure_optional_columns():
             'video_draft_id': 'INTEGER REFERENCES click_track_video_draft(id) ON DELETE SET NULL',
             'is_public': 'BOOLEAN NOT NULL DEFAULT FALSE',
         },
+        'studio_presentation': {
+            'programme': 'JSON',
+            'music': 'JSON',
+        },
     }
 
     for table_name, columns in required_columns.items():

@@ -473,6 +473,8 @@ def init_models(db):
         user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
         title = db.Column(db.String(255), nullable=False)
         cues = db.Column(db.JSON, nullable=False, default=list)
+        programme = db.Column(db.JSON, nullable=True)
+        music = db.Column(db.JSON, nullable=True)
         revision = db.Column(db.Integer, nullable=False, default=1)
         token = db.Column(db.String(64), nullable=False, unique=True, index=True)
         live = db.Column(db.JSON, nullable=False, default=dict)

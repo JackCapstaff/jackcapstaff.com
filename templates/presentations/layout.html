@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>{% block title %}Presentations · Performance Studio{% endblock %}</title>
+  <title>{% block title %}Media Centre · Performance Studio{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/presentations.css') }}">
 </head>
 <body>
   <header class="studio-header">
-    <a href="{{ url_for('presentations.dashboard') }}">Presentation Studio</a>
-    <nav><a href="{{ url_for('clicktrack.clicktrack_index') }}">Performance Studio</a> <a href="{{ url_for('index') }}">Website</a></nav>
+    <a href="{{ url_for('clicktrack.performance_home') }}">Performance Studio</a>
+    <nav>{% block studio_navigation %}<a href="{{ url_for('presentations.dashboard') }}">Media Centre</a> <a href="{{ url_for('index') }}">Website</a>{% endblock %}</nav>
   </header>
   <main>{% block main %}{% endblock %}</main>
   {% block scripts %}{% endblock %}

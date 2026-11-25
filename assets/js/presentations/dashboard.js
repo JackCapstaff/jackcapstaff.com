@@ -7,6 +7,7 @@ async function load() {
     for (const show of shows) {
       const card = element('article', undefined, 'panel');
       card.append(element('h2', show.title));
+      if (show.programme) card.append(element('p', 'Concert programme · ' + show.programme.sets.length + ' linked presentations', 'hint'));
       for (const [label, href] of [['Edit timeline', show.editUrl], ['Control', show.controlUrl]]) {
         const link = element('a', label, 'button');
         link.href = href;
