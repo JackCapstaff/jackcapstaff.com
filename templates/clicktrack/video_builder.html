@@ -26,6 +26,12 @@
   <summary>Video and hit points</summary>
   <fieldset>
     <legend>Resync hit-point times</legend>
+    <p class="muted small">Fine-tune the whole video against the music without changing the spacing or tempo of the hit points.</p>
+    <label>Video adjustment in seconds <input type="number" id="builder-video-adjust" min="0.001" max="86400" step="0.001" value="0.1"></label>
+    <div class="stage-tool-row">
+      <button type="button" class="btn small" id="builder-video-earlier">Start video earlier</button>
+      <button type="button" class="btn small" id="builder-video-later">Start video later</button>
+    </div>
     <label>Shift in seconds <input type="number" id="builder-shift" step="0.001" placeholder="e.g. 2.5 or -1.25"></label>
     <div class="stage-tool-row">
       <button type="button" class="btn small" id="builder-shift-preview">Preview shift</button>
@@ -100,6 +106,9 @@
           <label>Hit point number <input id="builder-marker-label" type="text" maxlength="17" placeholder="e.g. 16A" spellcheck="false"></label>
           <label>Video time <input id="builder-time" type="text" maxlength="32" placeholder="0:00.000"></label>
           <button type="button" class="btn small" id="builder-snap-video">Start video at this hit point</button>
+          <label>Duration to next hit point (seconds) <input type="number" id="builder-span-duration" min="0.001" max="86400" step="0.001"></label>
+          <button type="button" class="btn small" id="builder-span-apply">Set section duration</button>
+          <p id="builder-span-status" class="muted small" role="status">Select a musical hit point with a following hit point.</p>
           <div class="stage-tool-row" role="group" aria-label="Nudge selected hit point">
             <button type="button" class="btn small" id="builder-nudge-back" aria-label="Move selected hit point 0.1 seconds earlier" disabled>−0.1 s</button>
             <button type="button" class="btn small" id="builder-nudge-forward" aria-label="Move selected hit point 0.1 seconds later" disabled>+0.1 s</button>

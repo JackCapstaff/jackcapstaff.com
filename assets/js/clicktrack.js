@@ -2830,6 +2830,7 @@
     practice = null;
     if (source) {
       clearTimeout(source.timeout);
+      clearInterval(source.observeTimer);
       source.media?.pause();
       source.player?.destroy();
       $('practice-player').replaceChildren();
@@ -2849,6 +2850,105 @@
     $('practice-video').hidden = false;
     $('perform-layout').classList.toggle('with-video', available);
     if (available) openPracticeVideo();
+  }
+
+  function performancePosition(time) {
+    const secs = sections(), timeline = sectionTimeline();
+    const first = secs.findIndex((section) => section.type !== 'pause');
+    if (first >= 0 && time >= 0 && time < timeline[first].start) {
+      return { index: first, entry: timeline[first], elapsed: 0, phase: 'intro', next: timeline[first].start - time };
+    }
+    const index = timeline.findIndex((entry, i) => secs[i].type !== 'pause'
+      && time >= entry.start - 1e-8 && time < entry.end - 1e-8);
+    if (index < 0) throw new Error('That video position is outside the planned music. Use the section finder to restart.');
+    const section = secs[index], entry = timeline[index], elapsed = Math.max(0, time - entry.start);
+    if (section.type === 'timedPause') {
+      const plan = timedPausePlan(section, secs[index + 1]);
+      const interval = plan.beat / section.pauseSubdivision;
+      const substep = elapsed < plan.silence ? 0
+        : Math.min(plan.count * section.pauseSubdivision, Math.ceil((elapsed - plan.silence - 1e-8) / interval));
+      return { index, entry, elapsed, phase: elapsed < plan.silence ? 'timedPause' : 'timedCount',
+        next: plan.silence + substep * interval, remaining: plan.count - Math.floor(substep / section.pauseSubdivision),
+        sub: substep % section.pauseSubdivision, beat: plan.beat, count: plan.count };
+    }
+    let bar = 0, cursor = 0;
+    while (bar < section.bars - 1) {
+      const duration = barSeconds(section, bar);
+      if (cursor + duration > elapsed + 1e-8) break;
+      cursor += duration;
+      bar++;
+    }
+    const subN = subdivOf(section);
+    let tick = 0, sub = 0, displayBar = bar, displayTick = 0;
+    while (cursor < elapsed - 1e-8 && tick < section.num) {
+      displayBar = bar;
+      displayTick = tick;
+      const progress = (bar + (tick + sub / subN) / section.num) / section.bars;
+      cursor += stepSeconds(section, progress, subN);
+      if (++sub === subN) { sub = 0; tick++; }
+    }
+    if (tick >= section.num) { bar++; tick = sub = 0; }
+    if (cursor <= elapsed + 1e-8) { displayBar = bar; displayTick = tick; }
+    return { index, entry, elapsed, phase: 'play', bar, tick, sub, next: cursor,
+      displayBar, displayTick };
+  }
+
+  async function seekPerformanceVideo(time, playing) {
+    const position = performancePosition(time), section = sections()[position.index];
+    if (outputBusy) throw new Error('Finish choosing an audio output before seeking.');
+    const audio = ensureAudio(false);
+    if (playing && audio.state !== 'running') await audio.resume();
+    if (!playing && audio.state !== 'suspended') await audio.suspend();
+    cancelClicks();
+    clearPracticeCues();
+    visQ.length = 0;
+    const now = audio.currentTime, base = now - position.elapsed;
+    E.playing = true;
+    E.suspended = !playing;
+    E.secIdx = position.index;
+    E.phase = position.phase;
+    E.phaseStart = base;
+    E.queued = null;
+    E.countIn = 0;
+    E.filmCountIn = E.countInFromPause = false;
+    E.startBarOffset = 0;
+    E.bar = position.bar ?? 0;
+    E.tick = position.tick ?? 0;
+    E.sub = position.sub ?? 0;
+    E.nextTime = base + position.next;
+    E.timedRemaining = position.remaining ?? 0;
+    E.timedBeat = position.beat ?? 0;
+    cueOnEntry = false;
+    if (position.phase === 'play' && E.bar >= section.bars && section.advance === 'auto') {
+      E.bar = section.bars - 1;
+      endOfBar(section);
+    }
+    const introEnd = E.nextTime;
+    if (position.phase === 'intro') enterSection(position.index, true);
+    selectedIdx = position.index;
+    clock.start = now;
+    clock.videoStart = time;
+    shown = {
+      secIdx: position.index, phase: position.phase, phaseStart: base,
+      bar: position.displayBar ?? 0, tick: position.displayTick ?? 0, sub: 0,
+      bpm: section.type === 'click' ? bpmAt(section, ((position.displayBar ?? 0) + (position.displayTick ?? 0) / section.num) / section.bars) : null,
+      beatsLeft: position.remaining, queued: null, countIn: 0, startBarOffset: 0,
+    };
+    if (position.phase === 'intro') {
+      shown.phaseStart = now - time;
+      shown.introEnd = introEnd;
+    }
+    if (playing) { timerStart(); requestWake(); scheduler(); }
+    else { timerStop(); releaseWake(); }
+    renderTransport();
+    renderStage(shown);
+    renderSetlist();
+    renderClock();
+    if (position.entry.startEstimated) {
+      $('practice-status').textContent = 'Seek uses estimated timing after an earlier cue wait or repeat.';
+    } else {
+      $('practice-status').textContent = 'Video and click track repositioned together.';
+    }
   }
 
   function syncPracticeVideo(force = false) {
@@ -2899,9 +2999,60 @@
     source.playing = playing;
     if (blankChanged || entering || force) sendPresentationState();
     if (continuous && !force) return;
-    if (phase !== 'waiting' && (entering || playing || force)) source.media.seek(source.videoTime);
+    const seeking = phase !== 'waiting' && (entering || playing || force);
+    if (seeking) {
+      source.media.seek(source.videoTime);
+    }
+    source.pendingCommand = { playing, time: seeking ? source.videoTime : null, until: performance.now() + 900 };
     if (playing) source.media.play();
     else source.media.pause();
+  }
+
+  async function observePracticeVideo(source) {
+    if (practice !== source || !source.media || source.observing) return;
+    const now = performance.now(), observation = source.media.observe();
+    if (!observation || !Number.isFinite(observation.time)) {
+      source.observation = null;
+      return;
+    }
+    const previous = source.observation;
+    const pending = source.pendingCommand;
+    if (pending) {
+      const expected = pending.time ?? (previous
+        ? previous.time + (previous.playing ? previous.rate * (now - previous.at) / 1000 : 0) : observation.time);
+      const tolerance = pending.playing || previous?.playing ? 0.8 : 0.15;
+      const matchesTime = Math.abs(observation.time - expected) < tolerance;
+      if (observation.playing === pending.playing && matchesTime) {
+        source.pendingCommand = null;
+        source.observation = { ...observation, at: now };
+        return;
+      }
+      if (now < pending.until) return;
+      source.pendingCommand = null;
+    }
+    source.observation = { ...observation, at: now };
+    if (!previous && !pending) return;
+    const expected = pending?.time ?? (previous
+      ? previous.time + (previous.playing ? previous.rate * (now - previous.at) / 1000 : 0) : observation.time);
+    const moved = Math.abs(observation.time - expected) > (observation.playing ? 0.8 : 0.15);
+    const changed = observation.playing !== (pending ? pending.playing : previous.playing);
+    if (!moved && !changed) return;
+    source.observing = true;
+    try {
+      if (moved || (!E.playing && observation.playing)) {
+        await seekPerformanceVideo(observation.time, observation.playing);
+        if (practice !== source) return;
+        source.positionKey = source.syncKey = null;
+        syncPracticeVideo(true);
+      } else if (E.playing && observation.playing === E.suspended) {
+        await togglePlay();
+      }
+    } catch (error) {
+      $('practice-status').textContent = 'Could not follow video controls: ' + error.message;
+      if (practice === source) syncPracticeVideo(true);
+    } finally {
+      source.observing = false;
+    }
   }
 
   async function openPracticeVideo() {
@@ -2926,6 +3077,7 @@
       status.textContent = 'Ready. Use the click track’s Start / Pause controls.';
       syncPracticeVideo(true);
       renderPracticeCues();
+      source.observeTimer = setInterval(() => observePracticeVideo(source), 100);
     };
     const blocked = () => fail('Video playback was blocked. Tap Resync to clicks or use the player to allow playback.');
     try {
@@ -2935,6 +3087,7 @@
         source.presentationSource = { kind: 'local', url: builder.url, key: builder.url };
         const video = document.createElement('video');
         video.playsInline = true;
+        video.controls = true;
         video.preload = 'metadata';
         video.setAttribute('aria-label', 'Practice video');
         video.addEventListener('loadedmetadata', () => ready({
@@ -2942,6 +3095,7 @@
           play: () => { video.play().catch((e) => { if (e.name !== 'AbortError') fail(e.message); }); },
           pause: () => video.pause(),
           mute: (muted) => { video.muted = muted; },
+          observe: () => video.seeking ? null : ({ time: video.currentTime, playing: !video.paused && !video.ended, rate: video.playbackRate }),
         }), { once: true });
         video.addEventListener('error', () => fail('Could not play the local practice video.'), { once: true });
         video.src = builder.url;
@@ -2963,6 +3117,11 @@
             play: () => target.playVideo(),
             pause: () => target.pauseVideo(),
             mute: (muted) => muted ? target.mute() : target.unMute(),
+            observe: () => {
+              const state = target.getPlayerState();
+              return state === 1 || state === 2 || state === 0
+                ? { time: target.getCurrentTime(), playing: state === 1, rate: target.getPlaybackRate() } : null;
+            },
           }),
           onAutoplayBlocked: blocked,
           onError: ({ data }) => fail('YouTube could not play this video here (error ' + data + ').'),
@@ -3559,6 +3718,15 @@
       : 'Add a score bar here and a following score-bar hit point to set skips for this span.';
   }
 
+  function renderSelectedDuration() {
+    const marker = builder.markers[builder.selected], next = nextMusicalMarker(builder.selected);
+    $('builder-span-duration').disabled = $('builder-span-apply').disabled = !next;
+    $('builder-span-duration').value = next ? roundMarkerTime(next.time - marker.time) : '';
+    $('builder-span-status').textContent = next
+      ? 'Changes this section’s tempo; earlier music keeps its spacing and the next hit point stays fixed to the video.'
+      : 'Select a musical hit point with a following hit point.';
+  }
+
   function renderSelectedMarkerHeading() {
     const marker = builder.markers[builder.selected];
     $('builder-marker-title').textContent = markerHeading(marker);
@@ -3588,6 +3756,7 @@
     $('builder-modulationOld').value = marker.modulationOld ?? '1/4:straight';
     $('builder-modulationNew').value = marker.modulationNew ?? '1/4:straight';
     renderSelectedSkip();
+    renderSelectedDuration();
     $('builder-visual-cue').checked = marker.visualCue === true;
     renderRampControls();
     if (recenter && builder.zoomStart !== null && videoReady()) zoomAroundMarker();
@@ -4176,14 +4345,17 @@
       }
     });
     let shiftPreview = null;
-    function shiftedMarkers(shift) {
+    function retimedMarkers(times) {
       const points = builder.markers;
       const musical = points.filter((marker) => marker.time !== 0 || marker.bar !== '');
       if (!musical.length) throw new Error('Add musical hit points before shifting.');
-      const shifted = musical.map((marker) => ({ ...marker, time: roundMarkerTime(marker.time + shift) }));
+      const shifted = musical.map((marker, index) => ({ ...marker, time: roundMarkerTime(times(marker, index)) }));
       if (shifted.some((marker) => marker.time < -86400 || marker.time > 86400
         || (videoReady() && marker.time > roundMarkerTime(builderMedia().duration)))) {
         throw new Error('The shift would put a hit point beyond the video or the 24-hour limit.');
+      }
+      if (shifted.some((marker, index) => index > 0 && marker.time <= shifted[index - 1].time)) {
+        throw new Error('Hit points must remain in their original order with unique times.');
       }
       if (!shifted.some((marker) => marker.time === 0)) {
         const oldReference = points.find((marker) => marker.time === 0 && marker.bar === '');
@@ -4196,6 +4368,50 @@
       if (shifted.length > 502) throw new Error('The shifted draft would exceed the 502 hit point limit.');
       return shifted;
     }
+    function shiftedMarkers(shift) {
+      return retimedMarkers((marker) => marker.time + shift);
+    }
+    function applyRetimedMarkers(markers, selectedLabel) {
+      builder.markers = markers;
+      builder.dirty = true;
+      shiftPreview = null;
+      $('builder-shift-apply').disabled = true;
+      const selected = markers.findIndex((point) => point.label === selectedLabel);
+      selectVideoMarker(selected >= 0 ? selected : markers.findIndex((point) => point.time === 0));
+      renderVideoPlan();
+    }
+    function adjustVideo(direction) {
+      const input = $('builder-video-adjust');
+      try {
+        if (!input.reportValidity() || !Number.isFinite(input.valueAsNumber)) throw new Error('Enter a positive adjustment in seconds.');
+        const selected = builder.markers[builder.selected];
+        const shifted = shiftedMarkers(direction * input.valueAsNumber);
+        planVideoTrack(shifted);
+        applyRetimedMarkers(shifted, selected.label);
+        $('builder-shift-status').textContent = 'Video moved ' + (direction > 0 ? 'earlier' : 'later')
+          + ' by ' + input.valueAsNumber + ' seconds; musical hit-point spacing is unchanged.';
+      } catch (error) {
+        $('builder-shift-status').textContent = 'Could not adjust video: ' + error.message;
+      }
+    }
+    $('builder-video-earlier').addEventListener('click', () => adjustVideo(1));
+    $('builder-video-later').addEventListener('click', () => adjustVideo(-1));
+    $('builder-span-apply').addEventListener('click', () => {
+      const input = $('builder-span-duration'), marker = builder.markers[builder.selected];
+      const next = nextMusicalMarker(builder.selected);
+      try {
+        if (!next || !input.reportValidity() || !Number.isFinite(input.valueAsNumber)) throw new Error('Enter a valid section duration.');
+        const duration = roundMarkerTime(input.valueAsNumber);
+        if (duration <= 0) throw new Error('Duration must be at least 0.001 seconds.');
+        const shift = next.time - marker.time - duration;
+        const retimed = retimedMarkers((point) => point.time <= marker.time ? point.time + shift : point.time);
+        planVideoTrack(retimed);
+        applyRetimedMarkers(retimed, marker.label);
+        $('builder-span-status').textContent = 'Section duration updated. Earlier music keeps its spacing; the following hit point stays fixed.';
+      } catch (error) {
+        $('builder-span-status').textContent = 'Could not change section duration: ' + error.message;
+      }
+    });
     function proposedShift() {
       const input = $('builder-shift');
       if (input.value === '' || !input.reportValidity() || !Number.isFinite(input.valueAsNumber)) throw new Error('Enter a shift in seconds.');
@@ -4402,7 +4618,7 @@
         builder.markers[builder.selected][field] = e.target.value;
         builder.dirty = true;
         if (field === 'bar') {
-          renderSelectedSkip(); renderSelectedVideoSection();
+          renderSelectedSkip(); renderSelectedDuration(); renderSelectedVideoSection();
           $('builder-snap-video').disabled = !e.target.value || builder.markers[builder.selected].time === 0 || !videoReady();
         }
         renderRampControls();
@@ -5263,8 +5479,13 @@
     $('btn-dup-track').addEventListener('click', () => {
       closeMenu(true);
       if (current) {
+        if (current.videoDraftId && (current._dirty || current._draftDirty || (builder.returnTrack === current && builder.dirty))) {
+          toast('Wait for track and video changes to finish saving before duplicating this track.');
+          return;
+        }
         const t = makeTrack(current.title + ' (copy)', current.sections.map((s) => Object.assign({}, s)), current.notes);
         t.videoOffset = current.videoOffset;
+        t.videoDraftId = current.videoDraftId;
         addTrack(t);
       }
     });

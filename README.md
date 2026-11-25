@@ -60,6 +60,15 @@ later section or using **Start video from beginning** follows the same alignment
 Manual cue waits or repeats can make planned times approximate.
 The presentation picture stays black while the selected performance position
 is before video 0:00, and reappears when the film begins.
+In Perform, playing or pausing the conductor's video also plays or pauses the
+click track. Seeking the video moves the metronome to the corresponding planned
+position without a new count-in, preserving whether playback was paused or
+running. After a manual cue or repeat, the planned position assumes one pass and
+no waiting; the video status warns that the position is estimated. Use the
+section finder for an exact rehearsal restart. YouTube controls and seeking are
+approximate; the presentation window follows the conductor.
+Keep the video playback rate at normal speed; changing it does not change the
+click-track tempo.
 In the video editor, select a negative-time hit point and choose **Start from
 hit point** to preview from its section count-in. Enable **Preview click with
 video** to hear the count-in and music; the video waits at 0:00. The existing
@@ -184,6 +193,14 @@ If the track does not yet have a linked draft, open a saved draft in the video
 editor and choose **Link open draft to track**. An open draft alone is not
 available in Perform. If you replace its video before linking, link it and wait
 for the save to finish before switching to Perform.
+Duplicating a linked track retains its video link; subsequent linked-draft edits
+are saved separately so they do not change the original track's draft.
+To change the duration leading into a hit point, select the preceding musical
+hit point and use **Duration to next hit point**. Earlier musical spacing and
+the following point's video time stay fixed; the selected section's tempo is
+recalculated. For a fine adjustment without changing musical spacing, use
+**Start video earlier** or **Start video later** in **Resync hit-point times**.
+The adjustment moves all musical hit-point times relative to video 0:00.
 
 Set **Starting count-in (bars)** in Edit, or when creating a track from video.
 After creation, edit the track's count-in in the full track editor.
