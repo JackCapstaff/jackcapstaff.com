@@ -180,6 +180,10 @@ times**, preview it, then apply it. Musical points shift together and the
 0:00 reference stays fixed. Applying the shift saves it automatically. To switch to
 another YouTube link without losing the hit points, enter it and choose
 **Replace video, keep hit points**.
+If the track does not yet have a linked draft, open a saved draft in the video
+editor and choose **Link open draft to track**. An open draft alone is not
+available in Perform. If you replace its video before linking, link it and wait
+for the save to finish before switching to Perform.
 
 Set **Starting count-in (bars)** in Edit, or when creating a track from video.
 After creation, edit the track's count-in in the full track editor.

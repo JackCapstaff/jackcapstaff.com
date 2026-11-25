@@ -4161,11 +4161,19 @@
       if (!id) { draftStatus.textContent = 'Enter a valid YouTube video link first.'; return; }
       if (builder.draftsBusy) return;
       if (!window.confirm('Replace the video while keeping the hit points for this track?')) return;
+      const base = builder.autoDraftBase;
       const draft = { id: builder.draftId, title: $('builder-title').value, markers: builder.markers };
       openYoutube(id, draft);
+      builder.autoDraftBase = base;
       builder.dirty = true;
       stageBuilderDraft();
-      draftStatus.textContent = 'Video replaced. Saving changes…';
+      if (builder.returnTrack && !builder.returnTrack.videoDraftId) {
+        draftStatus.textContent = builder.draftId && base
+          ? 'Video replaced in this editor, but not saved or linked. Choose Link open draft to track to save it for Perform.'
+          : 'Video replaced in this editor, but not linked. Open a saved draft and link it to the track before performing.';
+      } else {
+        draftStatus.textContent = 'Video replaced. Saving changes…';
+      }
     });
     let shiftPreview = null;
     function shiftedMarkers(shift) {

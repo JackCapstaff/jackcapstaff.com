@@ -6,6 +6,108 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class ClickTrackBrowserTests(unittest.TestCase):
+    def test_replace_unlinked_draft_then_link_for_performance(self):
+        from urllib.parse import urlsplit
+        from playwright.sync_api import Error, sync_playwright
+        from test_clicktrack import ClickTrackStorageTests
+
+        fixture = ClickTrackStorageTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            marker = {"num": "4", "den": "4", "unit": "auto", "shape": "steady"}
+            draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                "title": "Original", "videoId": "abcdefghijk",
+                "markers": [{**marker, "time": 0, "bar": "1", "label": "1"},
+                            {**marker, "time": 8, "bar": "5", "label": "2"}],
+            }).json
+            track = fixture.client.post("/clicktrack/api/tracks", json={
+                "title": "Unlinked", "sections": [
+                    {"startBar": 1, "bars": 4, "bpm": 120, "hitPoint": "1"},
+                ],
+            }).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                context = browser.new_context()
+                context.add_init_script("""
+                  window.YT = {Player: function(frame, config) {
+                    this.getDuration = () => 20; this.getCurrentTime = () => 0;
+                    this.getPlayerState = () => 2; this.getPlaybackRate = () => 1;
+                    this.seekTo = () => {}; this.pauseVideo = () => {}; this.playVideo = () => {};
+                    this.mute = () => {}; this.unMute = () => {}; this.destroy = () => {};
+                    setTimeout(() => config.events.onReady({target: this}), 0);
+                  }};
+                """)
+
+                def route_request(route):
+                    request = route.request
+                    parsed = urlsplit(request.url)
+                    path = parsed.path + (("?" + parsed.query) if parsed.query else "")
+                    response = fixture.client.open(path, method=request.method, data=request.post_data,
+                                                   content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data,
+                                  headers={"content-type": response.content_type})
+                    response.close()
+
+                context.route("http://clicktrack.test/**", route_request)
+                context.route("https://www.youtube-nocookie.com/**", lambda route: route.abort())
+                page = context.new_page()
+                page.on("dialog", lambda dialog: dialog.accept())
+                page.goto("http://clicktrack.test/clicktrack/")
+                page.wait_for_function("document.querySelector('#track-select').options.length === 1")
+                page.select_option("#track-select", str(track["id"]))
+                self.assertTrue(page.locator("#practice-no-video").is_visible())
+                page.click("#btn-practice-edit-video")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Open your saved')")
+                page.locator("#builder-legacy-drafts > summary").click()
+                page.select_option("#builder-drafts", str(draft["id"]))
+                page.click("#builder-open-draft")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened saved draft')")
+                page.wait_for_function("!document.querySelector('#builder-add').disabled")
+                page.locator("#builder-youtube-url").fill("https://youtu.be/zyxwvutsrqp")
+                page.click("#builder-replace-youtube")
+                self.assertIn("not saved or linked", page.locator("#builder-draft-status").text_content())
+                page.click("#builder-link-draft")
+                for _ in range(100):
+                    saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"] if t["id"] == track["id"])
+                    if saved["videoDraftId"]:
+                        saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                        if saved_draft["videoId"] == "zyxwvutsrqp":
+                            break
+                    page.wait_for_timeout(100)
+                self.assertEqual(saved_draft["videoId"], "zyxwvutsrqp")
+                self.assertEqual([m["bar"] for m in saved_draft["markers"]], ["1", "5"])
+                page.click("button[data-view=perform]")
+                page.wait_for_function("document.querySelector('#practice-status').textContent.includes('Ready')")
+                self.assertTrue(page.locator("#practice-no-video").is_hidden())
+                self.assertIn("zyxwvutsrqp", page.locator("#practice-player iframe").get_attribute("src"))
+                page.reload()
+                page.wait_for_function("document.querySelector('#practice-status').textContent.includes('Ready')")
+                self.assertIn("zyxwvutsrqp", page.locator("#practice-player iframe").get_attribute("src"))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                page.wait_for_function("!document.querySelector('#builder-add').disabled")
+                page.locator("#builder-youtube-url").fill("https://youtu.be/123456789ab")
+                page.click("#builder-replace-youtube")
+                for _ in range(100):
+                    saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"] if t["id"] == track["id"])
+                    saved_draft = fixture.client.get(f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json
+                    if saved_draft["videoId"] == "123456789ab":
+                        break
+                    page.wait_for_timeout(100)
+                self.assertEqual(saved_draft["videoId"], "123456789ab")
+                page.click("button[data-view=perform]")
+                page.wait_for_function("document.querySelector('#practice-status').textContent.includes('Ready')")
+                self.assertIn("123456789ab", page.locator("#practice-player iframe").get_attribute("src"))
+                context.close()
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_snap_video_start_after_music_and_countin(self):
         from urllib.parse import urlsplit
         from playwright.sync_api import Error, sync_playwright
