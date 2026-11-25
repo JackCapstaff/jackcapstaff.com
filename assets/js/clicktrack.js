@@ -4344,11 +4344,11 @@
         draftStatus.textContent = 'Video replaced. Saving changes…';
       }
     });
-    let shiftPreview = null;
+    let shiftPreview = null, scalePreview = null;
     function retimedMarkers(times) {
       const points = builder.markers;
       const musical = points.filter((marker) => marker.time !== 0 || marker.bar !== '');
-      if (!musical.length) throw new Error('Add musical hit points before shifting.');
+      if (!musical.length) throw new Error('Add musical hit points before adjusting their timing.');
       const shifted = musical.map((marker, index) => ({ ...marker, time: roundMarkerTime(times(marker, index)) }));
       if (shifted.some((marker) => marker.time < -86400 || marker.time > 86400
         || (videoReady() && marker.time > roundMarkerTime(builderMedia().duration)))) {
@@ -4375,7 +4375,9 @@
       builder.markers = markers;
       builder.dirty = true;
       shiftPreview = null;
+      scalePreview = null;
       $('builder-shift-apply').disabled = true;
+      $('builder-scale-apply').disabled = true;
       const selected = markers.findIndex((point) => point.label === selectedLabel);
       selectVideoMarker(selected >= 0 ? selected : markers.findIndex((point) => point.time === 0));
       renderVideoPlan();
@@ -4410,6 +4412,61 @@
         $('builder-span-status').textContent = 'Section duration updated. Earlier music keeps its spacing; the following hit point stays fixed.';
       } catch (error) {
         $('builder-span-status').textContent = 'Could not change section duration: ' + error.message;
+      }
+    });
+    function proposedScale() {
+      const input = $('builder-scale');
+      if (input.value === '' || !input.reportValidity() || !Number.isFinite(input.valueAsNumber) || input.valueAsNumber <= 0) {
+        throw new Error('Enter a positive timing percentage.');
+      }
+      const factor = input.valueAsNumber / 100;
+      const scaled = retimedMarkers((marker) => marker.time * factor);
+      for (const marker of scaled) {
+        if (marker.shape !== 'accel' && marker.shape !== 'rall') continue;
+        const anchor = marker.rampAnchor || (marker.bpm ? 'start' : 'previous');
+        const field = anchor === 'start' ? 'bpm' : anchor === 'end' ? 'endBpm' : null;
+        if (field && marker[field] !== '' && marker[field] != null) {
+          marker[field] = String(Math.round(Number(marker[field]) / factor * 100) / 100);
+        }
+      }
+      planVideoTrack(scaled);
+      return scaled;
+    }
+    $('builder-scale-preview').addEventListener('click', () => {
+      try {
+        const scaled = proposedScale();
+        const before = builder.markers.filter((point) => point.time !== 0 || point.bar !== '');
+        const after = scaled.filter((point) => point.time !== 0 || point.bar !== '');
+        scalePreview = { original: JSON.stringify(builder.markers), value: $('builder-scale').value };
+        $('builder-scale-status').textContent = 'First musical hit point: ' + markerTime(before[0].time) + ' → '
+          + markerTime(after[0].time) + '. Last hit point: ' + markerTime(before.at(-1).time) + ' → '
+          + markerTime(after.at(-1).time) + '. Video 0:00 stays fixed.';
+        $('builder-scale-apply').disabled = false;
+      } catch (error) {
+        scalePreview = null;
+        $('builder-scale-apply').disabled = true;
+        $('builder-scale-status').textContent = 'Could not preview timing change: ' + error.message;
+      }
+    });
+    $('builder-scale').addEventListener('input', () => {
+      scalePreview = null;
+      $('builder-scale-apply').disabled = true;
+    });
+    $('builder-scale-apply').addEventListener('click', () => {
+      if (!scalePreview || scalePreview.original !== JSON.stringify(builder.markers) || scalePreview.value !== $('builder-scale').value) {
+        $('builder-scale-status').textContent = 'The draft changed. Preview the timing change again.';
+        $('builder-scale-apply').disabled = true;
+        scalePreview = null;
+        return;
+      }
+      try {
+        const scaled = proposedScale(), selected = builder.markers[builder.selected];
+        applyRetimedMarkers(scaled, selected.label);
+        $('builder-scale-status').textContent = 'Timing change applied. Preview again before applying another adjustment.';
+      } catch (error) {
+        scalePreview = null;
+        $('builder-scale-apply').disabled = true;
+        $('builder-scale-status').textContent = 'Could not apply timing change: ' + error.message;
       }
     });
     function proposedShift() {

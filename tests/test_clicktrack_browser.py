@@ -40,7 +40,7 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 page = browser.new_page()
                 page.add_init_script("""
                   window.YT = {Player: function(frame, config) {
-                    this.getDuration = () => 20; this.getCurrentTime = () => 0;
+                    this.getDuration = () => 50; this.getCurrentTime = () => 0;
                     this.getPlayerState = () => 2; this.getPlaybackRate = () => 1;
                     this.seekTo = () => {}; this.pauseVideo = () => {}; this.playVideo = () => {};
                     this.mute = () => {}; this.unMute = () => {}; this.destroy = () => {};
@@ -93,6 +93,85 @@ class ClickTrackBrowserTests(unittest.TestCase):
                 saved = wait_for_offset(-13.5)
                 self.assertEqual([m["time"] for m in fixture.client.get(
                     f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json["markers"]], [-13.5, -6.5, 0, 8])
+                page.locator("#builder-scale").fill("110")
+                page.click("#builder-scale-preview")
+                self.assertIn("-0:13.500 → -0:14.850", page.locator("#builder-scale-status").text_content())
+                self.assertEqual([m["time"] for m in fixture.client.get(
+                    f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json["markers"]], [-13.5, -6.5, 0, 8])
+                page.click("#builder-scale-apply")
+                saved = wait_for_offset(-14.85)
+                self.assertEqual([m["time"] for m in fixture.client.get(
+                    f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json["markers"]], [-14.85, -7.15, 0, 8.8])
+                self.assertAlmostEqual(saved["sections"][1]["bpm"], 33.57)
+                page.locator("#builder-scale").fill("90")
+                page.click("#builder-scale-preview")
+                self.assertIn("-0:14.850 → -0:13.365", page.locator("#builder-scale-status").text_content())
+                page.click("#builder-scale-apply")
+                saved = wait_for_offset(-13.365)
+                self.assertEqual([m["time"] for m in fixture.client.get(
+                    f"/clicktrack/api/video-drafts/{saved['videoDraftId']}").json["markers"]], [-13.365, -6.435, 0, 7.92])
+                page.locator("#builder-scale").fill("1000")
+                page.click("#builder-scale-preview")
+                self.assertIn("beyond the video", page.locator("#builder-scale-status").text_content())
+                self.assertTrue(page.locator("#builder-scale-apply").is_disabled())
+                page.locator("#builder-scale").fill("0")
+                page.click("#builder-scale-preview")
+                self.assertTrue(page.locator("#builder-scale-apply").is_disabled())
+                page.reload()
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                self.assertIn("-0:13.365", page.locator("#builder-markers").inner_text())
+
+                ramp_draft = fixture.client.post("/clicktrack/api/video-drafts", json={
+                    "videoId": "abcdefghijk", "markers": [
+                        {**marker, "time": -8, "bar": "1", "label": "1", "shape": "rall", "rampAnchor": "end", "endBpm": "110"},
+                        {**marker, "time": 0, "bar": "5", "label": "2", "shape": "accel", "rampAnchor": "start", "bpm": "100"},
+                        {**marker, "time": 8, "bar": "9", "label": "3", "shape": "timedPause"},
+                        {**marker, "time": 11, "bar": "10", "label": "4"},
+                        {**marker, "time": 19, "bar": "14", "label": "5"},
+                    ],
+                }).json
+                ramp_track = fixture.client.post("/clicktrack/api/tracks", json={
+                    "title": "Ramp and pause", "videoDraftId": ramp_draft["id"], "videoOffset": -8,
+                    "sections": [
+                        {"startBar": 1, "bars": 4, "bpm": 130, "bpmEnd": 110, "rampMode": "linearTime", "hitPoint": "1"},
+                        {"startBar": 5, "bars": 4, "bpm": 100, "bpmEnd": 140, "rampMode": "linearTime", "hitPoint": "2"},
+                        {"type": "timedPause", "startBar": 9, "bars": 1, "pauseDuration": 3, "hitPoint": "3"},
+                        {"startBar": 10, "bars": 4, "bpm": 120, "hitPoint": "4"},
+                    ],
+                }).json
+                page.reload()
+                page.wait_for_function("document.querySelector('#track-select').options.length === 2")
+                page.select_option("#track-select", str(ramp_track["id"]))
+                page.click("button[data-view=edit]")
+                page.wait_for_function("document.querySelector('#builder-draft-status').textContent.includes('Opened linked draft')")
+                page.locator("#builder-scale").fill("110")
+                page.click("#builder-scale-preview")
+                page.click("#builder-scale-apply")
+                for _ in range(100):
+                    ramp_saved = next(t for t in fixture.client.get("/clicktrack/api/tracks").json["tracks"] if t["id"] == ramp_track["id"])
+                    if abs(ramp_saved["videoOffset"] + 8.8) < 0.00001:
+                        break
+                    page.wait_for_timeout(100)
+                self.assertAlmostEqual(ramp_saved["videoOffset"], -8.8)
+                markers = fixture.client.get(f"/clicktrack/api/video-drafts/{ramp_saved['videoDraftId']}").json["markers"]
+                self.assertEqual([m["time"] for m in markers], [-8.8, 0, 8.8, 12.1, 20.9])
+                self.assertEqual(markers[0]["endBpm"], "100")
+                self.assertEqual(markers[1]["bpm"], "90.91")
+                self.assertAlmostEqual(ramp_saved["sections"][0]["bpm"], 118.18)
+                self.assertAlmostEqual(ramp_saved["sections"][0]["bpmEnd"], 100)
+                self.assertAlmostEqual(ramp_saved["sections"][1]["bpm"], 90.91)
+                self.assertAlmostEqual(ramp_saved["sections"][1]["bpmEnd"], 127.27)
+                self.assertAlmostEqual(ramp_saved["sections"][2]["pauseDuration"], 3.3)
+                page.locator("#builder-scale").fill("90")
+                page.click("#builder-scale-preview")
+                page.locator("#builder-dialogue").fill("Updated cue")
+                page.locator("#builder-dialogue").dispatch_event("change")
+                page.click("#builder-scale-apply")
+                self.assertIn("draft changed", page.locator("#builder-scale-status").text_content())
+                page.locator("#builder-scale").fill("0.001")
+                page.click("#builder-scale-preview")
+                self.assertTrue(page.locator("#builder-scale-apply").is_disabled())
                 browser.close()
         finally:
             fixture.tearDown()

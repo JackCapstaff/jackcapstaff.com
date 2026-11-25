@@ -201,6 +201,13 @@ the following point's video time stay fixed; the selected section's tempo is
 recalculated. For a fine adjustment without changing musical spacing, use
 **Start video earlier** or **Start video later** in **Resync hit-point times**.
 The adjustment moves all musical hit-point times relative to video 0:00.
+For versions with different running speeds, use **Adjust timing for a different
+video speed**. Preview and apply a percentage anchored at video 0:00: 101%
+makes all intervals 1% longer, and 99% makes them 1% shorter. Musical tempi,
+including fixed ramp anchors, are recalculated and timed pauses are scaled.
+This changes the saved hit-point timing, not YouTube's playback speed. Each
+application scales the current timing again; the preview shows the first and
+last resulting hit points. Times are rounded to milliseconds.
 
 Set **Starting count-in (bars)** in Edit, or when creating a track from video.
 After creation, edit the track's count-in in the full track editor.

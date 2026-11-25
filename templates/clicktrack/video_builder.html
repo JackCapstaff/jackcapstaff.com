@@ -39,6 +39,16 @@
     </div>
     <p id="builder-shift-status" class="muted small" role="status">Shifts musical hit points together; points before the video have negative times.</p>
   </fieldset>
+  <fieldset>
+    <legend>Adjust timing for a different video speed</legend>
+    <p class="muted small">Scales all musical hit-point times around video 0:00 and recalculates the section tempi. 101% makes intervals 1% longer; 99% makes them 1% shorter. This does not change YouTube playback speed.</p>
+    <label>Time interval percentage <input type="number" id="builder-scale" min="0.001" step="any" value="100"></label>
+    <div class="stage-tool-row">
+      <button type="button" class="btn small" id="builder-scale-preview">Preview timing change</button>
+      <button type="button" class="btn small" id="builder-scale-apply" disabled>Apply timing change</button>
+    </div>
+    <p id="builder-scale-status" class="muted small" role="status">Preview the change before applying it. Applying again scales the current timings again.</p>
+  </fieldset>
   <div class="video-builder-grid">
     <section aria-label="Video player">
       <video id="builder-video" controls playsinline preload="metadata" tabindex="0" aria-label="Source video"></video>
