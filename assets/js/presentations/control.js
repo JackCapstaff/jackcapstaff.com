@@ -116,6 +116,11 @@ function accept(value) {
   const changed = JSON.stringify(state?.show) !== JSON.stringify(value.show);
   const placeholderChanged = !state || state.placeholderAsset?.id !== value.placeholderAsset?.id;
   state = value;
+  $('show-heading').textContent = value.show.title || config.title;
+  $('saved-changes').hidden = !value.hasSavedChanges;
+  $('version-status').textContent = !value.active ? 'Previewing the latest saved presentation. Nothing is on air.'
+    : value.hasSavedChanges ? 'On air: earlier saved version. Newer saved changes are available below.'
+    : 'On air: latest saved presentation. Saving edits will not interrupt this broadcast.';
   const session = value.active ? value.show.music?.session || null : null;
   if (musicSession !== session) {
     musicSession = session;
@@ -138,6 +143,8 @@ function accept(value) {
 function command(action, extra = {}) {
   queue = queue.then(async () => {
     if (!connected || !state) return;
+    if (['heartbeat', 'music'].includes(action) && !state.active) return;
+    if (action === 'music' && extra.session !== musicSession) return;
     try {
       accept(await api(path, 'PUT', { version: state.version, action, ...extra }));
       if (action !== 'heartbeat') message(action === 'revoke' ? 'Audience link replaced. Copy the new link.' : 'Broadcast updated.');
@@ -156,12 +163,12 @@ document.querySelectorAll('[data-action]').forEach(button => {
       sendMusic(action);
       return;
     }
+    if (button.dataset.action === 'start' && state?.active
+      && !confirm('Restart the audience broadcast from the beginning with the latest saved timeline?')) return;
     if (musicSession && ['placeholder', 'stop', 'start'].includes(action)) {
       musicSuppressed = true;
       sendMusic('pause');
     }
-    if (button.dataset.action === 'start' && state?.active
-      && !confirm('Restart the audience broadcast from the beginning with the latest saved timeline?')) return;
     command(button.dataset.action);
   };
 });
@@ -170,6 +177,7 @@ $('seek-form').onsubmit = event => {
   if (musicSession) { message('Seek using the linked musical rehearsal points or mapped slide thumbnails so music and visuals stay together.', true); return; }
   command('seek', { position: Number($('seek-time').value) });
 };
+$('load-saved-changes').onclick = () => document.querySelector('[data-action="start"]').click();
 $('monitor-sound').onchange = event => { player.muted = !event.target.checked; };
 $('save-placeholder').onclick = () => command('setPlaceholder', {
   assetId: $('placeholder-asset').value ? Number($('placeholder-asset').value) : null,
@@ -193,7 +201,14 @@ async function init() {
     }
     accept(live);
     message(state.active ? 'Connected to current broadcast.' : 'Ready. Start broadcast when you want the audience to see your show.');
-    setInterval(() => { if (state?.active && connected) command('heartbeat'); }, 1000);
+    setInterval(() => {
+      if (!state || !connected) return;
+      if (state.active) command('heartbeat');
+      else queue = queue.then(async () => {
+        try { accept(await api(path)); }
+        catch (error) { connected = false; message('Could not reload saved presentation: ' + error.message, true); }
+      });
+    }, 1000);
     function frame() {
       if (state) {
         if (musicSession && !musicTimedOut && performance.now() - musicLastSeen > 4000) {
@@ -204,7 +219,7 @@ async function init() {
           $('music-connection').textContent = 'Musical transport disconnected. Visuals paused. Reconnect and use Play / resume.';
         }
         const now = limitPosition(state.show.cues, state.position, (performance.now() - received) / 1000, state.playing && connected, state.musicBoundary);
-        player.render(state.show, now.position, now.playing, state.black || !state.active,
+        player.render(state.show, now.position, now.playing, state.black,
           state.placeholder ? state.placeholderAsset : null, state.musicFrozen);
         navigation(now.position);
         $('clock').textContent = now.position.toFixed(1) + ' s · ' + (!connected ? 'Disconnected' : !state.active ? 'Offline' : state.placeholder ? 'Placeholder / paused' : now.playing ? 'Playing' : 'Paused / held');

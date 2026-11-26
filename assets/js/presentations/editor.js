@@ -1,4 +1,4 @@
-import { $, api, config, duration, element, limitPosition, message } from './common.js';
+import { $, api, config, duration, element, limitPosition, message, overlapError } from './common.js';
 import { PresentationPlayer } from './player.js';
 import { setupPreflight } from './preflight.js';
 
@@ -43,12 +43,8 @@ function validate(cues) {
     const asset = assets.find(asset => asset.id === cue.assetId);
     if (asset?.duration && cue.kind !== 'image' && cue.offset + cue.duration > asset.duration + 0.05) throw new Error('The cue extends beyond its media. Shorten it or change the in point.');
   }
-  for (const lane of ['picture', 'text', 'audio']) {
-    const items = cues.filter(cue => cue.lane === lane).sort((a, b) => a.start - b.start);
-    if (items.some((cue, index) => index && items[index - 1].start + items[index - 1].duration > cue.start + 0.0001)) {
-      throw new Error('Cues overlap in the ' + lane + ' lane. Place them end to end.');
-    }
-  }
+  const overlap = overlapError(cues);
+  if (overlap) throw new Error(overlap);
 }
 function compiled() {
   if (show?.programme) return concertPreview;
@@ -57,7 +53,7 @@ function compiled() {
   })) };
   return compiledShow;
 }
-function select(id) {
+function select(id, redraw = true) {
   if (!canLeaveCue()) return;
   selected = id;
   const cue = show.cues.find(cue => cue.id === id);
@@ -73,10 +69,9 @@ function select(id) {
     $('cue-media-fields').hidden = !['video', 'youtube', 'audio'].includes(cue.kind);
     $('cue-muted').checked = cue.muted || cue.volume === 0;
     volumeLabel();
-    const crossfade = form.elements.transition.querySelector('[value=crossfade]');
-    crossfade.disabled = cue.lane === 'audio';
   }
-  renderTimeline();
+  if (redraw) renderTimeline();
+  else document.querySelectorAll('.timeline-cue').forEach(button => button.classList.toggle('selected', button.dataset.id === id));
 }
 function renderTimeline() {
   if (!show) return;
@@ -94,23 +89,90 @@ function renderTimeline() {
   }
   document.querySelectorAll('.lane').forEach(lane => {
     lane.querySelectorAll('button').forEach(button => button.remove());
-    for (const cue of show.cues.filter(cue => cue.lane === lane.dataset.lane)) {
+    const cues = show.cues.filter(cue => cue.lane === lane.dataset.lane).sort((a, b) => a.start - b.start);
+    for (const [index, cue] of cues.entries()) {
       const button = element('button', cue.name, 'timeline-cue' + (cue.id === selected ? ' selected' : ''));
       button.style.left = cue.start * scale + 'px';
       button.style.width = cue.duration * scale + 'px';
-      button.title = `${cue.name}: ${cue.start}s, ${cue.duration}s. Click to edit or drag to move.`;
+      button.style.top = index % 2 ? '50px' : '24px';
+      button.title = `${cue.name}: ${cue.start}s, ${cue.duration}s. Click to select, double-click for properties or drag to move.`;
       button.setAttribute('aria-label', button.title);
       button.dataset.id = cue.id;
       button.draggable = true;
-      button.onclick = () => select(cue.id);
+      button.onclick = () => { if (selected !== cue.id) select(cue.id, false); };
+      button.ondblclick = () => {
+        if (selected !== cue.id) select(cue.id, false);
+        if (selected !== cue.id) return;
+        $('cue-properties-panel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        form.elements.name.focus({ preventScroll: true });
+      };
       button.ondragstart = event => {
         event.dataTransfer.setData('application/x-studio-cue', cue.id);
         event.dataTransfer.effectAllowed = 'move';
       };
+      for (const edge of ['in', 'out']) button.append(fadeHandle(cue, edge, scale, button));
       lane.append(button);
     }
   });
   renderMusic();
+}
+function fadeHandle(cue, edge, scale, button) {
+  const field = edge === 'in' ? 'fade' : 'fadeOut';
+  const handle = element('span', undefined, 'fade-handle fade-' + edge);
+  handle.tabIndex = 0;
+  handle.setAttribute('role', 'slider');
+  handle.setAttribute('aria-label', cue.name + ' fade ' + edge + ' duration');
+  handle.setAttribute('aria-valuemin', '0');
+  handle.setAttribute('aria-valuemax', String(cue.duration));
+  const refresh = () => {
+    const value = edge === 'in' && cue.transition === 'cut' ? 0 : cue[field];
+    handle.style[edge === 'in' ? 'left' : 'right'] = Math.max(0, Math.min(value * scale, cue.duration * scale - 16)) + 'px';
+    handle.setAttribute('aria-valuenow', String(value));
+    handle.setAttribute('aria-valuetext', value.toFixed(2) + ' seconds');
+    handle.title = 'Drag to set fade ' + edge + ': ' + value.toFixed(2) + 's. Arrow keys adjust by 0.1s.';
+    button.style.setProperty('--fade-' + edge, value * scale + 'px');
+  };
+  const set = value => {
+    cue[field] = Math.max(0, Math.min(cue.duration, Math.round(value * 1000) / 1000));
+    if (edge === 'in' && cue.transition !== 'crossfade') cue.transition = cue[field] ? 'fade' : 'cut';
+    compiledShow = null;
+    refresh();
+  };
+  handle.onclick = handle.ondblclick = event => event.stopPropagation();
+  handle.ondragstart = event => { event.stopPropagation(); event.preventDefault(); };
+  handle.onpointerdown = event => {
+    event.stopPropagation();
+    event.preventDefault();
+    if (event.button !== 0 || !canLeaveCue()) return;
+    formDirty = false;
+    const startX = event.clientX, original = cue[field], transition = cue.transition;
+    const initial = edge === 'in' && transition === 'cut' ? 0 : original;
+    handle.setPointerCapture(event.pointerId);
+    handle.onpointermove = move => set(initial + (move.clientX - startX) / scale * (edge === 'in' ? 1 : -1));
+    const finish = cancelled => {
+      handle.onpointermove = handle.onpointerup = handle.onpointercancel = null;
+      if (cancelled) { cue[field] = original; cue.transition = transition; compiledShow = null; }
+      else { formDirty = false; changed(); }
+      select(cue.id);
+    };
+    handle.onpointerup = () => finish(false);
+    handle.onpointercancel = () => finish(true);
+  };
+  handle.onkeydown = event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canLeaveCue()) return;
+    const value = edge === 'in' && cue.transition === 'cut' ? 0 : cue[field];
+    set(event.key === 'Home' ? 0 : event.key === 'End' ? cue.duration :
+      value + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 1 : 0.1));
+    formDirty = false;
+    changed();
+    select(cue.id);
+    document.querySelector(`.timeline-cue[data-id="${CSS.escape(cue.id)}"] .fade-${edge}`)?.focus();
+  };
+  refresh();
+  return handle;
 }
 function add(kind, asset, lane, start) {
   if (show.programme) { message('Add assets to a set presentation; the concert links those sets.', true); return; }
@@ -461,8 +523,7 @@ function snappedStart(raw, cue, bypass) {
   const tolerance = 8 / Number($('timeline-zoom').value);
   const options = edges.flatMap(edge => [edge, edge - cue.duration]).filter(value =>
     value >= 0 && Math.abs(value - start) <= tolerance &&
-    !show.cues.some(item => item.id !== cue.id && item.lane === cue.lane &&
-      value < item.start + item.duration - 0.0001 && value + cue.duration > item.start + 0.0001));
+    !overlapError([...show.cues.filter(item => item.id !== cue.id), { ...cue, start: value }]));
   options.sort((a, b) => Math.abs(a - start) - Math.abs(b - start));
   return Math.round((options[0] ?? start) * 1000) / 1000;
 }

@@ -12,6 +12,125 @@ from urllib.parse import urlsplit
 
 @unittest.skipUnless(importlib.util.find_spec("playwright"), "Playwright is not installed")
 class PresentationBrowserTests(unittest.TestCase):
+    def test_overlap_drag_fade_handles_and_presenter_saved_changes(self):
+        from playwright.sync_api import Error, sync_playwright
+        from test_presentations import PresentationTests
+
+        fixture = PresentationTests()
+        fixture.setUpClass()
+        fixture.setUp()
+        try:
+            first, second, replacement = fixture.asset(), fixture.asset(), fixture.asset()
+            show = fixture.save(fixture.create(), [
+                fixture.cue("first", kind="image", assetId=first["id"], duration=8, fade=0),
+                fixture.cue("second", kind="image", assetId=second["id"], start=8, duration=8, fade=0),
+            ]).json
+            with sync_playwright() as playwright:
+                try:
+                    browser = playwright.chromium.launch(headless=True, channel="chrome")
+                except Error as error:
+                    self.skipTest(f"Chrome is unavailable: {error}")
+                admin = browser.new_context(viewport={"width": 1600, "height": 1100})
+                audience = browser.new_context()
+                errors = []
+                def serve(route, client):
+                    request = route.request
+                    response = client.open(urlsplit(request.url).path, method=request.method,
+                        data=request.post_data_buffer, content_type=request.headers.get("content-type"))
+                    route.fulfill(status=response.status_code, body=response.data, content_type=response.content_type)
+                    response.close()
+                admin.route("http://studio.test/**", lambda route: serve(route, fixture.client))
+                audience.route("http://studio.test/**", lambda route: serve(route, fixture.guest))
+                for context in (admin, audience):
+                    context.route("https://media.test/**", lambda route: route.fulfill(
+                        content_type="image/png", body=base64.b64decode(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=")))
+                page = admin.new_page()
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto("http://studio.test" + show["editUrl"])
+                page.wait_for_selector('.timeline-cue[data-id="first"]')
+                page.locator('.timeline-cue[data-id="first"]').dblclick()
+                self.assertEqual(page.locator('[name="name"]').evaluate("node => document.activeElement === node"), True)
+                # Drag top-corner handles to exact lengths at the default 16px/second zoom.
+                for edge, dx, value in (("in", 24, 1.5), ("out", -16, 1)):
+                    handle = page.locator(f'.timeline-cue[data-id="first"] .fade-{edge}')
+                    handle.scroll_into_view_if_needed()
+                    box = handle.bounding_box()
+                    x = box["x"] + (2 if edge == "in" else box["width"] - 2)
+                    y = box["y"] + 2
+                    page.mouse.move(x, y)
+                    page.mouse.down()
+                    page.mouse.move(x + dx, y, steps=5)
+                    page.mouse.up()
+                    self.assertAlmostEqual(float(page.locator(f'[name="{"fade" if edge == "in" else "fadeOut"}"]').input_value()), value)
+                page.locator('.timeline-cue[data-id="first"] .fade-out').press("ArrowLeft")
+                self.assertAlmostEqual(float(page.locator('[name="fadeOut"]').input_value()), 0.9)
+                page.click("#undo-edit")
+                self.assertEqual(page.locator('[name="fadeOut"]').input_value(), "1")
+                page.uncheck("#timeline-snap")
+                lane = page.locator('.lane[data-lane="picture"]')
+                lane.scroll_into_view_if_needed()
+                left = lane.bounding_box()["x"]
+                transfer = page.evaluate_handle("new DataTransfer()")
+                page.locator('.timeline-cue[data-id="second"]').dispatch_event("dragstart", {"dataTransfer": transfer})
+                lane.dispatch_event("drop", {"dataTransfer": transfer, "clientX": left + 6 * 16})
+                self.assertEqual(page.locator('[name="start"]').input_value(), "6")
+                page.fill("#preview-time", "7")
+                page.locator("#preview-time").dispatch_event("change")
+                page.wait_for_function("document.querySelector('#preview [data-cue=\"second\"]')?.style.opacity === '0.5'")
+                self.assertEqual(page.locator('#preview [data-cue="first"]').evaluate("node => node.style.opacity"), "1")
+                page.click("#save-show")
+                page.wait_for_function("document.querySelector('#status').textContent.includes('Presentation saved')")
+                stored = fixture.client.get(f"/presentations/api/shows/{show['id']}").json
+                self.assertEqual(stored["cues"][1]["start"], 6)
+                page.click("#open-controller")
+                page.wait_for_function("document.querySelector('#status').textContent.includes('Ready')")
+                page.wait_for_selector('#preview [data-cue="first"] img')
+                self.assertIn("latest saved", page.locator("#version-status").text_content())
+                current = page.locator(".presenter-workspace > section").nth(0).bounding_box()
+                upcoming = page.locator(".presenter-workspace > section").nth(1).bounding_box()
+                grid = page.locator(".presenter-workspace > section").nth(2).bounding_box()
+                self.assertLess(current["x"] + current["width"], upcoming["x"])
+                self.assertLess(upcoming["x"] + upcoming["width"], grid["x"])
+                self.assertEqual(current["y"], grid["y"])
+                viewer = audience.new_page()
+                viewer.on("pageerror", lambda error: errors.append(str(error)))
+                viewer.goto("http://studio.test" + show["url"])
+                page.click('[data-action="start"]')
+                page.wait_for_function("document.querySelector('#version-status').textContent.includes('On air')")
+                page.click('[data-action="pause"]')
+                page.wait_for_function("document.querySelector('#clock').textContent.includes('Paused')")
+                page.fill("#seek-time", "7")
+                page.locator("#seek-form button").click()
+                viewer.wait_for_function("document.querySelector('[data-cue=\"second\"]')?.style.opacity === '0.5'")
+                updated = fixture.save(stored, [fixture.cue("replacement", kind="image", assetId=replacement["id"], duration=15)]).json
+                page.wait_for_selector("#saved-changes", state="visible")
+                self.assertEqual(page.locator('#cue-buttons [data-cue="first"]').count(), 1)
+                self.assertEqual(viewer.locator('[data-cue="replacement"]').count(), 0)
+                page.once("dialog", lambda dialog: dialog.dismiss())
+                page.click("#load-saved-changes")
+                self.assertTrue(page.locator("#saved-changes").is_visible())
+                page.once("dialog", lambda dialog: dialog.accept())
+                page.click("#load-saved-changes")
+                viewer.wait_for_selector('[data-cue="replacement"] img')
+                page.wait_for_selector("#saved-changes", state="hidden")
+                page.click('[data-action="stop"]')
+                page.wait_for_function("document.querySelector('#clock').textContent.includes('Offline')")
+                # A stopped controller automatically reloads saved edits, rather than showing the old broadcast.
+                fixture.save(updated, [fixture.cue("latest", kind="image", assetId=first["id"])])
+                page.wait_for_selector('#cue-buttons [data-cue="latest"]')
+                self.assertIn("latest saved", page.locator("#version-status").text_content())
+                page.set_viewport_size({"width": 540, "height": 900})
+                current = page.locator(".presenter-workspace > section").nth(0).bounding_box()
+                upcoming = page.locator(".presenter-workspace > section").nth(1).bounding_box()
+                self.assertGreater(upcoming["y"], current["y"])
+                self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 540)
+                self.assertEqual(errors, [])
+                browser.close()
+        finally:
+            fixture.tearDown()
+            fixture.tearDownClass()
+
     def test_edit_multiple_video_local_hits_capture_split_and_playback(self):
         from playwright.sync_api import Error, sync_playwright
         from test_presentations import PresentationTests
@@ -655,8 +774,52 @@ class PresentationBrowserTests(unittest.TestCase):
                     player.render(videoShow, 0.7, false, true);
                     const muted = video.muted;
                     player.clear();
+                    const overlapShow = {cues:[
+                        {...first, id:'overlap-a', kind:'video', start:0, duration:1.5,
+                            transition:'cut', fade:0, fadeOut:0, volume:0.4, asset:{url}},
+                        {...first, id:'overlap-b', kind:'video', start:0.5, duration:1.5,
+                            transition:'cut', fade:0, fadeOut:0, volume:0.8, asset:{url}},
+                        {...caption, id:'overlap-text-a', duration:1.5},
+                        {...caption, id:'overlap-text-b', start:0.5, duration:1.5}]};
+                    player.render(overlapShow, 0.75, false);
+                    await Promise.all([...host.querySelectorAll('video')].map(video => new Promise((resolve, reject) => {
+                        if (video.readyState >= 1) resolve();
+                        else { video.addEventListener('loadedmetadata', resolve, {once:true});
+                            video.addEventListener('error', () => reject(new Error('Overlap video failed')), {once:true}); }
+                    })));
+                    player.render(overlapShow, 0.75, true);
+                    const overlap = [opacity('overlap-a'), opacity('overlap-b'),
+                        opacity('overlap-text-a'), opacity('overlap-text-b')];
+                    const overlapVolumes = [...host.querySelectorAll('video')].map(video => video.volume);
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    const bothRunning = [...host.querySelectorAll('video')].every(video => !video.paused);
+                    player.render(overlapShow, 0.75, false);
+                    const bothPaused = [...host.querySelectorAll('video')].every(video => video.paused);
+                    player.clear();
+                    const buffer = new ArrayBuffer(44 + 8000 * 2 * 3);
+                    const data = new DataView(buffer);
+                    const word = (at, text) => [...text].forEach((value, i) => data.setUint8(at + i, value.charCodeAt(0)));
+                    word(0, 'RIFF'); data.setUint32(4, buffer.byteLength - 8, true); word(8, 'WAVE');
+                    word(12, 'fmt '); data.setUint32(16, 16, true); data.setUint16(20, 1, true);
+                    data.setUint16(22, 1, true); data.setUint32(24, 8000, true); data.setUint32(28, 16000, true);
+                    data.setUint16(32, 2, true); data.setUint16(34, 16, true);
+                    word(36, 'data'); data.setUint32(40, buffer.byteLength - 44, true);
+                    const soundUrl = URL.createObjectURL(new Blob([buffer], {type:'audio/wav'}));
+                    const audioShow = {cues:overlapShow.cues.filter(cue => cue.kind === 'video')
+                        .map(cue => ({...cue, kind:'audio', lane:'audio', asset:{url:soundUrl}}))};
+                    player.render(audioShow, 0.75, false);
+                    await Promise.all([...host.querySelectorAll('audio')].map(audio => new Promise((resolve, reject) => {
+                        audio.addEventListener('loadedmetadata', resolve, {once:true});
+                        audio.addEventListener('error', () => reject(new Error('Overlap audio failed')), {once:true});
+                        if (audio.readyState >= 1) resolve();
+                    })));
+                    player.render(audioShow, 0.75, false);
+                    const audioVolumes = [...host.querySelectorAll('audio')].map(audio => audio.volume);
+                    player.clear();
+                    URL.revokeObjectURL(soundUrl);
                     URL.revokeObjectURL(url);
-                    return {fadeIn, fadeOut, blend, black, literal, injected, sought, running, paused, muted, volume, cueMuted, restored};
+                    return {fadeIn, fadeOut, blend, black, literal, injected, sought, running, paused, muted,
+                        volume, cueMuted, restored, overlap, overlapVolumes, bothRunning, bothPaused, audioVolumes};
                 }""")
                 self.assertAlmostEqual(result["fadeIn"], 0.25)
                 self.assertAlmostEqual(result["fadeOut"], 0.4)
@@ -671,6 +834,12 @@ class PresentationBrowserTests(unittest.TestCase):
                 self.assertEqual(result["volume"], 0.37)
                 self.assertTrue(result["cueMuted"])
                 self.assertTrue(result["restored"])
+                self.assertEqual(result["overlap"], [1, 0.25, 0.75, 0.25])
+                for values in (result["overlapVolumes"], result["audioVolumes"]):
+                    self.assertAlmostEqual(values[0], 0.3)
+                    self.assertAlmostEqual(values[1], 0.2)
+                self.assertTrue(result["bothRunning"])
+                self.assertTrue(result["bothPaused"])
                 self.assertEqual(errors, [])
                 browser.close()
         finally:

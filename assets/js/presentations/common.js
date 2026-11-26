@@ -27,6 +27,21 @@ export function element(tag, text, className) {
 export function duration(cues) {
   return Math.max(0, ...cues.map(cue => cue.start + cue.duration));
 }
+export function overlapError(cues) {
+  for (const lane of ['picture', 'text', 'audio']) {
+    const items = cues.filter(cue => cue.lane === lane).sort((a, b) => a.start - b.start);
+    for (let index = 1; index < items.length; index++) {
+      const cue = items[index], previous = items[index - 1];
+      if (previous.start + previous.duration <= cue.start + 0.0001) continue;
+      if (cue.start <= previous.start + 0.0001 ||
+          cue.start + cue.duration <= previous.start + previous.duration + 0.0001 ||
+          (index > 1 && items[index - 2].start + items[index - 2].duration > cue.start + 0.0001)) {
+        return 'Use partial overlaps between two cues in the ' + lane + ' lane, not contained cues or three-way overlaps.';
+      }
+      return null;
+    }
+  }
+}
 export function limitPosition(cues, base, elapsed, playing, boundary = Infinity) {
   const end = duration(cues);
   const holds = cues.filter(cue => cue.lane === 'picture' && cue.advance === 'manual'

@@ -24,9 +24,16 @@ Each admin manages their own presentations and reusable media library.
 2. Arrange the **Picture**, **Text** and **Audio** lanes. Pictures can be images,
    uploaded videos, YouTube excerpts or black cues. Text overlays and audio
    play independently above/alongside the picture. Gaps are black/silent.
-3. Click a cue to edit its exact start, duration, media in point, volume and
+3. Click a cue to select it; double-click to focus its properties for exact start, duration, media in point, volume and
    transitions. Choose **Apply cue changes**, then **Save presentation**.
-   Drag cues horizontally to move them; cues within a lane cannot overlap.
+   Drag cues horizontally to move them. Partially overlap two cues in a lane
+   for a crossfade lasting exactly the overlap. Three-way overlaps, identical
+   starts and fully contained cues are rejected. Staggered timeline blocks
+   keep overlapping cues selectable.
+   Drag the small top-corner handles to adjust fade-in/fade-out lengths;
+   arrow keys adjust a focused handle by 0.1s (Shift: 1s), Home/End set
+   zero/full duration. Handle edits support Undo/Redo. Overlap crossfades take
+   precedence over entrance/exit fades at that join.
    Add text at the preview position and black cues at the end of the picture lane.
    Click/drag the timeline ruler or orange playhead, or use the **Preview
    playhead** slider (also keyboard-accessible), to scrub. Scrubbing pauses
@@ -49,16 +56,18 @@ Each admin manages their own presentations and reusable media library.
    playhead (within eight screen pixels). Untick **Snap** or hold Shift while
    dropping to bypass it; numeric edits remain exact.
 4. Choose automatic progression or **Hold until Next or Play** on picture cues.
-   Holds pause all three lanes. Picture and text support cuts, fades and
-   crossfades at adjacent joins; crossfades use the outgoing picture's frozen
-   final frame, not two simultaneously playing video clips. Audio supports
-   fade-in/out, not overlapping audio crossfades.
+   Holds pause all three lanes. Overlapping picture/text cues crossfade while
+   both sources keep playing; audio overlaps crossfade their volumes.
+   Picture/text crossfades at adjacent, non-overlapping joins remain supported
+   and use the outgoing picture's frozen final frame.
 5. Use local preview, then **Open controller**. Share **Open audience view**
    and choose **Start broadcast**. The controller provides Next/Previous,
    pause/play, seeking, cue jumps and blackout (picture and sound).
    Its monitor is muted unless **Hear media on this control device** is enabled.
    The controller also shows **Up next** and a **Slide navigator** thumbnail
-   grid for all picture/text cues, including earlier slides. Selecting a
+   grid for all picture/text cues, including earlier slides. Current view,
+   Up next and the scrollable grid sit side by side on desktop and stack
+   on smaller screens. Selecting a
    thumbnail jumps to that cue and plays all timeline layers from there.
    Current and past slides are marked; the audience sees none of these controls.
    Uploaded videos use a paused video thumbnail; YouTube uses its provider thumbnail.
@@ -74,7 +83,11 @@ Each presentation has its own persistent, anonymous audience link, suitable
 for one projector or several devices. Only its owning admin can edit or
 control it. **Replace audience link** disconnects viewers and invalidates the
 old link. Deleting a presentation also invalidates its link. Saving edits does
-not alter a running broadcast: restart it to use the latest saved timeline.
+not alter a running broadcast. Before broadcasting, the controller previews
+the latest saved cues and automatically reloads saved edits. During a broadcast,
+it explicitly flags newer saved changes (including changes in linked concert
+sets). **Load saved changes / restart broadcast** loads the latest version
+from the beginning after confirmation. Cancelling leaves the live show alone.
 Leave the controller open and connected; missing controller heartbeats blank
 the public view after eight seconds. Audience network failures also blank
 playback, with automatic reconnection while the link remains valid.

@@ -1,14 +1,30 @@
 {% extends "presentations/layout.html" %}
 {% block main %}
-  <div class="toolbar"><h1>{{ show.title }}</h1><a href="{{ show.editUrl }}">Edit timeline</a></div>
-  <p>Starting a broadcast uses the latest saved timeline. Editing it does not change a running broadcast until you restart it.</p>
+  <div class="toolbar"><h1 id="show-heading">{{ show.title }}</h1><a href="{{ show.editUrl }}">Edit timeline</a></div>
+  <p id="version-status" role="status"></p>
+  <section id="saved-changes" class="panel saved-changes" hidden>
+    <h2>Saved changes are not on air yet</h2>
+    <p>The editor has a newer saved version. The current broadcast keeps its original files until you load those changes. This also applies to edits in linked concert sets.</p>
+    <button id="load-saved-changes" class="primary">Load saved changes / restart broadcast</button>
+  </section>
   <section id="linked-music" class="panel" hidden>
     <h2>Linked musical transport</h2>
     <p>Use this click-track view (including its pedal input) to lead the presentation. Start the music here after starting the broadcast. Keep focus in this view for keyboard pedals; MIDI can be enabled in its pedal settings.</p>
     <p id="music-connection" role="status"></p>
     <iframe id="music-performer" title="Linked click-track performance" allow="autoplay; midi"></iframe>
   </section>
-  <div id="preview" class="screen controller-screen"></div>
+  <div class="presenter-workspace">
+    <section class="panel">
+      <h2>Current view</h2>
+      <div id="preview" class="screen controller-screen"></div>
+      <p id="player-status" role="status"></p><button id="allow-playback" hidden>Allow media playback</button>
+    </section>
+    <section class="panel"><h2>Up next</h2><div id="up-next" class="cue-grid"></div><p id="up-next-status" role="status"></p></section>
+    <section class="panel"><h2>Slide navigator</h2>
+      <p class="hint">Choose a cue to jump there and play, including earlier slides. During a broadcast this affects the live audience.</p>
+      <div id="cue-buttons" class="cue-grid"></div>
+    </section>
+  </div>
   <div class="toolbar">
     <button data-action="start" class="primary">Start / restart broadcast</button>
     <button data-action="previous">Previous cue</button>
@@ -24,7 +40,6 @@
     <button>Seek</button><output id="clock">0.0 s</output>
   </form>
   <p id="status" role="status" aria-live="polite"></p>
-  <p id="player-status" role="status"></p><button id="allow-playback" hidden>Allow media playback</button>
   <label><span><input id="monitor-sound" type="checkbox"> Hear media on this control device</span></label>
   <p class="hint">The control monitor is muted by default to avoid double audio. Audience sound follows each cue's volume. Audience browsers may need one click to allow sound. Browser/YouTube/network timing is approximate; use a wired screen for critical projection.</p>
   <section class="panel">
@@ -37,11 +52,6 @@
     <label>Logo / holding slide <select id="placeholder-asset"><option value="">No placeholder</option></select></label>
     <button id="save-placeholder">Use selected image</button>
     <p class="hint">Upload an image in the Media Centre editor, then reload this controller to select it. Show placeholder pauses all media at the current position. Play / resume returns there; selecting a slide jumps straight to it.</p>
-  </section>
-  <section class="panel"><h2>Up next</h2><div id="up-next" class="cue-grid"></div><p id="up-next-status" role="status"></p></section>
-  <section class="panel"><h2>Slide navigator</h2>
-    <p class="hint">Choose any picture or text cue to jump there and play, including earlier slides. This affects the live audience. The grid follows the running snapshot; restart to use saved edits.</p>
-    <div id="cue-buttons" class="cue-grid"></div>
   </section>
   {% include "presentations/preflight.html" %}
 {% endblock %}

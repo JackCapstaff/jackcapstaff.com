@@ -162,14 +162,66 @@ class PresentationTests(unittest.TestCase):
             {**cues[1], "offset": 19}, {**cues[2], "color": "url(evil)"},
             {**cues[2], "text": ""}, {**cues[0], "lane": "audio"},
             {**cues[0], "assetId": self.asset(owner=self.other_id)["id"]},
-            {**cues[3], "transition": "crossfade"},
             {**cues[1], "muted": "false"}, {**cues[1], "muted": 1},
             {**cues[1], "volume": 1.01}, {**cues[1], "volume": -0.01},
         ):
             with self.subTest(invalid=invalid):
                 self.assertEqual(self.save(show, [invalid]).status_code, 400)
-        self.assertEqual(self.save(show, [self.cue(), self.cue("overlap", start=4)]).status_code, 400)
+        self.assertEqual(self.save(show, [self.cue(), self.cue("contained", start=1, duration=2)]).status_code, 400)
         self.assertEqual(self.save(show, [self.cue(), self.cue()]).status_code, 400)
+
+    def test_partial_crossfade_overlaps_and_invalid_nested_or_three_way_overlaps(self):
+        for lane, kind in (("picture", "blank"), ("text", "text"), ("audio", "audio")):
+            with self.subTest(lane=lane):
+                extra = {"text": "Caption"} if kind == "text" else (
+                    {"assetId": self.asset("audio", duration=30)["id"]} if kind == "audio" else {})
+                def cue(name, start, duration=5):
+                    return self.cue(name, lane=lane, kind=kind, start=start, duration=duration,
+                                    transition="crossfade", **extra)
+                show = self.create()
+                for invalid in (
+                    [cue("a", 0), cue("b", 0, 6)],
+                    [cue("a", 0), cue("b", 2, 2)],
+                    [cue("a", 0), cue("b", 2, 3)],
+                    [cue("a", 0), cue("b", 2), cue("c", 4)],
+                ):
+                    self.assertEqual(self.save(show, invalid).status_code, 400)
+                saved = self.save(show, [cue("a", 0), cue("b", 4), cue("c", 8)])
+                self.assertEqual(saved.status_code, 200, saved.json)
+                compiled = self.client.get(f"/presentations/api/shows/{show['id']}/compiled").json
+                self.assertEqual([item["start"] for item in compiled["cues"]], [0, 4, 8])
+
+    def test_controller_shows_saved_version_and_flags_live_and_linked_set_changes(self):
+        old_image, new_image, logo = self.asset(), self.asset(), self.asset()
+        show = self.save(self.create(), [self.cue(kind="image", assetId=old_image["id"])]).json
+        path = f"/presentations/api/shows/{show['id']}/live"
+        preview = self.client.get(path).json
+        self.assertFalse(preview["active"])
+        self.assertFalse(preview["hasSavedChanges"])
+        self.assertEqual(preview["show"]["cues"][0]["assetId"], old_image["id"])
+        live = self.client.put(path, json={"version": preview["version"], "action": "start"}).json
+        self.assertFalse(live["hasSavedChanges"])
+        show = self.save(show, [self.cue(kind="image", assetId=new_image["id"])]).json
+        live = self.client.get(path).json
+        self.assertTrue(live["hasSavedChanges"])
+        self.assertEqual(live["show"]["cues"][0]["assetId"], old_image["id"])
+        self.assertEqual(self.guest.get(show["url"] + "state").json["show"]["cues"][0]["assetId"], old_image["id"])
+        live = self.client.put(path, json={"version": live["version"], "action": "start"}).json
+        self.assertFalse(live["hasSavedChanges"])
+        self.assertEqual(live["show"]["cues"][0]["assetId"], new_image["id"])
+        concert = self.save(self.create(), [], programme={"sets": [show["id"]], "placeholderId": logo["id"]}).json
+        concert_path = f"/presentations/api/shows/{concert['id']}/live"
+        live = self.client.put(concert_path, json={"version": 0, "action": "start"}).json
+        self.assertFalse(live["hasSavedChanges"])
+        show = self.save(show, [self.cue(kind="image", assetId=old_image["id"])]).json
+        self.assertTrue(self.client.get(concert_path).json["hasSavedChanges"])
+        # Stopping releases the old snapshot in the controller, but never exposes an offline preview publicly.
+        current = self.client.get(path).json
+        stopped = self.client.put(path, json={"version": current["version"], "action": "stop"}).json
+        self.assertFalse(stopped["active"])
+        self.assertEqual(stopped["show"]["cues"][0]["assetId"], old_image["id"])
+        self.assertFalse(self.client.get(path).json["hasSavedChanges"])
+        self.assertEqual(self.guest.get(show["url"] + "state").json["show"]["cues"], [])
 
     def test_uploaded_media_and_youtube_validation(self):
         data = {"url": "https://youtu.be/abcdefghijk", "name": "Film excerpt"}

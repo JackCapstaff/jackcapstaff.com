@@ -100,8 +100,6 @@ def clean_cues(raw):
         advance = item.get("advance", "auto")
         if transition not in ("cut", "fade", "crossfade") or advance not in ("auto", "manual"):
             abort(400, description="Choose a valid transition and advance mode.")
-        if lane == "audio" and transition == "crossfade":
-            abort(400, description="Audio cues support fade-in and fade-out; picture and text cues also support crossfade.")
         if type(item.get("muted", False)) is not bool:
             abort(400, description="Cue mute must be true or false.")
         cue = {"id": cue_id, "lane": lane, "kind": kind, "start": start, "duration": duration,
@@ -132,8 +130,14 @@ def clean_cues(raw):
         cleaned.append(cue)
     for lane in ("picture", "text", "audio"):
         ordered = sorted((cue for cue in cleaned if cue["lane"] == lane), key=lambda cue: cue["start"])
-        if any(a["start"] + a["duration"] > b["start"] + 0.0001 for a, b in zip(ordered, ordered[1:])):
-            abort(400, description=f"Cues in the {lane} lane overlap. Place them end to end; crossfades are applied at the join.")
+        for index, cue in enumerate(ordered[1:], 1):
+            previous = ordered[index - 1]
+            if previous["start"] + previous["duration"] <= cue["start"] + 0.0001:
+                continue
+            if (cue["start"] <= previous["start"] + 0.0001
+                    or cue["start"] + cue["duration"] <= previous["start"] + previous["duration"] + 0.0001
+                    or (index > 1 and ordered[index - 2]["start"] + ordered[index - 2]["duration"] > cue["start"] + 0.0001)):
+                abort(400, description=f"Use partial overlaps between two cues in the {lane} lane, not contained cues or three-way overlaps.")
     return sorted(cleaned, key=lambda cue: (cue["start"], cue["lane"]))
 
 
@@ -238,10 +242,11 @@ def clean_music(raw, show, cues):
 def snapshot(show):
     assets = {asset.id: asset.to_dict() for asset in current_app.PresentationAsset.query.filter_by(user_id=show.user_id)}
     shows = {item.id: item for item in current_app.StudioPresentation.query.filter_by(user_id=show.user_id)}
-    expanded, sections, musical_parts = [], [], []
+    expanded, sections, musical_parts, revisions = [], [], [], {}
     def expand(item, start, prefix, chain):
         if item.id in chain or len(chain) >= 8:
             abort(400, description="Concert links form a cycle or exceed eight nested levels.")
+        revisions[str(item.id)] = item.revision
         if item.programme:
             if item.music:
                 abort(400, description="Music links currently belong to standalone set presentations, not concert programmes.")
@@ -290,7 +295,7 @@ def snapshot(show):
                               "binding": binding, "track": track.to_dict() if track else None})
         return round(start + end, 3)
     expand(show, 0, "", ())
-    result = {"title": show.title, "cues": expanded, "sections": sections}
+    result = {"title": show.title, "cues": expanded, "sections": sections, "revisions": revisions}
     if any(part.get("binding") for part in musical_parts):
         events, holds, score = [], {}, []
         cues_by_id = {cue["id"]: cue for cue in expanded}
@@ -578,8 +583,20 @@ def live_state(show_id):
     show = own(show_id)
     now = time.time()
     state = playback(show.live, now)
+    def controller_state(value):
+        if not value["active"]:
+            compiled = snapshot(show) if show.cues or show.programme else {"title": show.title, "cues": []}
+            if compiled.get("music"):
+                compiled["music"].pop("session", None)
+            return {**value, "show": compiled, "position": 0, "playing": False, "black": False,
+                    "musicBoundary": max((cue["start"] + cue["duration"] for cue in compiled["cues"]), default=0),
+                    "musicFrozen": False, "hasSavedChanges": False}
+        revisions = value["show"].get("revisions", {})
+        current = {str(item.id): item.revision for item in current_app.StudioPresentation.query.filter_by(user_id=show.user_id)
+                   if str(item.id) in revisions}
+        return {**value, "hasSavedChanges": not revisions or revisions != current}
     if request.method == "GET":
-        return response_json({**state, "version": show.live_version})
+        return response_json({**controller_state(state), "version": show.live_version})
     data = body()
     if type(data.get("version")) is not int or data["version"] != show.live_version:
         abort(409, description="The controller changed in another tab. Reload before taking control.")
@@ -677,7 +694,7 @@ def live_state(show_id):
         current_app.db.session.rollback()
         abort(409, description="Another controller updated this broadcast. Reload before taking control.")
     current_app.db.session.commit()
-    return response_json({**playback(live, now), "version": values["live_version"],
+    return response_json({**controller_state(playback(live, now)), "version": values["live_version"],
                           "url": url_for("presentations.watch", token=values.get("token", show.token))})
 
 

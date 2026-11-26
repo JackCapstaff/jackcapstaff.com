@@ -136,14 +136,21 @@ export class PresentationPlayer {
     }
     const wanted = new Map();
     for (const [lane, cues] of this.lanes) {
-      const index = cues.findIndex(cue => position >= cue.start && position < cue.start + cue.duration);
+      const index = cues.findLastIndex(cue => position >= cue.start && position < cue.start + cue.duration);
       const active = cues[index];
       if (active) {
         const elapsed = position - active.start;
-        const fade = !frozen && active.transition !== 'cut' && active.fade > 0 ? Math.min(1, elapsed / active.fade) : 1;
-        const out = active.fadeOut > 0 ? Math.min(1, (active.duration - elapsed) / active.fadeOut) : 1;
         const previous = cues[index - 1];
-        if (active.transition === 'crossfade' && fade < 1 && previous
+        const overlap = previous ? previous.start + previous.duration - active.start : 0;
+        const blending = !frozen && overlap > 0.0001 && elapsed < overlap;
+        const fade = frozen ? 1 : overlap > 0.0001 ? Math.min(1, elapsed / overlap)
+          : active.transition !== 'cut' && active.fade > 0 ? Math.min(1, elapsed / active.fade) : 1;
+        const out = active.fadeOut > 0 ? Math.min(1, (active.duration - elapsed) / active.fadeOut) : 1;
+        if (blending) {
+          wanted.set(previous.id, { cue: previous, time: previous.offset + position - previous.start,
+            playing, opacity: lane === 'picture' ? 1 : 1 - fade,
+            volume: previous.volume * (1 - fade), z: lane === 'text' ? 3 : 1 });
+        } else if (active.transition === 'crossfade' && fade < 1 && previous
           && Math.abs(previous.start + previous.duration - active.start) < 0.002 && lane !== 'audio') {
           wanted.set(previous.id, { cue: previous, time: previous.offset + previous.duration - 0.03,
             playing: false, opacity: lane === 'text' ? (1 - fade) * out : out, volume: 0, z: lane === 'text' ? 3 : 1 });
