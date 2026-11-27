@@ -1,6 +1,6 @@
 {% extends "presentations/layout.html" %}
 {% block main %}
-  <div class="toolbar"><h1 id="show-heading">{{ show.title }}</h1><a href="{{ show.editUrl }}">Edit timeline</a></div>
+  <div class="toolbar"><h1 id="show-heading">{{ show.title }}</h1>{% if show.canEdit %}<a href="{{ show.editUrl }}">Edit timeline</a>{% endif %}</div>
   <p id="version-status" role="status"></p>
   <section id="saved-changes" class="panel saved-changes" hidden>
     <h2>Saved changes are not on air yet</h2>
@@ -18,6 +18,8 @@
       <h2>Current view</h2>
       <div id="preview" class="screen controller-screen"></div>
       <p id="player-status" role="status"></p><button id="allow-playback" hidden>Allow media playback</button>
+      <p id="cue-countdown" role="status"></p>
+      <p id="operator-note"></p>
     </section>
     <section class="panel"><h2>Up next</h2><div id="up-next" class="cue-grid"></div><p id="up-next-status" role="status"></p></section>
     <section class="panel"><h2>Slide navigator</h2>
@@ -31,10 +33,66 @@
     <button data-action="play">Play / resume</button>
     <button data-action="pause">Pause / hold</button>
     <button data-action="next">Next cue</button>
-    <button data-action="black">Toggle blackout</button>
     <button data-action="stop">Stop broadcast</button>
     <button data-action="placeholder" id="show-placeholder" disabled>Show placeholder / pause</button>
   </div>
+  <div class="toolbar emergency-controls">
+    <strong>Emergency output</strong>
+    <button data-action="black" id="blackout" class="danger">Blackout</button>
+    <button data-action="mute" id="mute-all" class="danger">Mute all media</button>
+    <button data-action="return">Return to show</button>
+    <span class="hint">Blackout and mute do not seek or stop the show clock. Return clears them and test patterns.</span>
+  </div>
+  <section class="panel">
+    <h2>Rehearsal points</h2>
+    <label>Jump scope <select id="jump-scope"><option value="linked">Music and visuals together (when linked)</option><option value="visual">Visuals only (pauses linked music)</option></select></label>
+    <div id="rehearsal-points" class="toolbar"></div>
+  </section>
+  <section class="panel">
+    <h2>Visual pedal / keyboard controls</h2>
+    <label><span><input id="visual-input-enabled" type="checkbox"> Enable visual-only input on this device</span></label>
+    <div id="visual-bindings" class="toolbar"></div>
+    <button id="enable-visual-midi">Enable MIDI / reconnect devices</button>
+    <p id="visual-input-status" role="status"></p>
+    <p class="hint">Choose Learn then press a keyboard/pedal key or MIDI note/control. Visual inputs do not advance music; linked music pauses first. Inputs ignore held keys, text fields and rapid double presses. Keep focus here, not inside the musical iframe.</p>
+  </section>
+  <section class="panel">
+    <h2>Audience output monitoring</h2>
+    <ul id="screen-reports"></ul>
+    <p class="hint">Screens report every two seconds; reports older than six seconds are stale. Ready means active media loaded, not proof that a projector or speakers are connected.</p>
+  </section>
+  {% if show.canEdit %}
+  <section class="panel">
+    <h2>Projector / LED output calibration</h2>
+    <form id="output-form" class="toolbar">
+      <label>Aspect ratio <select name="aspect"><option>16:9</option><option>4:3</option><option>21:9</option><option value="screen">Fill screen</option></select></label>
+      <label>Scale (%) <input name="scale" type="number" min="25" max="150" step="1" value="100" required></label>
+      <label>Horizontal offset (%) <input name="x" type="number" min="-50" max="50" value="0" required></label>
+      <label>Vertical offset (%) <input name="y" type="number" min="-50" max="50" value="0" required></label>
+      <label>Test pattern <select name="pattern"><option value="off">Off / show</option><option value="grid">Grid / centre</option><option value="bars">Colour bars</option></select></label>
+      <label><span><input name="safeArea" type="checkbox"> Show 5% safe area</span></label>
+      <button>Apply output settings</button>
+    </form>
+    <p class="hint">Patterns replace visuals and mute media on all connected audience outputs; the show clock continues. Output settings persist per show. Turn patterns off before performance.</p>
+  </section>
+  <section class="panel">
+    <h2>Show operators</h2>
+    <form id="operators-form"><label>Existing website usernames (one per line)<textarea id="operator-usernames" rows="3"></textarea></label><button>Save operator access</button></form>
+    <p class="hint">Operators can run only explicitly assigned shows, including their compiled sets. They cannot edit, upload, delete, change links or grant access. Removing a username revokes access on the next request.</p>
+  </section>
+  <section class="panel">
+    <h2>Saved versions</h2>
+    <select id="saved-versions"></select>
+    <button id="restore-version">Restore timeline version</button>
+    <button id="start-version">Start known-good performance snapshot</button>
+    <p class="hint">Up to 20 recent versions. Restoring a concert's timeline restores its set links, not its children's edits. A version successfully broadcast also has a frozen performance snapshot; starting that snapshot preserves its compiled sets and music. Deleted media URLs may no longer work.</p>
+  </section>
+  {% endif %}
+  <section class="panel">
+    <h2>Offline / local playback</h2>
+    <a class="button" href="{{ url_for('presentations.local_player', show_id=show.id) }}" target="_blank" rel="noopener">Open local playback and cache tools</a>
+    <p class="hint">Prepare on the actual output computer before disconnecting. Local playback is independent of the online broadcast and does not play linked click-track audio. YouTube cannot be cached.</p>
+  </section>
   <form id="seek-form" class="toolbar">
     <label>Go to time (seconds) <input id="seek-time" type="number" min="0" step="0.1" required value="0"></label>
     <button>Seek</button><output id="clock">0.0 s</output>
@@ -44,13 +102,13 @@
   <p class="hint">The control monitor is muted by default to avoid double audio. Audience sound follows each cue's volume. Audience browsers may need one click to allow sound. Browser/YouTube/network timing is approximate; use a wired screen for critical projection.</p>
   <section class="panel">
     <h2>Audience link</h2>
-    <div class="toolbar"><a id="audience-link" href="{{ show.url }}" target="_blank" rel="noopener">Open audience view</a><button id="copy-link">Copy link</button><button id="revoke-link" class="danger">Replace audience link</button></div>
+    <div class="toolbar"><a id="audience-link" href="{{ show.url }}" target="_blank" rel="noopener">Open audience view</a><button id="copy-link">Copy link</button>{% if show.canEdit %}<button id="revoke-link" class="danger">Replace audience link</button>{% endif %}</div>
     <p class="hint">A persistent, unlisted link. Anyone with it can watch without logging in while you broadcast. Keep one controller tab connected; another controller can take over and disconnect this one. Audience screens go black if its heartbeat is lost for 8 seconds. Replacing the link disconnects existing viewers.</p>
   </section>
   <section class="panel">
     <h2>Placeholder image</h2>
     <label>Logo / holding slide <select id="placeholder-asset"><option value="">No placeholder</option></select></label>
-    <button id="save-placeholder">Use selected image</button>
+    {% if show.canEdit %}<button id="save-placeholder">Use selected image</button>{% endif %}
     <p class="hint">Upload an image in the Media Centre editor, then reload this controller to select it. Show placeholder pauses all media at the current position. Play / resume returns there; selecting a slide jumps straight to it.</p>
   </section>
   {% include "presentations/preflight.html" %}

@@ -10,7 +10,7 @@
       <p>Rehearse and perform with programmable tempi, meters, cues and synchronized video.</p>
       <a class="button primary" href="{{ url_for('clicktrack.clicktrack_index') }}">Open Click Tracks</a>
     </section>
-    {% if current_user.role == 'admin' %}
+    {% if has_media_access %}
     <section class="panel">
       <h2>Media Centre</h2>
       <p>Build presentations with video, images, text and audio, then control an audience screen.</p>

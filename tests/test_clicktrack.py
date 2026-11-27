@@ -29,6 +29,9 @@ class ClickTrackSectionTests(unittest.TestCase):
                 self.assertEqual(connection.execute(text("SELECT is_public FROM click_track")).scalar_one(), 0)
                 self.assertIsNone(connection.execute(text("SELECT programme FROM studio_presentation")).scalar_one())
                 self.assertIsNone(connection.execute(text("SELECT music FROM studio_presentation")).scalar_one())
+                for column in ("settings", "history", "reports"):
+                    self.assertIsNone(connection.execute(text(f"SELECT {column} FROM studio_presentation")).scalar_one())
+                self.assertEqual(connection.execute(text("SELECT reports_version FROM studio_presentation")).scalar_one(), 0)
         finally:
             engine.dispose()
 

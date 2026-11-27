@@ -239,7 +239,9 @@ def clicktrack_index():
 @clicktrack_bp.get("/home/")
 @login_required
 def performance_home():
-    return render_template("performance/home.html")
+    from presentationstudio import available_shows
+    return render_template("performance/home.html",
+                           has_media_access=current_user.role == "admin" or bool(available_shows()))
 
 
 @clicktrack_bp.get("/invite/<int:track_id>/")

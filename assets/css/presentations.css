@@ -32,6 +32,11 @@ label { display: grid; gap: 5px; margin: 8px 0; }
 .asset-list { max-height: 470px; overflow-y: auto; display: grid; gap: 8px; margin-top: 16px; }
 .asset-card { border: 1px solid var(--line); padding: 10px; border-radius: 6px; overflow-wrap: anywhere; cursor: grab; }
 .asset-card img { width: 100%; max-height: 100px; object-fit: contain; }
+.bulk-import { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.bulk-import summary { cursor: pointer; font-weight: 600; }
+.import-files { max-height: 250px; overflow-y: auto; }
+.import-files label { display: flex; align-items: start; gap: 8px; overflow-wrap: anywhere; }
+#import-notes { max-height: 200px; overflow-y: auto; overflow-wrap: anywhere; }
 .field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .screen { background: #000; position: relative; aspect-ratio: 16 / 9; overflow: hidden; container-type: size; }
 .controller-screen { max-width: 960px; }
@@ -83,6 +88,13 @@ label { display: grid; gap: 5px; margin: 8px 0; }
 .audience #connection-status { position: fixed; top: 0; right: 0; z-index: 5; margin: 0; padding: 8px; background: #222; }
 .audience #connection-status:empty { display: none; }
 .audience #allow-playback { position: fixed; left: 12px; bottom: 12px; z-index: 6; }
+.output-overlay { position: absolute; inset: 0; z-index: 10; pointer-events: none; display: grid; place-items: center; font-size: 3cqh; }
+.output-overlay[data-pattern=grid] { background: repeating-linear-gradient(0deg, transparent 0 9.8%, #fff 9.8% 10%), repeating-linear-gradient(90deg, #000 0 9.8%, #fff 9.8% 10%); color: #fff; }
+.output-overlay[data-pattern=bars] { background: linear-gradient(90deg, #fff 0 14.28%, #ff0 14.28% 28.56%, #0ff 28.56% 42.84%, #0f0 42.84% 57.12%, #f0f 57.12% 71.4%, #f00 71.4% 85.68%, #00f 85.68%); }
+.output-overlay.safe-area::after { content: ''; position: absolute; inset: 5%; border: 2px dashed #f90; }
+#operator-note { white-space: pre-wrap; }
+.screen:fullscreen { background: #000; padding: 0; }
+.emergency-controls { border: 2px solid #b64c42; padding: 12px; border-radius: 8px; }
 @media (max-width: 1100px) { .editor-grid { grid-template-columns: minmax(200px, 1fr) minmax(280px, 2fr); } .editor-grid > :last-child { grid-column: 1 / -1; } }
 @media (max-width: 650px) { .editor-grid { grid-template-columns: minmax(0, 1fr); } main { padding: 12px; } .field-pair { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 900px) { .presenter-workspace { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } .presenter-workspace > :last-child { grid-column: 1 / -1; } }

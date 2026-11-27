@@ -14,7 +14,9 @@ export async function api(path, method = 'GET', data) {
   if (!response.ok) {
     const text = response.headers.get('content-type')?.includes('application/json')
       ? (await response.json()).error : 'HTTP ' + response.status;
-    throw new Error(text || 'Request failed.');
+    const error = new Error(text || 'Request failed.');
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }

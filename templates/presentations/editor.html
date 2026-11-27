@@ -61,6 +61,30 @@
       <label id="upload-zone" class="upload-zone">Drop files here or choose files
         <input id="media-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.mp4,.webm,.mov,.mp3,.wav,.m4a,.ogg">
       </label>
+      <details id="bulk-import" class="bulk-import">
+        <summary>Bulk import: PowerPoint or folder</summary>
+        <label>Import embedded PowerPoint assets
+          <input id="powerpoint-file" type="file" accept=".pptx">
+        </label>
+        <label>Import assets from a folder (including subfolders)
+          <input id="media-folder" type="file" webkitdirectory multiple>
+        </label>
+        <p class="hint">PowerPoint is extracted in your browser; the document itself is not uploaded. Only selected media files go to Cloudinary. Images/audio/video are extracted, not slide layouts, text, animations or linked online videos. Export slides as PNGs and choose their folder for faithful slide pictures.</p>
+        <p id="import-status" role="status" aria-live="polite">Choose a .pptx document or a folder, then review assets before uploading.</p>
+        <div class="toolbar">
+          <button id="import-select-all" type="button">Select all</button>
+          <button id="import-select-none" type="button">Select none</button>
+        </div>
+        <div id="import-files" class="import-files"></div>
+        <details id="import-notices" hidden><summary>Skipped files / import notes</summary><ul id="import-notes"></ul></details>
+        <label><span><input id="import-to-timeline" type="checkbox"> Also append selected picture/video assets to the timeline in import order</span></label>
+        <label>Image duration (seconds) <input id="import-image-duration" type="number" value="5" min="0.1" max="86400" step="0.1"></label>
+        <p class="hint">PowerPoint assets are ordered by first use in slide order and uploaded once, even if reused. This creates an asset sequence, not one reconstructed slide per PowerPoint slide. Folder assets use filename/path order (Slide2 before Slide10). Audio is added to the library only; place it on its lane yourself. Timeline changes still require Save presentation.</p>
+        <div class="toolbar">
+          <button id="run-import" type="button" disabled>Import selected assets</button>
+          <button id="stop-import" type="button" hidden>Stop after current file</button>
+        </div>
+      </details>
       <p class="hint">Cloudinary uploads: up to 100 MB each, videos up to 3 minutes. Your plan may allow less. Files are publicly accessible by their media URL.</p>
       <form id="youtube-form">
         <label>YouTube name <input id="youtube-name" maxlength="255" value="YouTube video" required></label>
@@ -106,6 +130,8 @@
           <label>Text color <input name="color" type="color" value="#ffffff"></label>
           <label>Text position <select name="position"><option value="bottom">Bottom</option><option value="center">Center</option><option value="top">Top</option></select></label>
         </div>
+        <label>Private operator notes <textarea name="note" maxlength="2000" rows="3" placeholder="Wait for conductor; lights down"></textarea></label>
+        <label id="cue-marker-label"><span><input name="marker" id="cue-marker" type="checkbox"> Named rehearsal point (uses this visual cue's name)</span></label>
         <div class="toolbar"><button type="submit">Apply cue changes</button><button type="button" id="duplicate-cue">Duplicate cue</button><button type="button" id="split-cue">Split at playhead</button><button type="button" id="delete-cue" class="danger">Remove cue</button></div>
         <p class="hint">Duplicate appends a copy to this lane. Split preserves media continuity and puts any manual hold at the end of the second half.</p>
       </form>

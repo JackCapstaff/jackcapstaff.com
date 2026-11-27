@@ -64,6 +64,10 @@ export function setupPreflight(getShow) {
         groups.get(key).push(cue);
       }
       let failed = 0, warned = 0, checked = 0;
+      for (const warning of show.readinessWarnings || []) {
+        $('preflight-results').append(element('li', 'Needs attention: ' + warning));
+        warned += 1;
+      }
       for (const cues of groups.values()) {
         if (controller.signal.aborted) break;
         const row = element('li', cues[0].name + ': checking...');
@@ -81,7 +85,7 @@ export function setupPreflight(getShow) {
         }
       }
       $('preflight-status').textContent = controller.signal.aborted ? 'Checks cancelled. Results are incomplete.'
-        : `Media checks finished: ${failed} failed, ${warned} warnings. ${groups.size ? '' : 'No external media to load. '}Test sound and rehearse on every audience device.`;
+        : `Media checks finished: ${failed} failed, ${warned} warnings. ${failed || warned ? 'Needs attention.' : 'Ready for rehearsal.'} ${groups.size ? '' : 'No external media to load. '}Test sound and rehearse on every audience device.`;
     } catch (error) {
       $('preflight-status').textContent = 'Could not check presentation: ' + error.message;
     } finally {

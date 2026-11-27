@@ -13,7 +13,7 @@
   <p id="player-status" role="status">Connecting to presentation…</p>
   <p id="connection-status" role="status"></p>
   <button id="allow-playback" hidden>Allow media playback and sound</button>
-  <script>window.PRESENTATION_CONFIG = {{ {'stateUrl': state_url} | tojson }};</script>
+  <script>window.PRESENTATION_CONFIG = {{ {'stateUrl': state_url, 'reportUrl': report_url} | tojson }};</script>
   <script type="module" src="{{ url_for('static', filename='js/presentations/watch.js') }}"></script>
 </body>
 </html>

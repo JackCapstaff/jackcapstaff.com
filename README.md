@@ -14,10 +14,138 @@ presentation editor, controller and audience URLs are unchanged.
 
 ## Media Centre
 
-Administrators can open **Media Centre** from Performance Studio home or visit
+Administrators and explicitly assigned show operators can open **Media Centre** from Performance Studio home or visit
 `/presentations/`. This is a separate, browser-rendered presentation builder,
-not a video-file exporter; click-track integration is deliberately deferred.
+not a video-file exporter; it can link visual cues to click-track sections.
 Each admin manages their own presentations and reusable media library.
+
+### Concert operation and reliability
+
+- Run **Media checks** in the controller before doors open. It compiles nested
+  sets and validates musical links, tests each media source (including YouTube),
+  and reports **Ready for rehearsal / Needs attention**. During a broadcast,
+  media checks validate the frozen on-air snapshot and warn if newer saved
+  edits exist. In the editor, unapplied changes must
+  be applied; unsaved standalone edits are flagged. Checks are a point-in-time
+  check, not a guarantee of continued network availability or full buffering.
+- Add **Private operator notes** and **Named rehearsal point** in cue properties,
+  then Apply and Save. The controller shows active cue notes, picture time remaining
+  time and automatic/manual/musical progression. Notes and markers are removed
+  from public audience state. Rehearsal buttons use cue names; choose linked
+  music-and-visual jumps or visual-only override. A visual-only jump pauses
+  linked music and clears its visual boundary; use a mapped musical jump or
+  the main Play/resume control to reconnect to music. An unmapped cue cannot
+  make a combined musical jump.
+- **Blackout** and **Mute all media** affect audience output without seeking or
+  stopping the clock. **Return to show** clears both, any placeholder and test
+  pattern at the existing position. A placeholder-paused timeline remains
+  paused until Play/resume; mute retains the individual cue-volume settings.
+- **Output calibration** provides 16:9, 4:3, 21:9 and screen-fill framing, scale
+  and horizontal/vertical offsets, a 5% safe-area guide, grid and colour bars.
+  It is saved per presentation and applied to connected audience screens.
+  Test patterns mute media but do not pause the show clock: turn them off before
+  performing. This is framing, not projector keystone correction or multi-output
+  edge blending.
+- **Visual pedal / keyboard controls** are separate from musical transport.
+  Learn keyboard keys or MIDI note/control messages for Next, Previous, Hold,
+  Resume, Placeholder, Blackout, Mute and Return; then enable visual input.
+  Mappings are saved on the device; enablement is deliberately reset on reload.
+  Held/repeated keys, held MIDI messages, text fields and presses within 300 ms
+  are guarded. Web MIDI needs browser support and HTTPS. Keyboard focus must be
+  in the controller, not the musical iframe. Musical controls keep their existing
+  mappings; visual progression pauses linked music first.
+- **Audience output monitoring** lists up to 16 reporting screens, their
+  positions, loading/errors, autoplay blocking and tab visibility. Reports are
+  sent every two seconds and become stale after six. This verifies browser
+  reception, not physical projector/speaker connectivity. Existing audience
+  heartbeat-loss blackout remains in place.
+- Owners can assign existing account usernames under **Show operators**.
+  Operators can run only assigned shows and view their compiled nested sets,
+  with no full website-admin access. They cannot author, upload/delete assets,
+  change audience links/calibration/placeholder selection, restore versions or
+  grant access. Removing access takes effect at the next request. Anonymous
+  audience viewing is unchanged.
+- **Duplicate** on the dashboard copies a show's cues/music/set links with a new
+  audience link; it does not duplicate assets or child sets. **Saved versions**
+  retains up to 20 recent authored versions, restoring as a new revision without
+  changing the live audience. Concert restoration restores set links, not child
+  edits. A successfully started version additionally retains its frozen compiled
+  **performance snapshot**, which can be restarted with the original nested cues
+  and music. Run checks and rehearse historical snapshots: deleted media URLs
+  and changes outside the app can still make them unavailable.
+
+### Offline / local output
+
+Open **Local playback and cache tools** from the controller on the actual output
+computer. This is an independent local visual show, not a disconnected copy of
+the network-controlled audience link. It has play/hold, next/previous, marked
+rehearsal points, scrubbing, blackout/mute/return and fullscreen output.
+Space plays/holds, Left/Right navigate, B blacks out, M mutes and R returns;
+Escape exits fullscreen.
+
+1. Cache uploaded media over HTTPS. Cached files are reused in the local player
+   and incomplete preparation can be retried; errors are explicit. This requires
+   readable cross-origin media responses and available browser storage.
+2. Choose **Download self-contained offline show**. The resulting HTML contains
+   its playback code, styling, saved compiled cues and embedded media, rather
+   than relying on browser cache retention. Cache/export limits are 100 MB per
+   asset and 250 MB total media; HTML encoding makes the final file larger.
+3. Open the downloaded file in Chrome/Edge with the internet disconnected and
+   rehearse the actual video/audio formats, sound permission and fullscreen.
+   This disconnected workflow is browser-tested, including embedded image
+   playback. Browser codecs and autoplay restrictions still apply.
+
+YouTube cannot be cached/exported: replace it with legally obtained uploaded
+media for a fully offline show. Linked click-track audio, conductor MIDI and
+network audience control are not included; local visuals operate independently.
+Downloaded files contain media and private operator notes: keep them secure.
+Revoking website access cannot revoke files already downloaded. Clearing a show's
+device cache does not delete its downloaded HTML file or Cloudinary assets.
+
+### Bulk asset importing
+
+In the editor's media library, open **Bulk import: PowerPoint or folder**.
+
+- **PowerPoint:** choose a `.pptx` document. Embedded supported images,
+  audio and videos are extracted entirely in your browser; the PowerPoint
+  document itself is not uploaded. The review lists each asset's slide numbers,
+  orders assets by first use in the deck's actual slide order and uploads each
+  embedded file once even when reused. Shared/unused media are listed after
+  slide assets. External/online links and unsupported formats (including
+  EMF/WMF/SVG) are reported, not converted. Legacy `.ppt` and encrypted files
+  must first be resaved as ordinary `.pptx`.
+- **Folder:** choose a folder to include supported media in its subfolders.
+  Paths are shown for review and sorted naturally by path/name (Slide2 before
+  Slide10). Unsupported files are listed as skipped. Folder selection requires
+  a browser supporting directory uploads; ordinary multi-file upload remains
+  available.
+- Review the file list, select/deselect individual assets, then choose
+  **Import selected assets**. Nothing goes to Cloudinary until you confirm
+  this selection. Library-only import is the default. Optionally append
+  selected pictures/videos to the picture timeline in import order; images
+  use the chosen duration, videos their verified full length. Audio remains
+  library-only for placement on its own lane. Save the presentation to persist
+  appended cues.
+- PowerPoint extraction is **not slide rendering**: layouts, editable text,
+  slide timing, animations and transitions are not reconstructed. To preserve
+  slide appearance, export all slides as PNGs in PowerPoint and import that
+  folder, optionally appending its images as a sequence.
+- Imports support up to 500 selected supported files; folders can contain up to
+  5000 files. PowerPoint ZIPs are limited to 100 MB compressed / 250 MB expanded,
+  1000 slides and 10000 archive members. Existing limits still apply:
+  100 MB per uploaded asset, three minutes per uploaded video, and
+  500 cues/24 hours per standalone timeline. Extraction requires a current
+  browser with raw-deflate decompression support; it has been tested in Chrome.
+- **Stop after current file** finishes the current upload safely. On failure
+  the batch stops with an explicit error; already imported assets remain in
+  the library. Import again to resume remaining selected files without
+  duplicating completed uploads in that tab. Pending verification retries reuse
+  a successful Cloudinary upload where possible. Reloading loses this in-memory
+  batch state, not saved library assets; uncertain/unfinalised uploads may need
+  cleaning in Cloudinary. Uploads use the same admin-authorized signatures and
+  server-side verification as ordinary media uploads.
+
+### Building and controlling a presentation
 
 1. Create a presentation and upload or drop files into the media library, or
    add a YouTube link. Add media using its **Add** button or drag it to the timeline.

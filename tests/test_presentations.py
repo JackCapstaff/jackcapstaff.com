@@ -600,3 +600,97 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(stale["show"]["cues"], [])
         command("stop")
         self.assertFalse(command("start")["black"])
+
+    def test_show_operator_can_run_without_editing_or_admin_privileges(self):
+        show = self.save(self.create(), [self.cue()]).json
+        path = f"/presentations/api/shows/{show['id']}"
+        grant = self.client.put(path + "/operators", json={"usernames": ["viewer"]})
+        self.assertEqual(grant.status_code, 200)
+        operator = self.login(self.viewer_id)
+        self.assertIn(b"Open Media Centre", operator.get("/live/home/").data)
+        listed = operator.get("/presentations/api/shows").json["shows"]
+        self.assertEqual([item["id"] for item in listed], [show["id"]])
+        self.assertFalse(listed[0]["canEdit"])
+        page = operator.get(show["controlUrl"])
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn(b'id="operators-form"', page.data)
+        for endpoint, method in ((path, "PUT"), (path + "/duplicate", "POST"),
+                                 (path + "/operators", "PUT"), (path + "/versions", "POST"),
+                                 ("/presentations/api/uploads/sign", "POST")):
+            self.assertEqual(operator.open(endpoint, method=method, json={}).status_code, 403)
+        self.assertEqual(operator.get(show["editUrl"]).status_code, 403)
+        self.assertEqual(operator.get(path + "/readiness").status_code, 200)
+        state = operator.put(path + "/live", json={"version": 0, "action": "start"})
+        self.assertEqual(state.status_code, 200)
+        self.assertEqual(operator.put(path + "/live", json={"version": state.json["version"], "action": "revoke"}).status_code, 403)
+        self.client.put(path + "/operators", json={"usernames": []})
+        self.assertEqual(operator.get(path + "/live").status_code, 403)
+        self.assertEqual(self.client.put(path + "/operators", json={"usernames": ["missing-account"]}).status_code, 400)
+
+    def test_notes_markers_emergency_controls_calibration_and_screen_reports(self):
+        show = self.save(self.create(), [self.cue(duration=100, note="Private conductor instruction", marker=True)]).json
+        path = f"/presentations/api/shows/{show['id']}/live"
+        version = 0
+        def command(action, **extra):
+            nonlocal version
+            response = self.client.put(path, json={"version": version, "action": action, **extra})
+            self.assertEqual(response.status_code, 200, response.json)
+            version = response.json["version"]
+            return response.json
+        command("start")
+        command("pause")
+        command("seek", position=12)
+        command("black")
+        command("mute")
+        output = {"aspect": "4:3", "scale": 80, "x": 5, "y": -3, "pattern": "grid", "safeArea": True}
+        calibrated = command("configure", output=output)
+        self.assertEqual(calibrated["output"], output)
+        returned = command("return")
+        self.assertEqual(returned["position"], 12)
+        self.assertFalse(returned["playing"])
+        self.assertFalse(returned["black"])
+        self.assertFalse(returned["muted"])
+        self.assertEqual(returned["output"]["pattern"], "off")
+        with self.app.app_context():
+            stored = self.db.session.get(self.models["StudioPresentation"], show["id"])
+            self.assertEqual(stored.settings["output"]["pattern"], "off")
+        watch = self.guest.get(show["url"] + "state").json
+        self.assertNotIn("note", watch["show"]["cues"][0])
+        self.assertNotIn("marker", watch["show"]["cues"][0])
+        self.assertIn("Private conductor instruction", self.client.get(path).json["show"]["cues"][0]["note"])
+        report = {"id": "screen-12345678", "position": 12, "ready": True, "blocked": False, "visible": True, "error": ""}
+        self.assertEqual(self.guest.post(show["url"] + "report", json=report).status_code, 200)
+        live = self.client.get(path).json
+        self.assertEqual(live["version"], version)
+        self.assertEqual(live["screens"][0]["id"], report["id"])
+        self.assertEqual(self.guest.post(show["url"] + "report", json={**report, "ready": "yes"}).status_code, 400)
+        self.assertEqual(self.client.put(path, json={"version": version, "action": "configure", "output": {**output, "scale": 500}}).status_code, 400)
+        command("revoke")
+        self.assertEqual(self.guest.post(show["url"] + "report", json=report).status_code, 404)
+
+    def test_versions_restore_duplicate_and_known_good_concert_snapshot(self):
+        image = self.asset()
+        child = self.save(self.create(), [self.cue("original", duration=20)]).json
+        concert = self.create()
+        concert = self.save(concert, [], programme={"sets": [child["id"]], "placeholderId": image["id"]}).json
+        path = f"/presentations/api/shows/{concert['id']}"
+        first = self.client.put(path + "/live", json={"version": 0, "action": "start"}).json
+        self.assertEqual(first["show"]["cues"][0]["name"], "original")
+        self.save(child, [self.cue("edited", duration=30)])
+        ready = self.client.get(path + "/readiness").json
+        self.assertIn("earlier saved version", ready["readinessWarnings"][0])
+        versions = self.client.get(path + "/versions").json["versions"]
+        self.assertTrue(versions[0]["hasSnapshot"])
+        known = self.client.put(path + "/live", json={"version": first["version"], "action": "start", "snapshotRevision": concert["revision"]})
+        self.assertEqual(known.status_code, 200)
+        self.assertEqual(known.json["show"]["cues"][0]["name"], "original")
+        copied = self.client.post(path + "/duplicate", json={})
+        self.assertEqual(copied.status_code, 201)
+        self.assertNotEqual(copied.json["url"], concert["url"])
+        self.assertEqual(copied.json["programme"]["sets"], concert["programme"]["sets"])
+        newer = self.save(concert, [], title="Renamed", programme=concert["programme"]).json
+        restored = self.client.post(path + "/versions", json={"revision": newer["revision"], "restore": concert["revision"]})
+        self.assertEqual(restored.status_code, 200)
+        self.assertEqual(restored.json["title"], "Concert")
+        self.assertEqual(restored.json["revision"], newer["revision"] + 1)
+        self.assertEqual(self.client.post(path + "/versions", json={"revision": newer["revision"], "restore": concert["revision"]}).status_code, 409)

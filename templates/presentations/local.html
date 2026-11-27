@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">
+  <title>Local show · Performance Studio</title>
+  <style>{{ stylesheet | safe }}</style>
+</head>
+<body>
+<main>
+  <h1 id="local-heading">Local playback</h1>
+  <p>This is independent visual playback, not the live audience link. Linked click-track audio is not included. Prepare and download on the output computer before disconnecting. The downloaded file contains private operator notes and media: keep it secure.</p>
+  <div class="toolbar">
+    <button id="cache-local">Cache uploaded media on this device</button>
+    <button id="download-local">Download self-contained offline show</button>
+    <button id="clear-local">Clear this show's device cache</button>
+  </div>
+  <p id="status" role="status" aria-live="polite"></p>
+  <div id="preview" class="screen"></div>
+  <p id="player-status" role="status"></p><button id="allow-playback" hidden>Allow media playback and sound</button>
+  <div class="toolbar">
+    <button data-local="play">Play / resume</button><button data-local="pause">Hold</button>
+    <button data-local="previous">Previous</button><button data-local="next">Next</button>
+    <button data-local="black">Blackout</button><button data-local="mute">Mute all</button><button data-local="return">Return</button>
+    <button id="fullscreen-local">Fullscreen output</button><output id="clock"></output>
+  </div>
+  <label>Local playhead <input id="local-seek" type="range" min="0" step="0.001" value="0"></label>
+  <p class="hint">Keyboard / fullscreen: Space plays or holds; Left/Right navigate; B toggles blackout, M toggles mute, R returns to show. Escape exits fullscreen. Keep focus out of the playhead field.</p>
+  <div id="local-points" class="toolbar"></div>
+  <p id="operator-note"></p>
+</main>
+<script id="local-config">window.PRESENTATION_CONFIG = {{ local_config | tojson }};</script>
+<script id="local-loader">
+const bundleUrl = URL.createObjectURL(new Blob([window.PRESENTATION_CONFIG.bundle], {type: 'text/javascript'}));
+const script = document.createElement('script');
+script.type = 'module';
+script.src = bundleUrl;
+script.dataset.runtime = 'true';
+script.onload = () => URL.revokeObjectURL(bundleUrl);
+script.onerror = () => { document.getElementById('status').textContent = 'Local playback code could not load.'; };
+document.body.append(script);
+</script>
+</body>
+</html>

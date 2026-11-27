@@ -891,6 +891,10 @@ def ensure_optional_columns():
         'studio_presentation': {
             'programme': 'JSON',
             'music': 'JSON',
+            'settings': 'JSON',
+            'history': 'JSON',
+            'reports': 'JSON',
+            'reports_version': 'INTEGER NOT NULL DEFAULT 0',
         },
     }
 

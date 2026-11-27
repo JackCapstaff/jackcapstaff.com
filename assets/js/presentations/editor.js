@@ -1,6 +1,7 @@
 import { $, api, config, duration, element, limitPosition, message, overlapError } from './common.js';
 import { PresentationPlayer } from './player.js';
 import { setupPreflight } from './preflight.js';
+import { folderFiles, powerpointFiles } from './import.js';
 
 let show = null, assets = [], selected = null, dirty = false, formDirty = false, editVersion = 0, compiledShow = null;
 let preview = { position: 0, playing: false, at: performance.now() };
@@ -11,6 +12,7 @@ const undo = [], redo = [];
 let lastEdit = null;
 let musicTracks = [], musicEditing = null;
 let availableShows = [], concertPreview = { cues: [] };
+let uploading = false, importItems = [], importStop = false;
 const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('');
 function editSnapshot() { return { title: $('show-title').value, cues: structuredClone(show.cues), programme: structuredClone(show.programme), music: structuredClone(show.music) }; }
 function historyButtons() {
@@ -68,6 +70,8 @@ function select(id, redraw = true) {
     $('cue-text-fields').hidden = cue.kind !== 'text';
     $('cue-media-fields').hidden = !['video', 'youtube', 'audio'].includes(cue.kind);
     $('cue-muted').checked = cue.muted || cue.volume === 0;
+    $('cue-marker').checked = !!cue.marker;
+    $('cue-marker-label').hidden = cue.lane === 'audio';
     volumeLabel();
   }
   if (redraw) renderTimeline();
@@ -474,29 +478,163 @@ $('load-concert-preview').onclick = async () => {
     message('Concert preview loaded from the latest saved sets. Intervals wait for Next.');
   } catch (error) { message('Could not load concert: ' + error.message, true); }
 };
+function uploadControls(busy) {
+  uploading = busy;
+  for (const id of ['media-files', 'media-folder', 'powerpoint-file', 'run-import', 'import-select-all',
+    'import-select-none', 'import-to-timeline', 'import-image-duration']) $(id).disabled = busy;
+  $('run-import').disabled = busy || !importItems.some(item => item.checkbox.checked && !item.asset);
+  for (const item of importItems) item.checkbox.disabled = busy || !!item.asset;
+}
+async function uploadFile(file, pending = null) {
+  if (!file.size || file.size > 100 * 1024 * 1024) throw new Error(file.name + ' must contain between 1 byte and 100 MB.');
+  let publicId = pending?.publicId;
+  if (!publicId) {
+    const signed = await api('uploads/sign', 'POST', { name: file.name, size: file.size });
+    const data = new FormData();
+    data.append('file', file);
+    for (const [key, value] of Object.entries(signed.parameters)) data.append(key, value);
+    const response = await fetch(signed.endpoint, { method: 'POST', body: data, credentials: 'omit' });
+    if (!response.ok) {
+      const detail = response.headers.get('content-type')?.includes('application/json') ? await response.json() : null;
+      throw new Error(detail?.error?.message || 'Cloudinary upload failed (HTTP ' + response.status + ').');
+    }
+    const stored = await response.json();
+    if (!stored.public_id) throw new Error('Cloudinary did not return the uploaded asset ID.');
+    publicId = stored.public_id;
+    if (pending) pending.publicId = publicId;
+  }
+  let asset;
+  try { asset = await api('assets', 'POST', { publicId, name: file.name }); }
+  catch (error) {
+    if (pending && [400, 404].includes(error.status)) pending.publicId = null;
+    throw error;
+  }
+  if (!assets.some(item => item.id === asset.id)) assets.unshift(asset);
+  renderAssets();
+  return asset;
+}
 async function upload(files) {
-  $('media-files').disabled = true;
+  if (uploading) { message('Wait for the current import/upload to finish.', true); return; }
+  uploadControls(true);
   try {
     for (const file of files) {
-      if (file.size > 100 * 1024 * 1024) throw new Error(file.name + ' exceeds 100 MB.');
       message('Uploading ' + file.name + ' to Cloudinary…');
-      const signed = await api('uploads/sign', 'POST', { name: file.name, size: file.size });
-      const data = new FormData();
-      data.append('file', file);
-      for (const [key, value] of Object.entries(signed.parameters)) data.append(key, value);
-      const response = await fetch(signed.endpoint, { method: 'POST', body: data, credentials: 'omit' });
-      if (!response.ok) {
-        const detail = await response.json();
-        throw new Error(detail.error?.message || 'Cloudinary upload failed (HTTP ' + response.status + ').');
-      }
-      const stored = await response.json();
-      assets.unshift(await api('assets', 'POST', { publicId: stored.public_id, name: file.name }));
-      renderAssets();
+      await uploadFile(file);
     }
     message('Uploads saved in your media library. Drag them to the timeline or choose Add.');
   } catch (error) { message('Upload stopped: ' + error.message, true); }
-  finally { $('media-files').disabled = false; $('media-files').value = ''; }
+  finally { uploadControls(false); $('media-files').value = ''; }
 }
+async function prepareImport(source) {
+  if (uploading) { message('Wait for the current import/upload to finish.', true); return; }
+  uploadControls(true);
+  importItems = [];
+  $('import-files').replaceChildren();
+  $('import-notes').replaceChildren();
+  $('import-notices').hidden = true;
+  message('Reading import in this browser...', false, 'import-status');
+  try {
+    const result = await source();
+    const notes = [...result.skipped.map(name => 'Unsupported/skipped: ' + name), ...(result.warnings || [])];
+    $('import-notices').hidden = !notes.length;
+    for (const note of notes) $('import-notes').append(element('li', note));
+    importItems = result.files.map(item => {
+      const row = element('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = true;
+      const status = element('span', item.label + ' (' + (item.file.size / 1024 / 1024).toFixed(2) + ' MB)');
+      checkbox.onchange = () => uploadControls(false);
+      row.append(checkbox, status);
+      $('import-files').append(row);
+      return { ...item, checkbox, status, asset: null };
+    });
+    message(importItems.length ? `${importItems.length} assets ready to review. ${result.skipped.length} unsupported/skipped files. Nothing uploaded yet.`
+      : 'No supported embedded media/assets found. Export PowerPoint slides as PNGs if you need slide pictures.', !importItems.length, 'import-status');
+    $('import-to-timeline').checked = false;
+  } catch (error) { message('Could not read import: ' + error.message, true, 'import-status'); }
+  finally {
+    uploadControls(false);
+    $('powerpoint-file').value = $('media-folder').value = '';
+  }
+}
+$('powerpoint-file').onchange = event => {
+  const file = event.target.files[0];
+  if (file) prepareImport(() => powerpointFiles(file));
+};
+$('media-folder').onchange = event => {
+  const files = [...event.target.files];
+  if (files.length) prepareImport(() => folderFiles(files));
+};
+for (const [id, checked] of [['import-select-all', true], ['import-select-none', false]]) {
+  $(id).onclick = () => {
+    for (const item of importItems) if (!item.asset) item.checkbox.checked = checked;
+    uploadControls(false);
+  };
+}
+$('stop-import').onclick = () => { importStop = true; message('Stopping after the current file finishes...', false, 'import-status'); };
+$('run-import').onclick = async () => {
+  if (uploading) return;
+  const selectedItems = importItems.filter(item => item.checkbox.checked && !item.asset);
+  if (!selectedItems.length) { message('Select assets to import.', true, 'import-status'); return; }
+  const append = $('import-to-timeline').checked, imageDuration = Number($('import-image-duration').value);
+  if (append && (!$('import-image-duration').reportValidity() || !canLeaveCue())) return;
+  if (append && show.programme) { message('Import to the library, or open a standalone set to append timeline cues.', true, 'import-status'); return; }
+  if (append) {
+    const pictures = selectedItems.filter(item => !/\.(mp3|wav|m4a|ogg)$/i.test(item.file.name));
+    if (show.cues.length + pictures.length > 500) { message('Appending these assets would exceed 500 timeline cues.', true, 'import-status'); return; }
+  }
+  uploadControls(true);
+  importStop = false;
+  $('stop-import').hidden = false;
+  const imported = [];
+  let completed = 0, failure = null;
+  try {
+    for (const item of selectedItems) {
+      if (importStop) break;
+      message(`Uploading ${completed + 1} of ${selectedItems.length}: ${item.label}`, false, 'import-status');
+      try {
+        item.asset = await uploadFile(item.file, item);
+        imported.push(item.asset);
+        item.file = null;
+        item.status.textContent = item.label + ' — imported';
+        completed += 1;
+      } catch (error) {
+        item.status.textContent = item.label + ' — failed: ' + error.message;
+        throw error;
+      }
+    }
+  } catch (error) { failure = error.message; }
+  finally {
+    if (append && imported.length) {
+      try {
+        if (show.programme) throw new Error('The presentation is now a concert programme. Append media to one of its standalone sets.');
+        let start = endOfLane('picture');
+        const cues = imported.filter(asset => asset.kind !== 'audio').map(asset => {
+          const seconds = asset.kind === 'image' ? imageDuration : asset.duration;
+          const cue = { id: newId(), name: asset.name.slice(0, 120), kind: asset.kind, lane: 'picture', assetId: asset.id,
+            start, duration: seconds, offset: 0, volume: 1, muted: true, transition: 'cut', fade: 0, fadeOut: 0, advance: 'auto' };
+          start += seconds;
+          return cue;
+        });
+        validate([...show.cues, ...cues]);
+        show.cues.push(...cues);
+        if (cues.length) {
+          changed();
+          if (formDirty) renderTimeline();
+          else select(cues[0].id);
+        }
+      } catch (error) { failure = (failure ? failure + ' ' : '') + 'Assets are in the library, but timeline append failed: ' + error.message; }
+    }
+    const total = importItems.filter(item => item.asset).length;
+    message(`${completed} imported this run (${total} total). ` + (failure ? 'Import stopped: ' + failure + '. Retry skips completed uploads; failed/unfinalised uploads may need cleaning in Cloudinary.'
+      : importStop ? 'Stopped. Import selected assets again to continue without re-uploading completed files.'
+        : append ? 'Timeline sequence added locally where possible; Save presentation to keep it. Audio is library-only.'
+          : 'Assets saved in the library. Drag them to a lane or choose Add.'), !!failure, 'import-status');
+    uploadControls(false);
+    $('stop-import').hidden = true;
+  }
+};
 $('media-files').onchange = event => upload([...event.target.files]);
 $('upload-zone').ondragover = event => { event.preventDefault(); $('upload-zone').classList.add('drag-over'); };
 $('upload-zone').ondragleave = () => $('upload-zone').classList.remove('drag-over');
@@ -581,6 +719,7 @@ form.onsubmit = event => {
     if (!form.elements[key].closest('[hidden]')) candidate[key] = numeric.has(key) ? Number(value) : value;
   }
   if (!$('cue-media-fields').hidden) candidate.muted = $('cue-muted').checked;
+  candidate.marker = cue.lane !== 'audio' && $('cue-marker').checked;
   try {
     const next = show.cues.map(item => item === cue ? candidate : item);
     validate(next);
@@ -739,7 +878,7 @@ setupPreflight(async () => {
   if (!show || formDirty) throw new Error('Apply cue changes before running checks.');
   if (show.programme) {
     if (dirty) throw new Error('Save concert changes before running checks.');
-    return api('shows/' + config.id + '/compiled');
+    return api('shows/' + config.id + '/readiness');
   }
-  return compiled();
+  return { ...compiled(), readinessWarnings: dirty ? ['Unsaved editor changes: save before performance.'] : [] };
 });

@@ -1,5 +1,6 @@
 """Layered presentation authoring and an independently clocked public player."""
 import math
+import copy
 import hashlib
 import json
 import os
@@ -8,6 +9,7 @@ import secrets
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import cloudinary.api
@@ -30,14 +32,21 @@ KINDS = {".jpg": "image", ".jpeg": "image", ".png": "image", ".webp": "image",
 
 @presentations_bp.before_request
 def admin_only():
-    if request.endpoint in ("presentations.watch", "presentations.watch_state"):
+    if request.endpoint in ("presentations.watch", "presentations.watch_state", "presentations.screen_report"):
         return
     if not current_user.is_authenticated:
         if "/api/" in request.path:
             abort(401, description="Sign in as an administrator.")
         return current_app.login_manager.unauthorized()
-    if current_user.role != "admin":
+    operator_endpoints = {"presentations.dashboard", "presentations.shows", "presentations.control",
+                          "presentations.live_state", "presentations.compiled_show", "presentations.music_perform",
+                          "presentations.readiness", "presentations.local_player"}
+    if current_user.role != "admin" and request.endpoint not in operator_endpoints:
         abort(403, description="Only administrators can manage presentations.")
+    if current_user.role != "admin" and not available_shows():
+        abort(403, description="Only administrators or explicitly assigned show operators can open Media Centre.")
+    if current_user.role != "admin" and request.endpoint == "presentations.shows" and request.method != "GET":
+        abort(403, description="Operators cannot create presentations.")
     if request.method not in ("GET", "HEAD", "OPTIONS") and not request.is_json:
         abort(400, description="Expected a JSON request from the presentation editor.")
 
@@ -54,7 +63,41 @@ def models():
 
 
 def own(show_id):
-    return current_app.StudioPresentation.query.filter_by(id=show_id, user_id=current_user.id).first_or_404()
+    show = current_app.StudioPresentation.query.filter_by(id=show_id).first_or_404()
+    if show.user_id != current_user.id and current_user.id not in (show.settings or {}).get("operators", []):
+        abort(404)
+    if show.user_id != current_user.id and request.endpoint not in {
+            "presentations.control", "presentations.live_state", "presentations.compiled_show",
+            "presentations.music_perform", "presentations.readiness", "presentations.local_player"}:
+        abort(403, description="Operators can run this show, but cannot edit it.")
+    return show
+
+
+def available_shows():
+    return [show for show in current_app.StudioPresentation.query.all()
+            if (show.user_id == current_user.id and current_user.role == "admin")
+            or current_user.id in (show.settings or {}).get("operators", [])]
+
+
+def output_settings(raw):
+    if not isinstance(raw, dict):
+        abort(400, description="Output settings must be an object.")
+    aspect = raw.get("aspect", "16:9")
+    pattern = raw.get("pattern", "off")
+    if aspect not in ("16:9", "4:3", "21:9", "screen") or pattern not in ("off", "grid", "bars"):
+        abort(400, description="Choose a supported aspect ratio and test pattern.")
+    if type(raw.get("safeArea", False)) is not bool:
+        abort(400, description="Safe area must be true or false.")
+    return {"aspect": aspect, "pattern": pattern, "safeArea": raw.get("safeArea", False),
+            "scale": number(raw.get("scale", 100), "Output scale (%)", 25, 150),
+            "x": number(raw.get("x", 0), "Horizontal offset (%)", -50, 50),
+            "y": number(raw.get("y", 0), "Vertical offset (%)", -50, 50)}
+
+
+def author_version(show):
+    return {"revision": show.revision, "title": show.title, "cues": copy.deepcopy(show.cues),
+            "programme": copy.deepcopy(show.programme), "music": copy.deepcopy(show.music),
+            "savedAt": datetime.utcnow().isoformat()}
 
 
 def body():
@@ -110,6 +153,12 @@ def clean_cues(raw):
                "offset": number(item.get("offset", 0), "Media in point", 0, 86400),
                "volume": number(item.get("volume", 1 if lane == "audio" else 0), "Volume", 0, 1),
                "muted": item.get("muted", False)}
+        note = item.get("note", "")
+        if not isinstance(note, str) or len(note) > 2000 or type(item.get("marker", False)) is not bool:
+            abort(400, description="Operator notes must be text up to 2000 characters; rehearsal marker must be true or false.")
+        if item.get("marker") and lane == "audio":
+            abort(400, description="Use a picture or text cue for a named visual rehearsal point.")
+        cue.update(note=note.strip(), marker=item.get("marker", False))
         if kind in ("image", "video", "audio", "youtube"):
             asset_id = item.get("assetId")
             asset = assets.get(asset_id) if type(asset_id) is int else None
@@ -144,7 +193,7 @@ def clean_cues(raw):
 def show_json(show):
     return {"id": show.id, "title": show.title, "revision": show.revision, "cues": show.cues,
             "programme": show.programme,
-            "music": show.music,
+            "music": show.music, "canEdit": show.user_id == current_user.id and current_user.role == "admin",
             "url": url_for("presentations.watch", token=show.token),
             "editUrl": url_for("presentations.editor", show_id=show.id),
             "controlUrl": url_for("presentations.control", show_id=show.id)}
@@ -350,7 +399,8 @@ def playback(live, now):
     return {"show": show, "position": max(0, min(target, end)), "playing": playing,
             "active": live.get("active", False), "black": live.get("black", False), "held": held,
             "placeholder": live.get("placeholder", False), "placeholderAsset": live.get("placeholderAsset"),
-            "musicFrozen": live.get("musicFrozen", False), "musicBoundary": live.get("musicBoundary", end)}
+            "musicFrozen": live.get("musicFrozen", False), "musicBoundary": live.get("musicBoundary", end),
+            "muted": live.get("muted", False), "output": live.get("output", {})}
 
 
 def response_json(value):
@@ -375,11 +425,27 @@ def control(show_id):
     return render_template("presentations/control.html", show=show_json(own(show_id)))
 
 
+@presentations_bp.get("/<int:show_id>/local/")
+def local_player(show_id):
+    show = own(show_id)
+    root = Path(current_app.static_folder)
+    bundle = "\n".join(re.sub(r"^export ", "", re.sub(r"^import .*?;\s*$", "",
+        (root / "js" / "presentations" / name).read_text(encoding="utf-8"), flags=re.MULTILINE), flags=re.MULTILINE)
+        for name in ("common.js", "player.js", "output.js", "local.js"))
+    config = {"id": show.id, "title": show.title, "show": snapshot(show), "bundle": bundle,
+              "output": (show.settings or {}).get("output", {}), "embedded": False}
+    response = make_response(render_template("presentations/local.html", local_config=config,
+        stylesheet=(root / "css" / "presentations.css").read_text(encoding="utf-8")))
+    response.headers.update({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow"})
+    return response
+
+
 @presentations_bp.route("/api/shows", methods=["GET", "POST"])
 def shows():
     db, model, _ = models()
     if request.method == "GET":
-        return response_json({"shows": [show_json(show) for show in model.query.filter_by(user_id=current_user.id).order_by(model.updated_at.desc())]})
+        return response_json({"shows": [show_json(show) for show in sorted(available_shows(), key=lambda item: item.updated_at, reverse=True)],
+                              "canCreate": current_user.role == "admin"})
     show = model(user_id=current_user.id, title=text(body().get("title"), "Presentation title", 255),
                  cues=[], token=secrets.token_urlsafe(32), live={})
     db.session.add(show)
@@ -409,6 +475,10 @@ def show_detail(show_id):
                   "programme": programme,
                   "music": music,
                   "revision": show.revision + 1, "updated_at": datetime.utcnow()}
+        history = list(show.history or [])
+        if not any(item["revision"] == show.revision for item in history):
+            history.append(author_version(show))
+        values["history"] = history[-20:]
     elif any(show.id in (parent.programme or {}).get("sets", [])
              for parent in model.query.filter_by(user_id=current_user.id)):
         abort(409, description="Remove this presentation from its concert programmes before deleting it.")
@@ -425,6 +495,86 @@ def show_detail(show_id):
 @presentations_bp.get("/api/shows/<int:show_id>/compiled")
 def compiled_show(show_id):
     return response_json(snapshot(own(show_id)))
+
+
+@presentations_bp.get("/api/shows/<int:show_id>/readiness")
+def readiness(show_id):
+    show = own(show_id)
+    latest = snapshot(show)
+    compiled = show.live["show"] if show.live.get("active") else latest
+    warnings = []
+    if not compiled["cues"]:
+        warnings.append("No saved timeline cues.")
+    music = compiled.get("music")
+    if music and not music["events"]:
+        warnings.append("Linked music has no visual events.")
+    if music:
+        mapped = {event["cueId"] for event in music["events"]}
+        missing = [cue["name"] for cue in compiled["cues"] if cue["lane"] == "picture" and cue["id"] not in mapped]
+        if missing:
+            warnings.append(f"{len(missing)} picture cues have no direct musical jump event; they may still run within another event.")
+    live_revisions = show.live.get("show", {}).get("revisions", {})
+    if show.live.get("active") and live_revisions != latest["revisions"]:
+        warnings.append("The broadcast uses an earlier saved version. Media checks validate the frozen on-air snapshot, not newer edits.")
+    return response_json({**compiled, "readinessWarnings": warnings})
+
+
+@presentations_bp.route("/api/shows/<int:show_id>/operators", methods=["GET", "PUT"])
+def operators(show_id):
+    show = own(show_id)
+    ids = (show.settings or {}).get("operators", [])
+    if request.method == "PUT":
+        names = body().get("usernames")
+        if not isinstance(names, list) or len(names) > 20 or any(not isinstance(name, str) or not name.strip() for name in names):
+            abort(400, description="Supply at most 20 existing account usernames.")
+        users = current_app.User.query.filter(current_app.User.username.in_(names)).all()
+        if {user.username for user in users} != set(names):
+            abort(400, description="Every operator must have an existing website account with that exact username.")
+        ids = [user.id for user in users if user.id != show.user_id]
+        show.settings = {**(show.settings or {}), "operators": ids}
+        current_app.db.session.commit()
+    return response_json({"usernames": [user.username for user in current_app.User.query.filter(current_app.User.id.in_(ids)).all()]})
+
+
+@presentations_bp.route("/api/shows/<int:show_id>/versions", methods=["GET", "POST"])
+def versions(show_id):
+    show = own(show_id)
+    if request.method == "GET":
+        return response_json({"versions": [{"revision": item["revision"], "title": item["title"],
+                                           "savedAt": item["savedAt"], "hasSnapshot": bool(item.get("compiled"))}
+                                          for item in reversed(show.history or [])]})
+    data = body()
+    if type(data.get("revision")) is not int or data["revision"] != show.revision:
+        abort(409, description="The presentation changed. Reload before restoring.")
+    version = next((item for item in show.history or [] if item["revision"] == data.get("restore")), None)
+    if not version:
+        abort(404, description="Saved version not found.")
+    cues = clean_cues(version["cues"])
+    programme = clean_programme(version["programme"], show)
+    music = clean_music(version["music"], show, cues)
+    history = list(show.history or [])
+    if not any(item["revision"] == show.revision for item in history):
+        history.append(author_version(show))
+    changed = current_app.db.session.execute(update(type(show)).where(type(show).id == show.id,
+        type(show).revision == data["revision"]).values(title=version["title"], cues=cues, programme=programme,
+        music=music, revision=show.revision + 1, history=history[-20:], updated_at=datetime.utcnow())).rowcount
+    if not changed:
+        current_app.db.session.rollback()
+        abort(409, description="The presentation changed during restore.")
+    current_app.db.session.commit()
+    current_app.db.session.expire_all()
+    return response_json(show_json(own(show_id)))
+
+
+@presentations_bp.post("/api/shows/<int:show_id>/duplicate")
+def duplicate(show_id):
+    show = own(show_id)
+    duplicate_show = type(show)(user_id=show.user_id, title=(show.title + " (copy)")[:255],
+        cues=copy.deepcopy(show.cues), programme=copy.deepcopy(show.programme), music=copy.deepcopy(show.music),
+        token=secrets.token_urlsafe(32), live={})
+    current_app.db.session.add(duplicate_show)
+    current_app.db.session.commit()
+    return response_json(show_json(duplicate_show)), 201
 
 
 @presentations_bp.get("/api/music-tracks")
@@ -589,6 +739,7 @@ def live_state(show_id):
             if compiled.get("music"):
                 compiled["music"].pop("session", None)
             return {**value, "show": compiled, "position": 0, "playing": False, "black": False,
+                    "output": (show.settings or {}).get("output", {}),
                     "musicBoundary": max((cue["start"] + cue["duration"] for cue in compiled["cues"]), default=0),
                     "musicFrozen": False, "hasSavedChanges": False}
         revisions = value["show"].get("revisions", {})
@@ -596,12 +747,19 @@ def live_state(show_id):
                    if str(item.id) in revisions}
         return {**value, "hasSavedChanges": not revisions or revisions != current}
     if request.method == "GET":
-        return response_json({**controller_state(state), "version": show.live_version})
+        return response_json({**controller_state(state), "version": show.live_version,
+                              "screens": list((show.reports or {}).values()),
+                              "images": [asset.to_dict() for asset in current_app.PresentationAsset.query.filter_by(user_id=show.user_id, kind="image")]
+                              if show.user_id == current_user.id else []})
     data = body()
     if type(data.get("version")) is not int or data["version"] != show.live_version:
         abort(409, description="The controller changed in another tab. Reload before taking control.")
     action = data.get("action")
+    if show.user_id != current_user.id and action in ("revoke", "setPlaceholder", "configure"):
+        abort(403, description="Only the show owner can change links, placeholder selection or output configuration.")
     live = {**show.live, **state, "at": now, "seen": now}
+    history = None
+    settings = None
     if action == "start":
         if not show.cues and not show.programme:
             abort(400, description="Add and save timeline cues before broadcasting.")
@@ -609,20 +767,48 @@ def live_state(show_id):
         if show.programme and not placeholder:
             asset = current_app.PresentationAsset.query.filter_by(id=show.programme["placeholderId"], user_id=show.user_id).first()
             placeholder = asset.to_dict() if asset else None
-        compiled = snapshot(show)
+        historical = data.get("snapshotRevision")
+        if historical is not None:
+            if show.user_id != current_user.id:
+                abort(403, description="Only the owner can load historical broadcasts.")
+            saved = next((item for item in show.history or [] if item["revision"] == historical), None)
+            if not saved or not saved.get("compiled"):
+                abort(400, description="This version has no successfully started performance snapshot.")
+            compiled = copy.deepcopy(saved["compiled"])
+            if compiled.get("music"):
+                compiled["music"]["session"] = secrets.token_urlsafe(16)
+        else:
+            compiled = snapshot(show)
+            history = list(show.history or [])
+            version = next((item for item in history if item["revision"] == show.revision), None)
+            if version is None:
+                version = author_version(show)
+                history.append(version)
+            version["compiled"] = copy.deepcopy(compiled)
+            history = history[-20:]
         if compiled.get("music") and not compiled["music"]["events"]:
             abort(400, description="Add at least one musical event before starting a linked broadcast.")
         live = {"show": compiled, "position": 0, "playing": not bool(compiled.get("music")), "active": True, "black": False,
-                "placeholder": False, "placeholderAsset": placeholder, "at": now, "seen": now}
+                "placeholder": False, "placeholderAsset": placeholder, "at": now, "seen": now,
+                "muted": False, "output": (show.settings or {}).get("output", {})}
     elif action == "stop":
         live.update(active=False, playing=False, position=0, placeholder=False)
     elif action == "black":
         live["black"] = not live.get("black", False)
+    elif action == "mute":
+        live["muted"] = not live.get("muted", False)
+    elif action == "return":
+        live.update(black=False, muted=False, placeholder=False, output={**live.get("output", {}), "pattern": "off"})
+        settings = {**(show.settings or {}), "output": {**(show.settings or {}).get("output", {}), "pattern": "off"}}
+    elif action == "configure":
+        output = output_settings(data.get("output"))
+        settings = {**(show.settings or {}), "output": output}
+        live["output"] = output
     elif action == "revoke":
         live.update(active=False, playing=False, placeholder=False)
     elif action == "setPlaceholder":
         asset_id = data.get("assetId")
-        asset = current_app.PresentationAsset.query.filter_by(id=asset_id, user_id=current_user.id, kind="image").first() if type(asset_id) is int else None
+        asset = current_app.PresentationAsset.query.filter_by(id=asset_id, user_id=show.user_id, kind="image").first() if type(asset_id) is int else None
         if asset_id is not None and asset is None:
             abort(400, description="Choose a placeholder image from your own media library.")
         if live.get("placeholder"):
@@ -682,9 +868,16 @@ def live_state(show_id):
                 live["placeholder"] = False
             elif action == "next":
                 live["playing"] = False
+        if data.get("visualOnly") is True and action != "music":
+            live["musicFrozen"] = False
+            live["musicBoundary"] = max(cue["start"] + cue["duration"] for cue in live["show"]["cues"])
     else:
         abort(400, description="Choose a valid playback action.")
     values = {"live": live, "live_version": show.live_version + 1}
+    if history is not None:
+        values["history"] = history
+    if settings is not None:
+        values["settings"] = settings
     if action == "revoke":
         values["token"] = secrets.token_urlsafe(32)
     changed = current_app.db.session.execute(update(current_app.StudioPresentation).where(
@@ -695,6 +888,7 @@ def live_state(show_id):
         abort(409, description="Another controller updated this broadcast. Reload before taking control.")
     current_app.db.session.commit()
     return response_json({**controller_state(playback(live, now)), "version": values["live_version"],
+                          "screens": list((show.reports or {}).values()),
                           "url": url_for("presentations.watch", token=values.get("token", show.token))})
 
 
@@ -702,7 +896,8 @@ def live_state(show_id):
 def watch(token):
     current_app.StudioPresentation.query.filter_by(token=token).first_or_404()
     response = make_response(render_template("presentations/watch.html",
-        state_url=url_for("presentations.watch_state", token=token)))
+        state_url=url_for("presentations.watch_state", token=token),
+        report_url=url_for("presentations.screen_report", token=token)))
     response.headers.update({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow"})
     return response
 
@@ -712,7 +907,39 @@ def watch_state(token):
     show = current_app.StudioPresentation.query.filter_by(token=token).first_or_404()
     state = playback(show.live, time.time())
     state["show"] = {key: value for key, value in state["show"].items() if key != "music"}
+    state["show"]["cues"] = [{key: value for key, value in cue.items() if key not in ("note", "marker")}
+                             for cue in state["show"]["cues"]]
     waiting = time.time() - show.live.get("seen", 0) > 8
     if not state["active"] or waiting:
         state.update(show={"title": "", "cues": []}, active=False, playing=False, black=True, placeholder=False, placeholderAsset=None)
     return response_json({**state, "waiting": waiting})
+
+
+@presentations_bp.post("/watch/<token>/report")
+def screen_report(token):
+    show = current_app.StudioPresentation.query.filter_by(token=token).first_or_404()
+    data = body()
+    screen_id = data.get("id")
+    if not isinstance(screen_id, str) or not re.fullmatch(r"[a-zA-Z0-9-]{8,64}", screen_id):
+        abort(400, description="Supply a valid screen ID.")
+    report = {"id": screen_id, "seen": time.time(), "position": number(data.get("position"), "Position", 0, 86400)}
+    for key in ("ready", "blocked", "visible"):
+        if type(data.get(key)) is not bool:
+            abort(400, description="Screen status flags must be true or false.")
+        report[key] = data[key]
+    error = data.get("error", "")
+    if not isinstance(error, str) or len(error) > 500:
+        abort(400, description="Screen error must be text up to 500 characters.")
+    report["error"] = error
+    reports = {key: value for key, value in (show.reports or {}).items() if report["seen"] - value["seen"] < 30}
+    if screen_id not in reports and len(reports) >= 16:
+        abort(429, description="At most 16 audience screens can report status.")
+    reports[screen_id] = report
+    changed = current_app.db.session.execute(update(type(show)).where(type(show).id == show.id,
+        type(show).token == token, type(show).reports_version == show.reports_version).values(
+            reports=reports, reports_version=show.reports_version + 1)).rowcount
+    if not changed:
+        current_app.db.session.rollback()
+        abort(409, description="Another screen reported simultaneously; retry.")
+    current_app.db.session.commit()
+    return response_json({"reported": True})
